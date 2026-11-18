@@ -138,28 +138,31 @@ function allowedEventFields({ url, referrer, name, data }) {
   return { url, referrer, name, data };
 }
 
+// Set by Vercel from the visitor's address; absent elsewhere and for unknown addresses.
+function platformCountry(headers) {
+  const country = headers.get('x-vercel-ip-country');
+  return country && /^[A-Z]{2}$/.test(country) ? country : null;
+}
+
 function visitorIdentity(request) {
-  const ip = truncatedClientAddress(request.headers);
-  if (!ip) {
+  const address = truncatedClientAddress(request.headers);
+  if (!address) {
     throw new Error('the platform supplied no valid client address (x-vercel-forwarded-for)');
   }
   const userAgent = request.headers.get('user-agent');
   if (!userAgent || userAgent.length > MAX_USER_AGENT_LENGTH) {
     throw new Refusal(400, 'A User-Agent header is required.');
   }
-  return { ip, userAgent };
+  return { address, userAgent, country: platformCountry(request.headers) };
 }
 
 async function acceptEvent(request) {
   const body = await readEvent(request);
   const { origin, hostname } = await authorizeOrigin(request, body.payload.website);
   refuseForgedFields(body);
-  const status = await forwardToUmami({
-    website: body.payload.website,
-    hostname,
-    ...allowedEventFields(body.payload),
-    ...visitorIdentity(request),
-  });
+  const { userAgent, ...visitor } = visitorIdentity(request);
+  const event = { website: body.payload.website, hostname, ...allowedEventFields(body.payload) };
+  const status = await forwardToUmami({ ...event, userAgent }, visitor);
   if (UPSTREAM_CONTENT_REJECTIONS.includes(status)) {
     throw new Refusal(400, 'The analytics store rejected the event as malformed.');
   }

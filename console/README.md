@@ -19,6 +19,7 @@ npm test        # in a second terminal, against the running stack
 | Demo site (tenant "Aurora Wallet") | http://localhost:4301/demo/ |
 | Gateway and pinned tracker | http://localhost:4300 (`/api/e`, `/s/<version>-<hash>/t.js`) |
 | Umami (login `admin` / `umami`, local only) | http://localhost:3301 |
+| The same Umami without its geo database, as on Vercel (tests only) | http://localhost:3302 |
 
 ## Layout
 

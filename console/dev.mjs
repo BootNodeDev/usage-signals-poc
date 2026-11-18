@@ -28,6 +28,7 @@ async function readBody(incoming) {
 
 // Vercel sets x-vercel-forwarded-for itself and discards what the caller sent. Here the caller
 // is the test suite or a local browser, so its x-forwarded-for stands in for the real address.
+// The caller's x-vercel-ip-country is passed through the same way; a local browser sends none.
 function platformHeaders(incoming) {
   const headers = new Headers();
   for (const [name, value] of Object.entries(incoming.headers)) {

@@ -28,29 +28,38 @@ const FORGEABLE_FIELDS = {
   id: 'forged-visitor',
 };
 
-// Addresses whose country is known to the GeoLite2 database inside the Umami image.
+// The platform reports each visitor's country in x-vercel-ip-country; dev.mjs relays ours.
 const CHROME_DESKTOP = {
   address: '8.8.8.8',
   truncated: '8.8.8.0',
+  country: 'US',
   userAgent:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
 };
 const SAFARI_MOBILE = {
   address: '200.45.191.35',
   truncated: '200.45.191.0',
+  country: 'AR',
   userAgent:
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
 };
 const FIREFOX_DESKTOP = {
   address: '2a00:1450:4001:81b::200e',
   truncated: '2a00:1450:4001::',
+  country: 'DE',
   userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0',
 };
 // Same /24 and same /48 as the visitors above: after truncation Umami cannot tell them apart.
 const CHROME_NEIGHBOUR = { ...CHROME_DESKTOP, address: '8.8.8.77' };
 const FIREFOX_NEIGHBOUR = { ...FIREFOX_DESKTOP, address: '2a00:1450:4001:ffff::1' };
-// Next /24 over: stays a separate visitor.
-const CHROME_OTHER_NETWORK = { ...CHROME_DESKTOP, address: '8.8.4.4', truncated: '8.8.4.0' };
+// Next /24 over: stays a separate visitor. Its country is deliberately not the one a geo
+// database gives for the address, to show the figure comes from the platform header.
+const CHROME_OTHER_NETWORK = {
+  ...CHROME_DESKTOP,
+  address: '8.8.6.6',
+  truncated: '8.8.6.0',
+  country: 'CA',
+};
 const VISITORS = [
   CHROME_DESKTOP,
   SAFARI_MOBILE,
@@ -86,6 +95,7 @@ function sendEvent({ gateway = GATEWAY, site, visitor, origin, body }) {
     'content-type': 'application/json',
     'user-agent': visitor.userAgent,
     'x-forwarded-for': visitor.address,
+    'x-vercel-ip-country': visitor.country,
   };
   const sentOrigin = origin === undefined ? `http://${site.domain}` : origin;
   if (sentOrigin !== null) headers.origin = sentOrigin;
@@ -180,7 +190,7 @@ describe('gateway', () => {
       visits: 4,
       bounces: 2,
       referrer: { 'stellar.org': 1, 'news.ycombinator.com': 1 },
-      country: { US: 2, AR: 1, DE: 1 },
+      country: { US: 1, CA: 1, AR: 1, DE: 1 },
       browser: { chrome: 2, ios: 1, firefox: 1 },
       os: { 'Windows 10': 2, iOS: 1, Linux: 1 },
       device: { desktop: 3, mobile: 1 },
@@ -380,6 +390,33 @@ describe('gateway', () => {
       });
       assert.equal(response.status, answer, `Umami ${upstream}`);
     }
+  });
+
+  it('records visitor and country when Umami has no geo database, as on Vercel', async () => {
+    const gateway = await startGateway({
+      GATEWAY_PORT: '4318',
+      DEMO_PORT: '4319',
+      UMAMI_URL: requireEnv('UMAMI_NOGEO_URL'),
+    });
+    const visitor = { ...SAFARI_MOBILE, address: '190.210.7.9', truncated: '190.210.7.0', country: 'UY' };
+    VISITORS.push(visitor);
+    for (const url of ['/', '/pricing']) {
+      const response = await sendEvent({
+        gateway,
+        site: SITE_B,
+        visitor,
+        body: trackerBody(SITE_B, url),
+      });
+      assert.equal(response.status, 202);
+    }
+    // Site B receives nothing else during a run, so the window holds exactly these two events.
+    const { pageviews, visitors, country, browser } = await figures(SITE_B, windowStart);
+    assert.deepEqual({ pageviews, visitors, country, browser }, {
+      pageviews: 2,
+      visitors: 1,
+      country: { UY: 1 },
+      browser: { ios: 1 },
+    });
   });
 
   it('serves the pinned tracker with the integrity value the demo page declares', async () => {
