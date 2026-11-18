@@ -1,0 +1,33 @@
+// Seeded tenants and sites. Ids are fixed so the demo pages and the tests can name them.
+export const TENANTS = [
+  {
+    id: 'a0000000-0000-4000-8000-000000000001',
+    name: 'Aurora Wallet',
+    status: 'active',
+    site: {
+      id: 'a0000000-0000-4000-8000-0000000000a1',
+      domain: 'localhost:4301',
+      umamiWebsiteId: 'a0000000-0000-4000-8000-0000000000aa',
+    },
+  },
+  {
+    id: 'b0000000-0000-4000-8000-000000000002',
+    name: 'Blend Explorer',
+    status: 'active',
+    site: {
+      id: 'b0000000-0000-4000-8000-0000000000b1',
+      domain: 'localhost:4302',
+      umamiWebsiteId: 'b0000000-0000-4000-8000-0000000000bb',
+    },
+  },
+  {
+    id: 'c0000000-0000-4000-8000-000000000003',
+    name: 'Comet Pay',
+    status: 'suspended',
+    site: {
+      id: 'c0000000-0000-4000-8000-0000000000c1',
+      domain: 'localhost:4303',
+      umamiWebsiteId: 'c0000000-0000-4000-8000-0000000000cc',
+    },
+  },
+];

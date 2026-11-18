@@ -1,0 +1,341 @@
+// End-to-end check against the running local stack (docker compose, seed, dev.mjs).
+// Everything is asserted through public interfaces: the gateway, Umami's statistics API,
+// and a database dump.
+import assert from 'node:assert/strict';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { after, before, describe, it } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { requireEnv } from '../lib/config.js';
+import { umamiLogin, umamiRequest } from '../lib/umami-admin.js';
+import { TENANTS } from '../scripts/fixtures.mjs';
+
+const POC_ROOT = path.resolve(import.meta.dirname, '..');
+if (!process.env.GATEWAY_URL) process.loadEnvFile(path.join(POC_ROOT, 'local.env'));
+
+const GATEWAY = requireEnv('GATEWAY_URL');
+const DEMO = requireEnv('DEMO_URL');
+const [SITE_A, SITE_B, SITE_SUSPENDED] = TENANTS.map((tenant) => tenant.site);
+const BREAKDOWNS = ['referrer', 'country', 'browser', 'os', 'device'];
+const FORGEABLE_FIELDS = {
+  ip: '9.9.9.9',
+  userAgent: 'Forged/1.0',
+  timestamp: 1_700_000_000,
+  id: 'forged-visitor',
+};
+
+// Addresses whose country is known to the GeoLite2 database inside the Umami image.
+const CHROME_DESKTOP = {
+  address: '8.8.8.8',
+  truncated: '8.8.8.0',
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+};
+const SAFARI_MOBILE = {
+  address: '200.45.191.35',
+  truncated: '200.45.191.0',
+  userAgent:
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+};
+const FIREFOX_DESKTOP = {
+  address: '2a00:1450:4001:81b::200e',
+  truncated: '2a00:1450:4001::',
+  userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0',
+};
+// Same /24 and same /48 as the visitors above: after truncation Umami cannot tell them apart.
+const CHROME_NEIGHBOUR = { ...CHROME_DESKTOP, address: '8.8.8.77' };
+const FIREFOX_NEIGHBOUR = { ...FIREFOX_DESKTOP, address: '2a00:1450:4001:ffff::1' };
+// Next /24 over: stays a separate visitor.
+const CHROME_OTHER_NETWORK = { ...CHROME_DESKTOP, address: '8.8.4.4', truncated: '8.8.4.0' };
+const VISITORS = [
+  CHROME_DESKTOP,
+  SAFARI_MOBILE,
+  FIREFOX_DESKTOP,
+  CHROME_NEIGHBOUR,
+  FIREFOX_NEIGHBOUR,
+  CHROME_OTHER_NETWORK,
+];
+
+let umami;
+let windowStart;
+let scratch;
+const spawned = [];
+const stubs = [];
+
+function trackerBody(site, url, referrer = '') {
+  return {
+    type: 'event',
+    payload: {
+      website: site.umamiWebsiteId,
+      screen: '1920x1080',
+      language: 'en-US',
+      title: 'Demo page',
+      hostname: 'localhost',
+      url,
+      referrer,
+    },
+  };
+}
+
+function sendEvent({ gateway = GATEWAY, site, visitor, origin, body }) {
+  const headers = {
+    'content-type': 'application/json',
+    'user-agent': visitor.userAgent,
+    'x-forwarded-for': visitor.address,
+  };
+  const sentOrigin = origin === undefined ? `http://${site.domain}` : origin;
+  if (sentOrigin !== null) headers.origin = sentOrigin;
+  return fetch(`${gateway}/api/e`, { method: 'POST', headers, body: JSON.stringify(body) });
+}
+
+async function umamiJson(pathAndQuery) {
+  const response = await umamiRequest(umami, pathAndQuery);
+  assert.equal(response.status, 200, `Umami ${pathAndQuery} answered ${response.status}`);
+  return response.json();
+}
+
+async function figures(site, startAt) {
+  const base = `/api/websites/${site.umamiWebsiteId}`;
+  const range = `startAt=${startAt}&endAt=${Date.now() + 60_000}`;
+  const { pageviews, visitors, visits, bounces, totaltime } = await umamiJson(
+    `${base}/stats?${range}`,
+  );
+  const result = { pageviews, visitors, visits, bounces, totaltime };
+  for (const type of BREAKDOWNS) {
+    const rows = await umamiJson(`${base}/metrics?${range}&type=${type}`);
+    result[type] = Object.fromEntries(rows.map((row) => [row.x, row.y]));
+  }
+  return result;
+}
+
+async function assertUnchanged(site, action) {
+  const beforeAction = await figures(site, 0);
+  await action();
+  assert.deepEqual(await figures(site, 0), beforeAction, `figures of ${site.domain} changed`);
+}
+
+async function startGateway(env) {
+  const child = spawn(process.execPath, ['dev.mjs'], {
+    cwd: POC_ROOT,
+    env: { ...process.env, ...env },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  spawned.push(child);
+  for await (const chunk of child.stdout) {
+    if (String(chunk).includes('demo site:')) return `http://localhost:${env.GATEWAY_PORT}`;
+  }
+  throw new Error(`dev.mjs exited before listening on port ${env.GATEWAY_PORT}`);
+}
+
+describe('gateway', () => {
+  before(async () => {
+    scratch = mkdtempSync(path.join(tmpdir(), 'usage-signals-test-'));
+    umami = await umamiLogin();
+    // Statistics are read from windowStart on, so earlier runs do not count.
+    await sleep(1_100);
+    windowStart = Date.now() - 500;
+  });
+
+  after(() => {
+    for (const child of spawned) child.kill();
+    for (const stub of stubs) stub.close();
+    console.log(`Scratch directory (not deleted): ${scratch}`);
+  });
+
+  it('turns accepted events into the seven metrics for the right site', async () => {
+    const baselineB = await figures(SITE_B, 0);
+    const visits = [
+      [CHROME_DESKTOP, '/', 'https://stellar.org/learn'],
+      [SAFARI_MOBILE, '/', 'https://news.ycombinator.com/item?id=1'],
+      [FIREFOX_DESKTOP, '/about.html', ''],
+      [CHROME_NEIGHBOUR, '/', ''],
+      [FIREFOX_NEIGHBOUR, '/', ''],
+      [CHROME_OTHER_NETWORK, '/', ''],
+    ];
+    for (const [visitor, url, referrer] of visits) {
+      const response = await sendEvent({
+        site: SITE_A,
+        visitor,
+        body: trackerBody(SITE_A, url, referrer),
+      });
+      assert.equal(response.status, 202);
+      assert.equal(response.headers.get('access-control-allow-origin'), `http://${SITE_A.domain}`);
+    }
+    await sleep(2_000);
+    const secondPage = await sendEvent({
+      site: SITE_A,
+      visitor: CHROME_DESKTOP,
+      body: trackerBody(SITE_A, '/about.html', '/'),
+    });
+    assert.equal(secondPage.status, 202);
+
+    const { totaltime, ...counted } = await figures(SITE_A, windowStart);
+    assert.deepEqual(counted, {
+      pageviews: 7,
+      visitors: 4,
+      visits: 4,
+      bounces: 2,
+      referrer: { 'stellar.org': 1, 'news.ycombinator.com': 1 },
+      country: { US: 2, AR: 1, DE: 1 },
+      browser: { chrome: 2, ios: 1, firefox: 1 },
+      os: { 'Windows 10': 2, iOS: 1, Linux: 1 },
+      device: { desktop: 3, mobile: 1 },
+    });
+    assert.ok(totaltime >= 2 && totaltime <= 10, `total time ${totaltime}s, expected about 2s`);
+    assert.deepEqual(await figures(SITE_B, 0), baselineB, 'site B changed');
+    assert.equal((await figures(SITE_B, windowStart)).pageviews, 0);
+  });
+
+  it('answers 403 and forwards nothing when the Origin is not the site domain', async () => {
+    const body = trackerBody(SITE_A, '/forged');
+    const attempts = [
+      { site: SITE_A, origin: 'https://evil.example', body },
+      { site: SITE_A, origin: `http://${SITE_B.domain}`, body },
+      { site: SITE_A, origin: null, body },
+      { site: SITE_A, origin: 'not a url', body },
+      { site: SITE_A, body: trackerBody({ umamiWebsiteId: crypto.randomUUID() }, '/forged') },
+    ];
+    await assertUnchanged(SITE_A, async () => {
+      for (const attempt of attempts) {
+        const response = await sendEvent({ ...attempt, visitor: CHROME_DESKTOP });
+        assert.equal(response.status, 403, `origin ${attempt.origin}`);
+        assert.equal(response.headers.get('access-control-allow-origin'), null);
+      }
+    });
+  });
+
+  it('answers 403 and forwards nothing for a suspended tenant', async () => {
+    await assertUnchanged(SITE_SUSPENDED, async () => {
+      const response = await sendEvent({
+        site: SITE_SUSPENDED,
+        visitor: CHROME_DESKTOP,
+        body: trackerBody(SITE_SUSPENDED, '/'),
+      });
+      assert.equal(response.status, 403);
+    });
+  });
+
+  it('answers 400 and forwards nothing when the caller supplies identity fields', async () => {
+    await assertUnchanged(SITE_A, async () => {
+      for (const [field, value] of Object.entries(FORGEABLE_FIELDS)) {
+        const inPayload = trackerBody(SITE_A, '/forged');
+        inPayload.payload[field] = value;
+        const atRoot = { ...trackerBody(SITE_A, '/forged'), [field]: value };
+        for (const body of [inPayload, atRoot]) {
+          const response = await sendEvent({ site: SITE_A, visitor: SAFARI_MOBILE, body });
+          assert.equal(response.status, 400, `${field} must be refused`);
+        }
+      }
+    });
+  });
+
+  it('answers 400 for bodies that are not a tracker event', async () => {
+    await assertUnchanged(SITE_A, async () => {
+      const bodies = ['{not json', '[]', JSON.stringify({ ...trackerBody(SITE_A, '/'), type: 'identify' })];
+      for (const body of bodies) {
+        const response = await fetch(`${GATEWAY}/api/e`, {
+          method: 'POST',
+          headers: { origin: `http://${SITE_A.domain}`, 'content-type': 'application/json' },
+          body,
+        });
+        assert.equal(response.status, 400, body);
+      }
+    });
+  });
+
+  it('answers the CORS preflight for registered origins only', async () => {
+    const preflight = (origin) =>
+      fetch(`${GATEWAY}/api/e`, {
+        method: 'OPTIONS',
+        headers: {
+          origin,
+          'access-control-request-method': 'POST',
+          'access-control-request-headers': 'content-type,x-umami-hostname,x-umami-website-id',
+        },
+      });
+    const allowed = await preflight(`http://${SITE_A.domain}`);
+    assert.equal(allowed.status, 204);
+    assert.equal(allowed.headers.get('access-control-allow-origin'), `http://${SITE_A.domain}`);
+    assert.equal(allowed.headers.get('vary'), 'Origin');
+    assert.match(allowed.headers.get('access-control-allow-headers'), /x-umami-website-id/);
+    for (const origin of ['https://evil.example', `http://${SITE_SUSPENDED.domain}`]) {
+      const refused = await preflight(origin);
+      assert.equal(refused.status, 403, origin);
+      assert.equal(refused.headers.get('access-control-allow-origin'), null);
+    }
+  });
+
+  it('answers 405 for other methods and 404 for other paths', async () => {
+    assert.equal((await fetch(`${GATEWAY}/api/e`)).status, 405);
+    assert.equal((await fetch(`${GATEWAY}/api/unknown`, { method: 'POST' })).status, 404);
+  });
+
+  it('fails closed with 503 when Umami or the database is unreachable', async () => {
+    const withoutUmami = await startGateway({
+      GATEWAY_PORT: '4310',
+      DEMO_PORT: '4311',
+      UMAMI_URL: 'http://127.0.0.1:1',
+    });
+    const failingUmami = createServer((_request, response) => response.writeHead(500).end());
+    await new Promise((resolve) => failingUmami.listen(0, '127.0.0.1', resolve));
+    stubs.push(failingUmami);
+    const withFailingUmami = await startGateway({
+      GATEWAY_PORT: '4314',
+      DEMO_PORT: '4315',
+      UMAMI_URL: `http://127.0.0.1:${failingUmami.address().port}`,
+    });
+    const withoutDatabase = await startGateway({
+      GATEWAY_PORT: '4312',
+      DEMO_PORT: '4313',
+      DATABASE_URL: 'postgresql://poc:poc-local-only@127.0.0.1:1/poc',
+    });
+    await assertUnchanged(SITE_A, async () => {
+      for (const gateway of [withoutUmami, withFailingUmami, withoutDatabase]) {
+        const response = await sendEvent({
+          gateway,
+          site: SITE_A,
+          visitor: CHROME_DESKTOP,
+          body: trackerBody(SITE_A, '/outage'),
+        });
+        assert.equal(response.status, 503, gateway);
+      }
+    });
+  });
+
+  it('serves the pinned tracker with the integrity value the demo page declares', async () => {
+    const manifest = await (await fetch(`${GATEWAY}/s/manifest.json`)).json();
+    const tracker = await fetch(`${GATEWAY}${manifest.path}`);
+    assert.equal(tracker.status, 200);
+    assert.equal(tracker.headers.get('access-control-allow-origin'), '*');
+    const digest = createHash('sha384').update(Buffer.from(await tracker.arrayBuffer()));
+    assert.equal(`sha384-${digest.digest('base64')}`, manifest.integrity);
+    for (const page of ['/', '/about.html']) {
+      const html = await (await fetch(`${DEMO}${page}`)).text();
+      assert.ok(html.includes(`src="${GATEWAY}${manifest.path}"`), `${page} script src`);
+      assert.ok(html.includes(`integrity="${manifest.integrity}"`), `${page} integrity`);
+      assert.ok(html.includes('crossorigin="anonymous"'), `${page} crossorigin`);
+    }
+  });
+
+  it('leaves no client address in the database or in the container logs', () => {
+    const compose = ['compose', '-f', path.join(POC_ROOT, 'docker-compose.yml')];
+    const options = { maxBuffer: 512 * 1024 * 1024, encoding: 'utf8' };
+    const dump = execFileSync('docker', [...compose, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'poc', 'poc'], options);
+    const logs = execFileSync('docker', [...compose, 'logs', '--no-color'], options);
+    writeFileSync(path.join(scratch, 'dump.sql'), dump);
+    writeFileSync(path.join(scratch, 'containers.log'), logs);
+
+    assert.ok(dump.includes('usage_signals.tenant'), 'dump misses our schema');
+    assert.ok(dump.includes('/about.html'), 'dump misses the events this run sent');
+    for (const { address, truncated } of VISITORS) {
+      for (const needle of [address, truncated, FORGEABLE_FIELDS.ip]) {
+        assert.ok(!dump.includes(needle), 'a client address is stored in the database');
+        assert.ok(!logs.includes(needle), 'a client address is in the container logs');
+      }
+    }
+  });
+});
