@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Access · Operator · Usage Signals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-audience="operator" data-active="access">
+<div class="frame">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <main class="sheet sheet-narrow">
+
+      <div class="title-row">
+        <div>
+          <h1>Access</h1>
+          <p class="title-sub">Who can enroll, who can read the metrics, who can operate.</p>
+        </div>
+      </div>
+
+      <section class="settings-row" aria-labelledby="mode-title">
+        <div>
+          <h2 id="mode-title">Enrollment mode</h2>
+          <p>One setting, no redeploy.</p>
+        </div>
+        <div class="field">
+          <div class="setting-line">
+            <p id="mode-text"></p>
+            <div class="seg" role="group" aria-label="Enrollment mode" id="mode"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-row" aria-labelledby="keys-title">
+        <div>
+          <h2 id="keys-title">Metrics API keys</h2>
+          <p>Read-only access to aggregates for machine consumers.</p>
+        </div>
+        <div class="field">
+          <div class="table-wrap" id="keys"></div>
+          <div class="setting-line" style="margin-top:16px">
+            <span class="muted" id="keys-count"></span>
+            <button class="btn" type="button" data-inert>Issue key</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-row" aria-labelledby="signin-title">
+        <div>
+          <h2 id="signin-title">Operator sign-in</h2>
+          <p>An allowlisted account plus a one-time code.</p>
+        </div>
+        <div class="field">
+          <dl class="kv" id="signin"></dl>
+        </div>
+      </section>
+
+      <p class="caption" id="inert-note" aria-live="polite" style="margin-left:0"></p>
+
+    </main>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var D = window.LData;
+  var META = D.meta();
+  var fmt = App.fmt;
+  var esc = App.escapeHtml;
+  var byId = function (id) { return document.getElementById(id); };
+  var modes = {
+    open: ['Open', 'A project becomes active when its domain proof passes.'],
+    approval_required: ['Approval required', 'A project waits in pending approval until an operator approves it.']
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var mode = modes[META.enrollment_mode] || modes.approval_required;
+    byId('mode').innerHTML = Object.keys(modes).map(function (key) {
+      return '<button type="button" aria-pressed="' + (key === META.enrollment_mode) + '" data-inert>' + modes[key][0] + '</button>';
+    }).join('');
+    byId('mode-text').innerHTML = '<b style="font-weight:600">' + mode[0] + '.</b> ' + mode[1];
+
+    var keys = D.metricsApiKeys();
+    var active = keys.filter(function (key) { return key.status !== 'revoked'; }).length;
+    byId('keys-count').textContent = keys.length ? active + ' active, ' + (keys.length - active) + ' revoked' : '';
+    byId('keys').innerHTML = keys.length
+      ? '<table class="data"><thead><tr><th>Key</th><th>Scope</th><th class="num">Created</th><th class="num">Last used</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>' +
+        keys.map(function (key) {
+          var revoked = key.status === 'revoked';
+          return '<tr class="' + (revoked ? 'is-revoked' : '') + '"><td><strong style="font-weight:500">' + esc(key.label) + '</strong>' +
+            '<span class="sub mono">' + esc(key.prefix) + '…</span></td>' +
+            '<td>' + esc(key.scope) + '</td><td class="num">' + fmt.date(key.created_at) + '</td>' +
+            '<td class="num">' + fmt.date(key.last_used_at) + '</td>' +
+            '<td class="num">' + (revoked ? '<span class="pill">Revoked</span>'
+              : '<button class="icon-btn" type="button" popovertarget="pop-' + key.id + '" aria-label="Actions for ' + esc(key.label) + '">' + App.icon('more') + '</button>' +
+                '<div class="pop pop-menu" popover id="pop-' + key.id + '"><button class="menu-item" type="button" data-inert>Revoke key</button></div>') +
+            '</td></tr>';
+        }).join('') + '</tbody></table>'
+      : App.empty('No key has been issued.');
+
+    byId('signin').innerHTML = '<dt>Signed-in account</dt><dd>' + esc(META.operator_account) + '</dd>' +
+      '<dt>Allowlist</dt><dd>Only listed accounts can sign in</dd>' +
+      '<dt>Second step</dt><dd>One-time code at each sign-in</dd>';
+
+    document.addEventListener('click', function (event) {
+      if (!event.target.closest('[data-inert]')) return;
+      byId('inert-note').textContent = App.INERT_NOTE + '. Controls on this screen are shown for layout only.';
+    });
+    document.querySelectorAll('[data-inert]').forEach(function (el) { el.title = App.INERT_NOTE; });
+  });
+})();
+</script>
+</body>
+</html>

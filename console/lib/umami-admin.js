@@ -1,6 +1,10 @@
-// Authenticated Umami API access for the seed script and the tests. The deployed functions
-// never import this file.
+// Authenticated Umami API access: the seed script, the tests and the read endpoint.
 import { requireEnv } from './config.js';
+
+const READ_TIMEOUT_MS = 8_000;
+// Kept for the life of the instance: Fluid compute reuses module state across invocations.
+// Umami's login token carries no expiry, so it is replaced only when Umami answers 401.
+let sharedSession = null;
 
 export async function umamiLogin() {
   const baseUrl = requireEnv('UMAMI_URL');
@@ -36,4 +40,27 @@ export async function umamiRequest(session, path, init = {}) {
     },
   });
   return response;
+}
+
+async function getOnce(path) {
+  sharedSession ??= umamiLogin();
+  const session = await sharedSession;
+  return umamiRequest(session, path, { signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+}
+
+/** GET on the Umami API with the shared admin session; logs in again once after a 401. */
+export async function umamiGet(path) {
+  let response;
+  try {
+    response = await getOnce(path);
+    if (response.status === 401) {
+      sharedSession = null;
+      response = await getOnce(path);
+    }
+  } catch (error) {
+    sharedSession = null;
+    throw error;
+  }
+  if (!response.ok) throw new Error(`Umami answered HTTP ${response.status} to a read`);
+  return response.json();
 }

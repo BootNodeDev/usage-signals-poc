@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web analytics · Usage Signals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-audience="tenant" data-active="web">
+<div class="frame">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <main class="sheet">
+
+      <div class="title-row">
+        <div>
+          <h1>Web analytics</h1>
+          <p class="title-sub"><span class="source">Observed by the tracker</span><span class="stamp" id="stamp"></span></p>
+        </div>
+        <div class="controls"><div id="range"></div></div>
+      </div>
+
+      <div id="content">
+        <section class="headline" aria-label="Headline figures" id="headline"></section>
+
+        <div class="cols">
+          <section class="block" aria-labelledby="chart-title">
+            <div class="block-head">
+              <h2 id="chart-title">Page views per day</h2>
+              <div class="block-tools">
+                <div class="legend" id="legend"></div>
+                <button class="btn btn-quiet btn-small" type="button" id="toggle">View table</button>
+              </div>
+            </div>
+            <div class="chart" id="chart"></div>
+            <div class="table-view" id="table" hidden></div>
+          </section>
+
+          <section class="field" aria-label="Breakdown">
+            <div class="tabs" role="tablist" aria-label="Breakdown" id="tabs">
+              <button type="button" role="tab" data-tab="referrers" aria-selected="true" aria-controls="breakdown">Referrers</button>
+              <button type="button" role="tab" data-tab="countries" aria-selected="false" aria-controls="breakdown">Countries</button>
+              <button type="button" role="tab" data-tab="devices" aria-selected="false" aria-controls="breakdown">Devices</button>
+              <button type="button" role="tab" data-tab="browsers" aria-selected="false" aria-controls="breakdown">Browsers</button>
+            </div>
+            <p class="field-caption" id="breakdown-caption"></p>
+            <div class="bars" id="breakdown" role="tabpanel"></div>
+          </section>
+        </div>
+      </div>
+      <div id="empty" hidden></div>
+
+    </main>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script>
+(function () {
+  'use strict';
+  var D = window.LData;
+  var byId = function (id) { return document.getElementById(id); };
+  var NOT_CLASSIFIED = 'Not classified in this prototype';
+
+  function message(title, text, action) {
+    byId('content').hidden = true;
+    byId('empty').hidden = false;
+    byId('empty').innerHTML = '<div class="empty-state"><h2>' + title + '</h2><p>' + text + '</p>' + (action || '') + '</div>';
+  }
+
+  function loadScript(src, done) {
+    var script = document.createElement('script');
+    script.src = src;
+    script.onload = done;
+    script.onerror = function () { message('This page could not be loaded', 'A script failed to load. Reload the page.'); };
+    document.body.appendChild(script);
+  }
+
+  function start() {
+    var App = window.App;
+    var fmt = App.fmt;
+    var project = App.tenant;
+    var state = { range: 30, tab: App.store.get('web-tab') || 'referrers' };
+    var series = [{ name: 'Page views, as counted', color: 'var(--data-filtered)' }];
+    var dimensions = {
+      referrers: 'Visitors in the period by referring host',
+      countries: 'Visitors in the period by country',
+      devices: 'Visitors in the period by device class',
+      browsers: 'Visitors in the period by browser'
+    };
+    var retry = '<button class="btn btn-primary" type="button" id="retry">Try again</button>';
+
+    function stamp() {
+      var through = D.status().through;
+      return through ? 'Through ' + fmt.date(through.slice(0, 10)) + ', ' + through.slice(11, 16) + ' UTC' : '';
+    }
+
+    function figure(label, value, note) {
+      return '<div class="figure"><div class="figure-label">' + label + '</div>' +
+        '<div class="figure-value">' + value + '</div><div class="figure-note">' + note + '</div></div>';
+    }
+
+    function renderHeadline(t, prior, range) {
+      byId('headline').innerHTML =
+        '<div class="figure hero"><div class="figure-label">' +
+        App.info('pageviews', 'Page views', '<p>Every page view the tracker reported, as counted. Known bots are excluded before counting.</p>' +
+          '<p>This prototype does not classify traffic yet, so there is no flagged or filtered figure: nothing has been checked, and nothing has been removed.</p>') + '</div>' +
+        '<div class="figure-row"><div class="figure-value">' + fmt.int(t.pageviews_raw) + '</div>' +
+        '<div class="figure-note">' + App.delta(t.pageviews_raw, prior && prior.pageviews_raw, { range: range, good: 'up' }) + '</div></div>' +
+        '<div class="flagline"><span><b>' + NOT_CLASSIFIED + '</b> <span class="muted">· flagged traffic and the rules that fired will show here</span></span></div></div>' +
+
+        figure(App.info('visitors', 'Visitors (sum of daily)', '<p>A visitor is counted once per day and never linked across days, so a multi-day figure is the sum of daily visitors.</p>'),
+          fmt.int(t.visitors_raw), NOT_CLASSIFIED) +
+        figure(App.info('duration', 'Visit duration', '<p>A visit is one visitor\'s activity within one clock hour.</p><p>Average over <b>' + fmt.int(t.visits) + '</b> visits.</p>'),
+          fmt.duration(t.avg_visit_seconds), App.delta(t.avg_visit_seconds, prior && prior.avg_visit_seconds, { range: range, good: 'up' })) +
+        figure(App.info('bounce', 'Bounce rate', '<p>A bounce is a visit with one page view and no custom event.</p><p><b>' + fmt.int(t.bounces) + '</b> of <b>' + fmt.int(t.visits) + '</b> visits.</p>'),
+          fmt.pct(t.bounce_rate), App.delta(t.bounce_rate, prior && prior.bounce_rate, { range: range, good: 'down', points: true }));
+    }
+
+    function renderBreakdown() {
+      byId('breakdown-caption').textContent = dimensions[state.tab];
+      App.barList(byId('breakdown'), D.breakdown(project.id, state.tab));
+    }
+
+    function renderEmpty(range) {
+      var waiting = {
+        pending_verification: 'is waiting for its domain proof',
+        pending_approval: 'is waiting for an operator to approve it',
+        suspended: 'is suspended', removed: 'has been removed'
+      }[project.state];
+      if (waiting) {
+        message('Nothing is counted yet', App.escapeHtml(project.name) + ' ' + waiting + '. Page views appear here once the project is active.');
+      } else {
+        message('No page views in the last ' + range + ' days', 'Page views appear once the tracking snippet is installed on ' + App.escapeHtml(project.domain) + '.');
+      }
+    }
+
+    function paint(range) {
+      var result = D.web(project.id, range);
+      var t = result.totals;
+      var rows = result.rows;
+      byId('stamp').textContent = stamp();
+      if (!t) { renderEmpty(range); return; }
+      byId('content').hidden = false;
+      byId('empty').hidden = true;
+
+      renderHeadline(t, result.prior, range);
+      byId('legend').innerHTML = Charts.legend(series) + '<span class="muted">Flagged band: ' + NOT_CLASSIFIED.toLowerCase() + '</span>';
+      series[0].values = rows.map(function (r) { return r.pageviews_raw; });
+      Charts.columns(byId('chart'), {
+        label: 'Page views per day, as counted, last ' + range + ' days',
+        labels: rows.map(function (r) { return fmt.day(r.day); }),
+        series: series, height: App.plotHeight(500, 260, 460), format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
+        annotations: [], emptyText: 'No page views in this period.'
+      });
+      App.dataTable(byId('table'), ['Day', 'Page views', 'Visitors', 'Flagged'], rows.slice().reverse().map(function (r) {
+        return [fmt.date(r.day), fmt.int(r.pageviews_raw), fmt.int(r.visitors_raw), 'Not classified'];
+      }));
+      renderBreakdown();
+    }
+
+    function render(range) {
+      state.range = range;
+      if (!project) {
+        message('No project', D.status().error
+          ? 'The list of projects could not be read: ' + App.escapeHtml(D.status().error)
+          : 'No project is enrolled yet.', D.status().error ? retry : '');
+        if (byId('retry')) byId('retry').addEventListener('click', function () { window.location.reload(); });
+        return;
+      }
+      message('Loading figures', 'Reading the last ' + range + ' days for ' + App.escapeHtml(project.domain) + '.');
+      D.loadWeb(project.id, range).then(function () {
+        if (state.range === range) paint(range);
+      }, function (error) {
+        if (state.range !== range) return;
+        message('Figures are unavailable', App.escapeHtml(error.message || 'The figures could not be read.') +
+          ' Nothing is shown in their place.', retry);
+        byId('retry').addEventListener('click', function () { render(range); });
+      });
+    }
+
+    if (!dimensions[state.tab]) state.tab = 'referrers';
+    Array.prototype.forEach.call(byId('tabs').children, function (tab) {
+      tab.setAttribute('aria-selected', String(tab.dataset.tab === state.tab));
+    });
+    App.tabs(byId('tabs'), function (tab) {
+      state.tab = tab;
+      App.store.set('web-tab', tab);
+      if (project && D.web(project.id, state.range).totals) renderBreakdown();
+    });
+    App.viewToggle(byId('toggle'), byId('chart'), byId('table'));
+    App.rangeControl(byId('range'), render);
+  }
+
+  /* The seam is asked which projects exist before app.js picks one. */
+  message('Loading', 'Reading the list of projects.');
+  D.connect().then(function () { loadScript('app.js', start); });
+})();
+</script>
+</body>
+</html>

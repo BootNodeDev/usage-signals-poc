@@ -1,7 +1,12 @@
 // The single Vercel function. vercel.json rewrites /api/* here; routes are matched by path.
 import { handleEvent } from '../lib/gateway.js';
+import { handleSites, handleWebRead } from '../lib/web-read.js';
 
-const ROUTES = new Map([['/api/e', handleEvent]]);
+const ROUTES = new Map([
+  ['/api/e', handleEvent],
+  ['/api/sites', handleSites],
+  ['/api/web', handleWebRead],
+]);
 
 export default {
   fetch(request) {

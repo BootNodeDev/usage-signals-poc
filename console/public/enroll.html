@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup · Usage Signals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-audience="tenant" data-active="setup">
+<div class="frame">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <main class="sheet sheet-narrow">
+
+      <div class="title-row">
+        <div>
+          <h1>Setup</h1>
+          <p class="title-sub" id="finding"></p>
+        </div>
+      </div>
+
+      <div id="empty" hidden></div>
+      <div class="setup" id="setup">
+        <nav aria-label="Setup steps"><ol class="steps-rail" id="rail"></ol></nav>
+
+        <div>
+          <section class="step-panel" data-step="wallet" hidden>
+            <p class="step-count"></p>
+            <h2>Sign in with a Stellar wallet</h2>
+            <p class="step-lead">You sign a short text challenge that names the service, a nonce and an expiry. No password is collected.</p>
+            <div class="field">
+              <dl class="kv kv-wide">
+                <dt>Signed-in account</dt>
+                <dd class="mono" id="account"></dd>
+                <span class="tag">Sample account</span>
+              </dl>
+            </div>
+          </section>
+
+          <section class="step-panel" data-step="channel" hidden>
+            <p class="step-count"></p>
+            <h2>Notification channel</h2>
+            <p class="step-lead">One channel, used for service notices only: breach, sub-processor and handover notices, token expiry and a failed domain re-check.</p>
+            <div class="field">
+              <form class="fields" id="channel-form">
+                <div class="seg" role="group" aria-label="Channel type">
+                  <button type="button" data-channel="email" aria-pressed="true">Email</button>
+                  <button type="button" data-channel="webhook" aria-pressed="false">Webhook</button>
+                </div>
+                <input class="input" id="channel-address" aria-label="Address for service notices" autocomplete="off" spellcheck="false">
+              </form>
+            </div>
+          </section>
+
+          <section class="step-panel" data-step="proof" hidden>
+            <p class="step-count"></p>
+            <h2>Prove control of the domain</h2>
+            <p class="step-lead">Any one of the three methods is enough. Events are accepted only from pages on a domain you have proved. Proofs are re-checked on a schedule.</p>
+            <div class="field" id="proof-panel">
+              <div class="tabs" role="tablist" aria-label="Proof method" id="proof-tabs">
+                <button type="button" role="tab" data-tab="page" aria-controls="proof-code">Snippet or meta tag on the page</button>
+                <button type="button" role="tab" data-tab="dns_txt" aria-controls="proof-code">DNS TXT record</button>
+                <button type="button" role="tab" data-tab="stellar_toml" aria-controls="proof-code">stellar.toml</button>
+              </div>
+              <p id="proof-text"></p>
+              <div class="code" style="margin-top:12px">
+                <pre class="wrap" id="proof-code" role="tabpanel" tabindex="0"></pre>
+                <button class="btn btn-small" type="button" data-copy="proof-code">Copy</button>
+              </div>
+              <div class="verify-head">
+                <p><span class="pill" id="verify-pill"></span><span id="verify-text"></span></p>
+                <button class="btn btn-primary" type="button" id="verify-button">Check domain proof</button>
+              </div>
+              <ul class="checks" id="checks"></ul>
+            </div>
+          </section>
+
+          <section class="step-panel" data-step="evidence" hidden>
+            <p class="step-count"></p>
+            <h2>Evidence that the project is built on Stellar</h2>
+            <p class="step-lead">Optional. Fund operators see each item as a badge. An issuer or contract listed in your stellar.toml is checked automatically; registry records are links for an operator to review.</p>
+            <div class="field">
+              <div id="evidence"></div>
+              <form class="fields" style="margin-top:16px" id="daoip-form">
+                <label for="daoip">DAOIP-5 identifier</label>
+                <input class="input" id="daoip" placeholder="Optional" autocomplete="off" spellcheck="false">
+              </form>
+              <p class="note">An identifier you add is shown as unconfirmed until an operator confirms it.</p>
+            </div>
+          </section>
+
+          <section class="step-panel" data-step="dpa" hidden>
+            <p class="step-count"></p>
+            <h2>Accept the data processing agreement</h2>
+            <p class="step-lead" id="dpa-text"></p>
+            <div class="field" id="dpa-panel"></div>
+          </section>
+
+          <section class="step-panel" data-step="web" hidden>
+            <p class="step-count"></p>
+            <h2>Install the tracking snippet</h2>
+            <p class="step-lead">One tag, pinned to a version. The version and the content hash are part of the address, so the file there never changes, and the integrity value makes the browser refuse anything else. To upgrade, you replace the tag.</p>
+            <div class="tabs" role="tablist" aria-label="Install method" id="snippet-tabs">
+              <button type="button" role="tab" data-tab="html" aria-selected="true" aria-controls="snippet">HTML tag</button>
+              <button type="button" role="tab" data-tab="npm" aria-selected="false" aria-controls="snippet">npm package</button>
+            </div>
+            <div class="code code-hero">
+              <pre class="wrap" id="snippet" role="tabpanel" tabindex="0"></pre>
+              <button class="btn btn-small" type="button" data-copy="snippet">Copy</button>
+            </div>
+            <div class="panel-meta">
+              <span>Tracker version <b class="mono" id="tracker-version"></b></span>
+              <span>Sets no cookie</span>
+              <span>Sends nothing when Global Privacy Control or Do Not Track is on</span>
+              <span id="first-event"></span>
+            </div>
+          </section>
+
+          <section class="step-panel" data-step="api" hidden>
+            <p class="step-count"></p>
+            <h2>Export API telemetry</h2>
+            <p class="step-lead">Optional. Export one histogram, <code>http.server.request.duration</code>, over OTLP/HTTP every 60 seconds with delta temporality. The older <code>http.server.duration</code> is accepted too. Nothing else is read. Traces and logs are discarded on arrival and never stored.</p>
+            <div class="field">
+              <dl class="kv kv-wide">
+                <dt>OTLP endpoint</dt>
+                <dd class="mono" id="otlp-endpoint"></dd>
+                <button class="btn btn-small" type="button" data-copy="otlp-endpoint">Copy</button>
+                <dt>Ingest token</dt>
+                <dd class="mono" id="ingest-token"></dd>
+                <span class="tag">Masked</span>
+              </dl>
+              <div class="panel-meta" id="token-meta"></div>
+              <p class="note"><b>Cumulative data is rejected.</b> SDKs default to cumulative temporality. A rejected export is reported on this page.</p>
+            </div>
+            <div class="tabs" role="tablist" aria-label="Export route" id="sdk-tabs" style="margin-top:32px">
+              <button type="button" role="tab" data-tab="collector" aria-controls="recipe">Your own Collector</button>
+              <button type="button" role="tab" data-tab="node" aria-controls="recipe">Node SDK</button>
+              <button type="button" role="tab" data-tab="python" aria-controls="recipe">Python SDK</button>
+              <button type="button" role="tab" data-tab="go" aria-controls="recipe">Go SDK</button>
+              <button type="button" role="tab" data-tab="rust" aria-controls="recipe">Rust SDK</button>
+            </div>
+            <p class="step-lead" id="recipe-lead" style="margin-top:0;margin-bottom:16px"></p>
+            <div class="code">
+              <pre id="recipe" role="tabpanel" tabindex="0"></pre>
+              <button class="btn btn-small" type="button" data-copy="recipe">Copy</button>
+            </div>
+            <p class="note" id="recipe-note"></p>
+          </section>
+
+          <div class="step-nav" id="step-nav"></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var D = window.LData;
+  var META = D.meta();
+  var fmt = App.fmt;
+  var byId = function (id) { return document.getElementById(id); };
+  var project = App.tenant;
+  var site = project ? project.sites[0] || null : null;
+  var token = project ? D.tenantToken(project.id) : null;
+  var endpoint = META.otlp_endpoint;
+  var state = {
+    step: null, snippet: 'html', recipe: 'collector',
+    proof: site && site.proof ? site.proof.method : 'page',
+    verified: Boolean(site && site.proof), checking: false,
+    channel: project && project.notification_channel ? project.notification_channel.type : 'email'
+  };
+  var evidenceStatus = {
+    checked: 'Checked automatically', to_review: 'Link for an operator to review',
+    unconfirmed: 'Unconfirmed until an operator confirms it', confirmed: 'Confirmed by an operator'
+  };
+  var STEPS = [
+    { id: 'wallet', group: 'Enrollment', name: 'Sign in with a wallet' },
+    { id: 'channel', name: 'Notification channel' },
+    { id: 'proof', name: 'Prove the domain' },
+    { id: 'evidence', name: 'Stellar evidence', optional: true },
+    { id: 'dpa', name: 'Data processing agreement' },
+    { id: 'web', group: 'Install', name: 'Web tracking', icon: 'web' },
+    { id: 'api', name: 'API telemetry', icon: 'api', optional: true }
+  ];
+
+  var proofs = {
+    page: {
+      text: 'Put the tracking snippet on the page, or add this meta tag to its head.',
+      code: function () { return '<meta name="usage-signals-site" content="' + site.id + '">'; },
+      checks: function () { return [['Page fetched at https://' + site.domain, 'Fetched'], ['Snippet or meta tag found for this site', 'Found']]; }
+    },
+    dns_txt: {
+      text: 'Add this TXT record at your DNS provider.',
+      code: function () { return '_usage-signals.' + site.domain + '.  TXT  "usage-signals-site=' + site.id + '"'; },
+      checks: function () { return [['TXT record looked up for _usage-signals.' + site.domain, 'Answered'], ['Record value matches this site', 'Matches']]; }
+    },
+    stellar_toml: {
+      text: 'Publish a stellar.toml on the domain whose ACCOUNTS list contains the account you signed in with.',
+      code: function () {
+        return '# https://' + site.domain + '/.well-known/stellar.toml\nACCOUNTS = [\n  "' + (project.account || '<your account>') + '"\n]';
+      },
+      checks: function () {
+        return [['stellar.toml fetched from https://' + site.domain, 'Fetched'], ['ACCOUNTS lists ' + fmt.account(project.account), 'Listed']];
+      }
+    }
+  };
+
+  var collector = [
+    'processors:',
+    '  filter/usage_signals:',
+    '    error_mode: ignore',
+    '    metrics:',
+    '      metric:',
+    '        - \'name != "http.server.request.duration" and name != "http.server.duration"\'',
+    '  cumulativetodelta/usage_signals: {}',
+    '',
+    'exporters:',
+    '  otlphttp/usage_signals:',
+    '    metrics_endpoint: ' + endpoint,
+    '    headers:',
+    '      Authorization: "Bearer ${env:USAGE_SIGNALS_TOKEN}"',
+    '',
+    'service:',
+    '  pipelines:',
+    '    metrics/usage_signals:',
+    '      receivers: [otlp]',
+    '      processors: [filter/usage_signals, cumulativetodelta/usage_signals]',
+    '      exporters: [otlphttp/usage_signals]'
+  ].join('\n');
+
+  var sdks = {
+    node: [
+      '// otel.mjs, run with: node --import ./otel.mjs server.js',
+      "import { NodeSDK } from '@opentelemetry/sdk-node';",
+      "import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';",
+      "import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto';",
+      "import { AggregationTemporalityPreference } from '@opentelemetry/exporter-metrics-otlp-http';",
+      "import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';",
+      "import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';",
+      '',
+      'const usageSignals = new PeriodicExportingMetricReader({',
+      '  exportIntervalMillis: 60_000,',
+      '  exporter: new OTLPMetricExporter({',
+      "    url: '" + endpoint + "',",
+      '    headers: { Authorization: `Bearer ${process.env.USAGE_SIGNALS_TOKEN}` },',
+      '    temporalityPreference: AggregationTemporalityPreference.DELTA,',
+      '  }),',
+      '});',
+      'new NodeSDK({',
+      "  serviceName: 'my-api',",
+      "  metricReaders: [usageSignals],   // add your own monitoring's reader here",
+      '  instrumentations: [new HttpInstrumentation(), new ExpressInstrumentation()],',
+      '}).start();'
+    ],
+    python: [
+      'pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \\',
+      '  opentelemetry-instrumentation-fastapi',
+      '',
+      'import os',
+      'from opentelemetry import metrics',
+      'from opentelemetry.sdk.metrics import Histogram, MeterProvider',
+      'from opentelemetry.sdk.metrics.export import (',
+      '    AggregationTemporality, PeriodicExportingMetricReader)',
+      'from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter',
+      'from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor',
+      '',
+      'usage_signals = PeriodicExportingMetricReader(',
+      '    OTLPMetricExporter(',
+      '        endpoint="' + endpoint + '",',
+      '        headers={"Authorization": "Bearer " + os.environ["USAGE_SIGNALS_TOKEN"]},',
+      '        preferred_temporality={Histogram: AggregationTemporality.DELTA},',
+      '    ),',
+      '    export_interval_millis=60_000,',
+      ')',
+      "# add your own monitoring's reader to this list",
+      'metrics.set_meter_provider(MeterProvider(metric_readers=[usage_signals]))',
+      'FastAPIInstrumentor.instrument_app(app)'
+    ],
+    go: [
+      'exp, _ := otlpmetrichttp.New(ctx,',
+      '    otlpmetrichttp.WithEndpointURL("' + endpoint + '"),',
+      '    otlpmetrichttp.WithHeaders(map[string]string{',
+      '        "Authorization": "Bearer " + os.Getenv("USAGE_SIGNALS_TOKEN")}),',
+      '    otlpmetrichttp.WithTemporalitySelector(',
+      '        func(sdkmetric.InstrumentKind) metricdata.Temporality {',
+      '            return metricdata.DeltaTemporality',
+      '        }))',
+      'mp := sdkmetric.NewMeterProvider(',
+      '    sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp,',
+      '        sdkmetric.WithInterval(60*time.Second))))',
+      'otel.SetMeterProvider(mp)',
+      'mux := http.NewServeMux()',
+      'mux.HandleFunc("GET /users/{id}", getUser)',
+      'http.ListenAndServe(":8080", otelhttp.NewHandler(mux, "server"))'
+    ],
+    rust: [
+      'let exporter = opentelemetry_otlp::MetricExporter::builder().with_http()',
+      '    .with_endpoint("' + endpoint + '")',
+      '    .with_headers(HashMap::from([("Authorization".to_string(),',
+      '        format!("Bearer {}", env::var("USAGE_SIGNALS_TOKEN")?))]))',
+      '    .with_temporality(Temporality::Delta)',
+      '    .build()?;',
+      'let provider = SdkMeterProvider::builder()',
+      '    .with_reader(PeriodicReader::builder(exporter)',
+      '        .with_interval(Duration::from_secs(60)).build())',
+      '    .build();',
+      'opentelemetry::global::set_meter_provider(provider);',
+      'let app = Router::new().route("/users/{id}", get(get_user))',
+      '    .layer(opentelemetry_instrumentation_tower::http::server::Layer::new());'
+    ]
+  };
+
+  var recipeText = {
+    collector: ['Recommended. Add one metrics pipeline: a filter that keeps the one histogram, a cumulative-to-delta step, and an OTLP/HTTP exporter with its own Authorization header. Your other pipelines are untouched.',
+      'The delta step keeps its state in memory. If you run several Collector replicas, route each service to one replica.'],
+    sdk: ['A second metrics exporter next to your own, set to delta temporality.',
+      'In the JavaScript, Python and Rust SDKs, headers in OTEL_EXPORTER_OTLP_HEADERS go to every exporter in the process. Keep your monitoring key out of that variable, or use the Collector route.']
+  };
+
+  /* ---------- step states ---------- */
+
+  function stepStatus(id) {
+    var evidence = project.evidence.length;
+    switch (id) {
+      case 'wallet': return project.account ? ['done', 'Done'] : ['todo', 'To do'];
+      case 'channel': return project.notification_channel ? ['done', 'Done'] : ['todo', 'To do'];
+      case 'proof': return state.verified ? ['done', 'Done'] : ['todo', state.checking ? 'Checking' : 'To do'];
+      case 'evidence': return evidence ? ['done', evidence + ' added'] : ['optional', 'Optional'];
+      case 'dpa': return project.dpa_accepted_at ? ['done', 'Done'] : ['todo', 'To do'];
+      case 'web': return site && site.first_event_at ? ['done', 'Receiving events'] : ['todo', 'No event yet'];
+      default:
+        if (token && token.expired) return ['todo', 'Token expired'];
+        return token && token.last_export_day ? ['done', 'Receiving exports'] : ['optional', 'Optional'];
+    }
+  }
+
+  function firstOpenStep() {
+    var open = STEPS.filter(function (s) { return stepStatus(s.id)[0] === 'todo'; })[0];
+    return open ? open.id : 'web';
+  }
+
+  function renderRail() {
+    var firstTodo = firstOpenStep();
+    byId('rail').innerHTML = STEPS.map(function (step, index) {
+      var status = stepStatus(step.id);
+      var label = status[0] === 'todo' && step.id !== firstTodo && status[1] === 'To do' ? 'Next' : status[1];
+      var kind = status[0] === 'todo' && label === 'Next' ? 'optional' : status[0];
+      return (step.group ? '<li class="steps-group">' + step.group + '</li>' : '') +
+        '<li class="is-' + kind + '"><button type="button" data-step="' + step.id + '"' + (step.id === state.step ? ' aria-current="step"' : '') + '>' +
+        (step.icon ? '<span class="tally" style="display:flex;justify-content:center">' + App.icon(step.icon) + '</span>' : App.tally(index + 1, 28)) +
+        '<span class="step-name">' + step.name + '</span><span class="step-status">' + label + '</span></button></li>';
+    }).join('');
+  }
+
+  function showStep(id, focusPanel) {
+    var index = STEPS.map(function (s) { return s.id; }).indexOf(id);
+    if (index < 0) { id = firstOpenStep(); index = STEPS.map(function (s) { return s.id; }).indexOf(id); }
+    state.step = id;
+    App.store.set('setup-step', id);
+    document.querySelectorAll('.step-panel').forEach(function (panel) {
+      panel.hidden = panel.dataset.step !== id;
+      if (panel.dataset.step !== id) return;
+      panel.querySelector('.step-count').textContent = index < 5 ? 'Enrollment, step ' + (index + 1) + ' of 5' : 'Install' + (STEPS[index].optional ? ', optional' : '');
+      if (focusPanel) { panel.querySelector('h2').tabIndex = -1; panel.querySelector('h2').focus(); }
+    });
+    var prev = STEPS[index - 1];
+    var next = STEPS[index + 1];
+    byId('step-nav').innerHTML = (prev ? '<button class="btn btn-quiet" type="button" data-step="' + prev.id + '">Back</button>' : '') +
+      (next ? '<button class="btn" type="button" data-step="' + next.id + '">Next: ' + next.name + '</button>' : '');
+    renderRail();
+  }
+
+  /* ---------- step content ---------- */
+
+  function snippetText() {
+    var siteId = site ? site.id : '<site id>';
+    if (state.snippet === 'npm') {
+      return 'npm install ' + META.npm_package + '@' + META.tracker_version + ' --save-exact\n\n' +
+        "import { init } from '" + META.npm_package + "';\n\ninit({ site: '" + siteId + "' });";
+    }
+    return '<script defer\n  src="' + META.tracker_url + '"\n  integrity="' + META.tracker_sri + '"\n  crossorigin="anonymous"\n  data-site="' + siteId + '"><\/script>';
+  }
+
+  function renderSnippet() {
+    var html = App.escapeHtml(snippetText());
+    if (state.snippet === 'html') {
+      html = html.replace(/(src|integrity|crossorigin|data-site)=/g, '<span class="tok-attr">$1</span>=');
+    }
+    byId('snippet').innerHTML = html;
+  }
+
+  function renderProof(progress) {
+    if (!site) {
+      byId('proof-panel').innerHTML = App.empty('No domain has been added to this project yet.');
+      return;
+    }
+    var method = proofs[state.proof];
+    var checks = method.checks();
+    Array.prototype.forEach.call(byId('proof-tabs').children, function (tab) {
+      tab.setAttribute('aria-selected', String(tab.dataset.tab === state.proof));
+      tab.tabIndex = tab.dataset.tab === state.proof ? 0 : -1;
+    });
+    byId('proof-text').textContent = method.text;
+    byId('proof-code').textContent = method.code();
+    byId('checks').innerHTML = checks.map(function (check, index) {
+      var done = state.verified || index < progress;
+      var status = done ? 'is-ok' : (index === progress && state.checking ? 'is-checking' : '');
+      return '<li class="' + status + '"><span class="check-mark"></span><span>' + App.escapeHtml(check[0]) + '</span><span>' +
+        (done ? check[1] : (status ? 'Checking' : 'Not checked')) + '</span></li>';
+    }).join('');
+    var pill = byId('verify-pill');
+    pill.className = 'pill' + (state.verified ? '' : ' pill-warning');
+    pill.textContent = state.verified ? 'Proved' : (state.checking ? 'Checking' : 'Not proved');
+    var stored = site.proof && site.proof.method === state.proof;
+    byId('verify-text').textContent = state.verified
+      ? (stored ? 'On ' + fmt.date(site.proof.verified_at) + '. Last re-check ' + fmt.date(site.proof.last_checked_at) + '.' : site.domain + ' is proved.')
+      : 'Publish the proof on ' + site.domain + ', then run the check.';
+    byId('verify-button').textContent = state.verified ? 'Check again' : 'Check domain proof';
+    byId('verify-button').disabled = state.checking;
+    renderRail();
+  }
+
+  function runVerification() {
+    state.verified = false;
+    state.checking = true;
+    var total = proofs[state.proof].checks().length;
+    var progress = 0;
+    renderProof(progress);
+    var timer = setInterval(function () {
+      progress += 1;
+      if (progress === total) {
+        clearInterval(timer);
+        state.checking = false;
+        state.verified = true;
+      }
+      renderProof(progress);
+    }, 700);
+  }
+
+  function renderChannel() {
+    var channel = project.notification_channel;
+    document.querySelectorAll('[data-channel]').forEach(function (button) {
+      button.setAttribute('aria-pressed', String(button.dataset.channel === state.channel));
+    });
+    var input = byId('channel-address');
+    input.type = state.channel === 'email' ? 'email' : 'url';
+    input.placeholder = state.channel === 'email' ? 'name@example.org' : 'https://example.org/hooks/notices';
+    input.value = channel && channel.type === state.channel ? channel.address : '';
+  }
+
+  function renderEvidence() {
+    byId('evidence').innerHTML = project.evidence.length
+      ? '<ul class="tally-list">' + project.evidence.map(function (item) {
+        return '<li><span><b style="font-weight:500">' + App.escapeHtml(item.label) + '</b> <span class="muted">' + evidenceStatus[item.status] + '</span></span></li>';
+      }).join('') + '</ul>'
+      : App.empty('No evidence added. This step is optional.');
+  }
+
+  function renderDpa() {
+    var approval = META.enrollment_mode === 'approval_required';
+    byId('dpa-text').textContent = approval
+      ? 'Enrollment is in approval-required mode: after the domain proof passes, the project waits in pending approval until a fund operator approves it.'
+      : 'Enrollment is open: the project becomes active when the domain proof passes.';
+    byId('dpa-panel').innerHTML = project.dpa_accepted_at
+      ? '<p>Accepted on <b style="font-weight:500">' + fmt.date(project.dpa_accepted_at) + '</b> by the signed-in account.</p>'
+      : '<label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="dpa-check"> I accept the data processing agreement</label>';
+  }
+
+  function renderToken() {
+    byId('otlp-endpoint').textContent = endpoint;
+    if (!token) {
+      byId('ingest-token').textContent = 'No ingest token yet';
+      byId('token-meta').innerHTML = '<span>No export received</span>';
+      return;
+    }
+    byId('ingest-token').textContent = token.masked;
+    byId('token-meta').innerHTML =
+      '<span class="pill' + (token.expired ? ' pill-warning">Token expired' : (token.last_export_day ? '">Receiving' : '">No export yet')) + '</span>' +
+      (token.expired ? '<span>Days after expiry are a gap, not zero usage</span>' : '') +
+      (token.last_export_day ? '<span>Last export <b>' + fmt.date(token.last_export_day) + '</b> from <b class="mono">' + App.escapeHtml(token.last_export_service) + '</b></span>' : '') +
+      '<span>Issued <b>' + fmt.date(token.issued_at) + '</b></span>' +
+      '<span>' + (token.expired ? 'Expired' : 'Expires') + ' <b>' + fmt.date(token.expires_at) + '</b>, ' + token.lifetime_months + ' months after issue</span>';
+  }
+
+  function renderRecipe() {
+    var isCollector = state.recipe === 'collector';
+    var text = recipeText[isCollector ? 'collector' : 'sdk'];
+    Array.prototype.forEach.call(byId('sdk-tabs').children, function (tab) {
+      tab.setAttribute('aria-selected', String(tab.dataset.tab === state.recipe));
+      tab.tabIndex = tab.dataset.tab === state.recipe ? 0 : -1;
+    });
+    byId('recipe-lead').textContent = text[0];
+    byId('recipe').textContent = isCollector ? collector : sdks[state.recipe].join('\n');
+    byId('recipe-note').textContent = text[1];
+  }
+
+  function renderFinding() {
+    var messages = {
+      pending_verification: 'is waiting for a domain proof. Complete the steps below.',
+      pending_approval: 'has finished enrollment and is waiting for an operator to approve it. Nothing is counted until then.',
+      active: 'is active. Enrolled on ' + fmt.date(project.enrolled_at) + '.',
+      unverified: 'failed a scheduled re-check of its domain proof. Counting continues for a grace period, then stops.',
+      suspended: 'is suspended. Nothing is counted.',
+      removed: 'has been removed.'
+    };
+    byId('finding').innerHTML = '<span><b>' + App.escapeHtml(project.name) + '</b> ' + (messages[project.state] || '') + '</span>';
+  }
+
+  function copyFrom(button) {
+    var text = byId(button.dataset.copy).textContent;
+    var done = function () {
+      button.textContent = 'Copied';
+      setTimeout(function () { button.textContent = 'Copy'; }, 1600);
+    };
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, done);
+        return;
+      }
+      var area = document.createElement('textarea');
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    } catch (error) { /* copying is a convenience; the text stays selectable */ }
+    done();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!project) {
+      byId('setup').hidden = true;
+      byId('empty').hidden = false;
+      byId('empty').innerHTML = App.emptyState('No project', 'No project is enrolled yet.');
+      return;
+    }
+    byId('account').textContent = project.account || 'No account';
+    byId('tracker-version').textContent = META.tracker_version;
+    byId('first-event').innerHTML = site && site.first_event_at
+      ? 'First event received <b>' + fmt.date(site.first_event_at) + '</b>' : 'First event received: <b>none yet</b>';
+
+    document.addEventListener('click', function (event) {
+      var target = event.target.closest('button');
+      if (!target) return;
+      if (target.dataset.copy) copyFrom(target);
+      if (target.dataset.step) showStep(target.dataset.step, Boolean(target.closest('#step-nav')));
+      if (target.dataset.channel) { state.channel = target.dataset.channel; renderChannel(); }
+      if (target.id === 'verify-button') runVerification();
+    });
+    App.tabs(byId('proof-tabs'), function (tab) {
+      if (state.checking) return;
+      state.proof = tab;
+      state.verified = Boolean(site && site.proof && site.proof.method === tab);
+      renderProof(0);
+    });
+    App.tabs(byId('snippet-tabs'), function (tab) { state.snippet = tab; renderSnippet(); });
+    App.tabs(byId('sdk-tabs'), function (tab) { state.recipe = tab; renderRecipe(); });
+    ['channel-form', 'daoip-form'].forEach(function (id) {
+      byId(id).addEventListener('submit', function (event) { event.preventDefault(); });
+    });
+
+    renderFinding();
+    renderChannel();
+    renderProof(0);
+    renderEvidence();
+    renderDpa();
+    renderSnippet();
+    renderToken();
+    renderRecipe();
+    showStep(App.store.get('setup-step') || firstOpenStep(), false);
+  });
+})();
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@
   "scripts": {
     "build": "node scripts/seed.mjs",
     "up": "docker compose up -d --wait && node --env-file=local.env --env-file-if-exists=.env.local scripts/seed.mjs && node --env-file=local.env --env-file-if-exists=.env.local dev.mjs",
-    "test": "node --env-file=local.env --env-file-if-exists=.env.local --test \"test/*.test.mjs\"",
+    "test": "node --env-file=local.env --env-file-if-exists=.env.local --test --test-concurrency=1 \"test/*.test.mjs\"",
     "pin-tracker": "node scripts/pin-tracker.mjs"
   },
   "dependencies": {

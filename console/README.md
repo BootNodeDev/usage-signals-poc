@@ -21,12 +21,20 @@ npm test        # in a second terminal, against the running stack
 | Umami (login `admin` / `umami`, local only) | http://localhost:3301 |
 | The same Umami without its geo database, as on Vercel (tests only) | http://localhost:3302 |
 
+## Screens
+
+`/tenant-web.html` shows real figures for the seeded projects, read from `GET /api/web`.
+`/tenant-api.html`, `/enroll.html`, `/operator.html` and `/operator-access.html` still show
+sample data and say so. There is no login in this prototype: `/api/sites` and `/api/web` are
+public and return aggregates of every seeded site.
+
 ## Layout
 
 | Path | Purpose |
 |------|---------|
 | `api/index.js` | The single Vercel function; routes by path |
-| `lib/` | Gateway, address truncation, database and Umami clients |
+| `lib/` | Gateway, read endpoint, address truncation, database and Umami clients |
+| `public/*.html`, `app.js`, `charts.js`, `data.js`, `styles.css` | The screens; `data.js` is their only data source |
 | `db/schema.sql` | Our tables (schema `usage_signals`); applied by the seed |
 | `public/s/` | Pinned tracker, `manifest.json` with its SRI value, Umami's MIT licence |
 | `scripts/seed.mjs` | Schema, Umami websites, four tenants (three active, one suspended) |
