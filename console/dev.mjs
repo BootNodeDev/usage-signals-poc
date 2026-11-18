@@ -1,6 +1,6 @@
 // Local stand-in for the Vercel platform: serves public/, sends /api/* to the shared function
-// in api/index.js (the same rewrite vercel.json declares) and serves demo-site/ on a second
-// port so the demo pages have a different Origin from the gateway.
+// in api/index.js (the same rewrite vercel.json declares) and serves public/ again on a second
+// port so the demo pages under /demo/ have a different Origin from the gateway.
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
@@ -87,5 +87,5 @@ listen('gateway', Number(requireEnv('GATEWAY_PORT')), (incoming, outgoing) => {
 });
 
 listen('demo site', Number(requireEnv('DEMO_PORT')), (incoming, outgoing) =>
-  serveStatic(path.join(ROOT, 'demo-site'), incoming, outgoing),
+  serveStatic(path.join(ROOT, 'public'), incoming, outgoing),
 );

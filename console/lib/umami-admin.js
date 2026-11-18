@@ -4,17 +4,21 @@ import { requireEnv } from './config.js';
 
 export async function umamiLogin() {
   const baseUrl = requireEnv('UMAMI_URL');
-  const response = await fetch(`${baseUrl}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      username: requireEnv('UMAMI_ADMIN_USER'),
-      password: requireEnv('UMAMI_ADMIN_PASSWORD'),
-    }),
-  });
+  const username = process.env.UMAMI_ADMIN_USER || 'admin';
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username, password: requireEnv('UMAMI_ADMIN_PASSWORD') }),
+    });
+  } catch (error) {
+    const reason = error.cause?.code ?? error.name;
+    throw new Error(`cannot reach Umami (${reason}). Check UMAMI_URL.`, { cause: error });
+  }
   if (!response.ok) {
     throw new Error(
-      `Umami login at ${baseUrl} failed with HTTP ${response.status}. ` +
+      `Umami refused the login for user "${username}" (HTTP ${response.status}). ` +
         'Check UMAMI_ADMIN_USER and UMAMI_ADMIN_PASSWORD.',
     );
   }
