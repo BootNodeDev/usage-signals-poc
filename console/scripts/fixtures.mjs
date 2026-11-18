@@ -30,4 +30,14 @@ export const TENANTS = [
       umamiWebsiteId: 'c0000000-0000-4000-8000-0000000000cc',
     },
   },
+  {
+    id: 'd0000000-0000-4000-8000-000000000004',
+    name: 'Drift Markets',
+    status: 'active',
+    site: {
+      id: 'd0000000-0000-4000-8000-0000000000d1',
+      domain: 'drift.example',
+      umamiWebsiteId: 'd0000000-0000-4000-8000-0000000000dd',
+    },
+  },
 ];

@@ -19,7 +19,7 @@ if (!process.env.GATEWAY_URL) process.loadEnvFile(path.join(POC_ROOT, 'local.env
 
 const GATEWAY = requireEnv('GATEWAY_URL');
 const DEMO = requireEnv('DEMO_URL');
-const [SITE_A, SITE_B, SITE_SUSPENDED] = TENANTS.map((tenant) => tenant.site);
+const [SITE_A, SITE_B, SITE_SUSPENDED, SITE_PUBLIC_HOST] = TENANTS.map((tenant) => tenant.site);
 const BREAKDOWNS = ['referrer', 'country', 'browser', 'os', 'device'];
 const FORGEABLE_FIELDS = {
   ip: '9.9.9.9',
@@ -304,6 +304,82 @@ describe('gateway', () => {
         assert.equal(response.status, 503, gateway);
       }
     });
+  });
+
+  it('treats an upper-case website id as the same site and the same visitor', async () => {
+    const earlier = await figures(SITE_A, windowStart);
+    const upperCased = { umamiWebsiteId: SITE_A.umamiWebsiteId.toUpperCase() };
+    const response = await sendEvent({
+      site: SITE_A,
+      visitor: CHROME_DESKTOP,
+      body: trackerBody(upperCased, '/'),
+    });
+    assert.equal(response.status, 202);
+    const later = await figures(SITE_A, windowStart);
+    assert.equal(later.pageviews, earlier.pageviews + 1);
+    assert.equal(later.visitors, earlier.visitors, 'the same visitor was counted twice');
+  });
+
+  it('requires https for the Origin of a host that is not loopback', async () => {
+    const send = (origin) =>
+      sendEvent({
+        site: SITE_PUBLIC_HOST,
+        visitor: CHROME_DESKTOP,
+        origin,
+        body: trackerBody(SITE_PUBLIC_HOST, '/'),
+      });
+    await assertUnchanged(SITE_PUBLIC_HOST, async () => {
+      assert.equal((await send(`http://${SITE_PUBLIC_HOST.domain}`)).status, 403);
+      const preflight = await fetch(`${GATEWAY}/api/e`, {
+        method: 'OPTIONS',
+        headers: { origin: `http://${SITE_PUBLIC_HOST.domain}` },
+      });
+      assert.equal(preflight.status, 403);
+    });
+    const earlier = await figures(SITE_PUBLIC_HOST, 0);
+    assert.equal((await send(`https://${SITE_PUBLIC_HOST.domain}`)).status, 202);
+    assert.equal((await figures(SITE_PUBLIC_HOST, 0)).pageviews, earlier.pageviews + 1);
+  });
+
+  it('answers 400 and forwards nothing when a forwarded field holds a NUL character', async () => {
+    const withNul = [
+      { url: '/a\u0000b' },
+      { referrer: 'https://stellar.org/\u0000' },
+      { name: 'sign\u0000up' },
+      { name: 'signup', data: { plan: 'pro\u0000' } },
+      { name: 'signup', data: { nested: { 'key\u0000': ['x'] } } },
+    ];
+    await assertUnchanged(SITE_A, async () => {
+      for (const fields of withNul) {
+        const body = trackerBody(SITE_A, '/nul');
+        Object.assign(body.payload, fields);
+        const response = await sendEvent({ site: SITE_A, visitor: CHROME_DESKTOP, body });
+        assert.equal(response.status, 400, JSON.stringify(fields));
+      }
+    });
+  });
+
+  it('maps the answer of Umami by meaning', async () => {
+    let upstreamStatus;
+    const umamiStub = createServer((_request, response) => response.writeHead(upstreamStatus).end());
+    await new Promise((resolve) => umamiStub.listen(0, '127.0.0.1', resolve));
+    stubs.push(umamiStub);
+    const gateway = await startGateway({
+      GATEWAY_PORT: '4316',
+      DEMO_PORT: '4317',
+      UMAMI_URL: `http://127.0.0.1:${umamiStub.address().port}`,
+    });
+    const expected = { 200: 202, 400: 400, 404: 503, 429: 503, 500: 503, 502: 503 };
+    for (const [upstream, answer] of Object.entries(expected)) {
+      upstreamStatus = Number(upstream);
+      const response = await sendEvent({
+        gateway,
+        site: SITE_A,
+        visitor: CHROME_DESKTOP,
+        body: trackerBody(SITE_A, '/'),
+      });
+      assert.equal(response.status, answer, `Umami ${upstream}`);
+    }
   });
 
   it('serves the pinned tracker with the integrity value the demo page declares', async () => {

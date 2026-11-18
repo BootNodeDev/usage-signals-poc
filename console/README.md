@@ -28,7 +28,7 @@ npm test        # in a second terminal, against the running stack
 | `lib/` | Gateway, address truncation, database and Umami clients |
 | `db/schema.sql` | Our tables (schema `usage_signals`); applied by the seed |
 | `public/s/` | Pinned tracker, `manifest.json` with its SRI value, Umami's MIT licence |
-| `scripts/seed.mjs` | Schema, Umami websites, three tenants (two active, one suspended) |
+| `scripts/seed.mjs` | Schema, Umami websites, four tenants (three active, one suspended) |
 | `scripts/pin-tracker.mjs` | Regenerates the tracker and manifest from the pinned image (`npm run pin-tracker`) |
 | `dev.mjs` | Local stand-in for Vercel: static files, `/api/*`, demo site on a second port |
 | `demo-site/` | Two pages carrying the tracking tag |

@@ -14,6 +14,9 @@ const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 // The headers the Umami 3.5.0 tracker sends with its cross-origin POST.
 const TRACKER_HEADERS = 'content-type, x-umami-website-id, x-umami-hostname, x-umami-cache';
 const PREFLIGHT_MAX_AGE_SECONDS = '600';
+// The only upstream answers that say the event itself is unacceptable. Every other
+// non-2xx answer means Umami could not take it, which the caller sees as 503.
+const UPSTREAM_CONTENT_REJECTIONS = [400, 422];
 
 class Refusal extends Error {
   constructor(status, message) {
@@ -38,18 +41,51 @@ function corsHeaders(origin) {
   return { 'access-control-allow-origin': origin, vary: 'Origin' };
 }
 
+// The hosts the Secure Contexts specification treats as trustworthy without TLS.
+function isLoopback(hostname) {
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === '[::1]' ||
+    /^127(\.\d{1,3}){3}$/.test(hostname)
+  );
+}
+
 function originHost(request) {
   const origin = request.headers.get('origin');
   if (!origin || !URL.canParse(origin)) return null;
-  const { protocol, host } = new URL(origin);
-  return protocol === 'https:' || protocol === 'http:' ? host : null;
+  const { protocol, host, hostname } = new URL(origin);
+  const allowed = protocol === 'https:' || (protocol === 'http:' && isLoopback(hostname));
+  return allowed ? host : null;
+}
+
+async function readCappedText(request) {
+  const tooLarge = new Refusal(413, `Body exceeds ${MAX_BODY_BYTES} bytes.`);
+  if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) throw tooLarge;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return Buffer.concat(chunks).toString('utf8');
+    received += value.byteLength;
+    if (received > MAX_BODY_BYTES) {
+      await reader.cancel();
+      throw tooLarge;
+    }
+    chunks.push(value);
+  }
+}
+
+function hasNul(value) {
+  if (typeof value === 'string') return value.includes('\u0000');
+  if (typeof value !== 'object' || value === null) return false;
+  return Object.entries(value).some(([key, nested]) => hasNul(key) || hasNul(nested));
 }
 
 async function readEvent(request) {
-  const text = await request.text();
-  if (Buffer.byteLength(text) > MAX_BODY_BYTES) {
-    throw new Refusal(413, `Body exceeds ${MAX_BODY_BYTES} bytes.`);
-  }
+  const text = await readCappedText(request);
   let body;
   try {
     body = JSON.parse(text);
@@ -62,6 +98,8 @@ async function readEvent(request) {
   if (typeof body.payload.website !== 'string' || !UUID.test(body.payload.website)) {
     throw new Refusal(400, 'payload.website must be the website id from the tracking tag.');
   }
+  // RFC 9562 allows either case for the same UUID; Umami hashes the text it is given.
+  body.payload.website = body.payload.website.toLowerCase();
   return body;
 }
 
@@ -94,6 +132,9 @@ function allowedEventFields({ url, referrer, name, data }) {
   if (data !== undefined && !isPlainObject(data)) {
     throw new Refusal(400, 'payload.data must be an object.');
   }
+  if (hasNul({ url, referrer, name, data })) {
+    throw new Refusal(400, 'url, referrer, name and data must not contain NUL characters.');
+  }
   return { url, referrer, name, data };
 }
 
@@ -119,7 +160,7 @@ async function acceptEvent(request) {
     ...allowedEventFields(body.payload),
     ...visitorIdentity(request),
   });
-  if (status >= 400 && status < 500) {
+  if (UPSTREAM_CONTENT_REJECTIONS.includes(status)) {
     throw new Refusal(400, 'The analytics store rejected the event as malformed.');
   }
   if (status < 200 || status >= 300) throw new Error(`Umami answered HTTP ${status}`);
