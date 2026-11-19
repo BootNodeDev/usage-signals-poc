@@ -19,8 +19,8 @@ const SHA1 = 'da39a3ee5e6b4b0d3255bfef95601890afd80709';
 const MD5 = 'd41d8cd98f00b204e9800998ecf8427e';
 const SHA512 = SHA256 + SHA256;
 const MIXED_CASE_HASH = [...SHA256].map((c, i) => (i % 2 ? c.toUpperCase() : c)).join('');
-// Not a working token: three base64url parts in the shape of a JWT.
-const JWT = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTQyIn0.c2lnbmF0dXJlLWJ5dGVz';
+// Not a working token: three base64url parts in the shape of a JWT. gitleaks:allow applies below.
+const JWT = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTQyIn0.c2lnbmF0dXJlLWJ5dGVz'; // gitleaks:allow
 
 // Look-alikes built from a real account address.
 const notBase32 = `${G.slice(0, 20)}1${G.slice(21)}`; // "1" is not in the base-32 alphabet

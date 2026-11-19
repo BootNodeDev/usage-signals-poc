@@ -1,13 +1,14 @@
 # Architecture checks
 
-The architecture document lists eight checks that the proof of concept has to pass. Five were
-run on 2026-11-19 as local experiments against unmodified Umami 3.5.0, and then re-examined by
-two independent reviewers who tried to refute them. Each folder holds a script that starts its
+The architecture document lists eight checks that the proof of concept has to pass. Six were
+run on 2026-11-19 as local experiments, five against unmodified Umami 3.5.0 and one against an
+unmodified OpenTelemetry Collector, and then re-examined by independent reviewers who tried to
+refute them. Each folder holds a script that starts its
 own isolated stack, runs the experiment, prints the evidence and the verdict, and removes the
 stack.
 
-None of the five needs a change to Umami's source. All five need a sentence of the document
-corrected; the wording is in each folder's README.
+None of the six needs a change to Umami's source or custom collector code. All six need a
+sentence of the document corrected; the wording is in each folder's README.
 
 ## Results
 
@@ -51,7 +52,16 @@ Run: `node check-04/run.mjs`.
 **5. The collector pipeline runs end to end as configured, and the path rules run as collector
 statements.**
 
-Not tested.
+Yes, after one round of fixes. The edge pipeline runs on upstream collector components with no
+custom Go code, checked on the unmodified contrib image and not on a Builder build. The first
+review refuted the experiment: by repeating an attribute key, one tenant could write as another,
+and one tenant could stall ingestion for all. Both were fixed and a second review confirmed
+that tenant attribution, the metric filter, the discarding of traces and logs, the attribute
+allowlist and the disk queue hold. Counts were exact for 6,000 simulated and 280 real requests.
+Two limits: the test writer does not deduplicate, so a redelivered batch is counted again, and
+the path rules cover a fixed list of identifier shapes, so a secret seed that is truncated,
+split or encoded can still be stored.
+Run: `cd check-05 && npm ci --ignore-scripts && node run.mjs`.
 
 **6. Umami v3.5.0 rebuilds with a bumped Next.js and passes the contract tests the same day.**
 
@@ -87,8 +97,10 @@ Not tested.
 
 Two reviewers who had not written the experiments re-ran them, changed one condition at a time
 to confirm that each script fails when it should (18 mutations, all caught), added cases the
-authors had not included, and checked each source citation against Umami at v3.5.0. No claim
-was refuted. Every short statement was reworded to say what was tested and no more.
+authors had not included, and checked each source citation against Umami at v3.5.0. For checks
+1, 2, 3, 4 and 6 no claim was refuted, and every short statement was reworded to say what was
+tested and no more. Check 5 was refuted on its first review, corrected, and confirmed on a
+second review limited to the points raised.
 
 ## Limits
 

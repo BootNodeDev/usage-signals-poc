@@ -382,6 +382,22 @@ with a "limit" vector above:
   token heuristic that was not attempted here;
 - anything at all in `service.name` and `service.instance.id`, which no rule reads.
 
+The second review added these, each reproduced against this configuration:
+
+- a secret seed in a form the rule does not see: without its leading `S` (55 or 54 characters,
+  which is the whole secret), with its first letter percent-encoded or written as a full-width
+  `S`, hyphenated, spaced or broken by a dot or a zero-width space, split across two segments,
+  reversed, or base64-encoded;
+- the first of two addresses in one segment (`/offers/USDC:G1,EURC:G2` keeps the first);
+- T, X, L, B and W strkeys next to other text;
+- hex or a UUID with a prefix or a suffix;
+- a JWT after other text;
+- `http.request.method`, which is free text: up to 32 bytes are stored, and a longer value
+  reaches the disk queue before the writer refuses it.
+
+So the statement in the architecture document that secret seeds are "always redacted" cannot be
+kept with a fixed rule set. A regular expression recognizes a seed only in its canonical form.
+
 No longer surviving, with vectors: claimable-balance IDs (72 hex digits), paging tokens,
 signed-payload strkeys, `USDC:G...`, hex runs of 24, 56 and 96 digits, e-mail addresses, JWTs.
 
