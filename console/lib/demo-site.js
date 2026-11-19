@@ -4,14 +4,38 @@
 import { findActiveSiteByDomain } from './db.js';
 import { TRACKER } from './tracker.generated.js';
 
-// Each site gets one set, by its position among the registered sites, so that the figures of
-// the demo sites can be told apart.
-const PAGE_SETS = [
-  ['pricing', 'docs'],
-  ['wallets', 'fees'],
-  ['explorer', 'status'],
-  ['markets', 'changelog'],
+// Each site gets one look, by its position among the registered sites, so that three tenants
+// read as three projects and their figures can be told apart. Nothing here names a real
+// company, product or person: the pages say what they are.
+const LOOKS = [
+  {
+    accent: 'violet',
+    heading: 'A sample wallet site',
+    lead: 'A stand-in for the site of a wallet project. Nothing is offered here.',
+    pages: ['pricing', 'docs'],
+  },
+  {
+    accent: 'gold',
+    heading: 'A sample exchange site',
+    lead: 'A stand-in for the site of an exchange project. Nothing is traded here.',
+    pages: ['wallets', 'fees'],
+  },
+  {
+    accent: 'ink',
+    heading: 'A sample explorer site',
+    lead: 'A stand-in for the site of a block explorer. Nothing is indexed here.',
+    pages: ['explorer', 'status'],
+  },
+  {
+    accent: 'tone',
+    heading: 'A sample markets site',
+    lead: 'A stand-in for the site of a markets project. Nothing is listed here.',
+    pages: ['markets', 'changelog'],
+  },
 ];
+const FONTS =
+  'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700' +
+  '&family=IBM+Plex+Sans:wght@400;500;600&display=swap';
 
 function html(status, body) {
   return new Response(body, {
@@ -28,17 +52,47 @@ function titleOf(page) {
   return page.charAt(0).toUpperCase() + page.slice(1);
 }
 
-function renderPage({ site, origin, page, pages }) {
+function navigation(look, page) {
+  const current = (name) => (name === page ? ' aria-current="page"' : '');
+  const home = `<a href="/demo/"${current('')}>Home</a>`;
+  const others = look.pages.map((name) => `<a href="/demo/${name}"${current(name)}>${titleOf(name)}</a>`);
+  return [home, ...others].join('\n          ');
+}
+
+function mainOf(look, page, domain) {
+  if (page) {
+    return {
+      heading: titleOf(page),
+      lead: `The ${page} page of a sample site. It has no ${page} to show.`,
+      sections: [
+        ['Why this page exists', 'So that a visit to this site can have a second page, and a visit of two pages can be told from a visit of one.'],
+        ['Where it sits', `It is served on ${domain}, next to the home page of the same sample site.`],
+      ],
+      links: '<a class="button" href="/demo/">Back to the home page</a>',
+    };
+  }
+  return {
+    heading: look.heading,
+    lead: look.lead,
+    sections: [
+      ['What this site is', 'A sample site for a prototype. It exists so that there is a real page, on a real address, for a real browser to visit.'],
+      ['What a visit leaves', 'One page view, the site that linked here, a country, and the kind of browser and device. No cookie is set and no full address is kept.'],
+    ],
+    links: look.pages.map((name) => `<a class="button" href="/demo/${name}">${titleOf(name)}</a>`).join('\n          '),
+  };
+}
+
+function renderPage({ site, origin, page, look }) {
   const name = escapeHtml(site.name);
-  const heading = page ? `${name}: ${titleOf(page)}` : name;
-  const links = page
-    ? '<a href="/demo/">Home</a>'
-    : pages.map((other) => `<a href="/demo/${other}">${titleOf(other)}</a>`).join('\n      ');
+  const main = mainOf(look, page, escapeHtml(site.domain));
+  const sections = main.sections
+    .map(([title, text]) => `<section><h2>${title}</h2><p>${text}</p></section>`)
+    .join('\n        ');
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>${heading}</title>
+    <title>${page ? `${name}: ${titleOf(page)}` : name}</title>
     <script
       defer
       src="${origin}${TRACKER.path}"
@@ -47,14 +101,42 @@ function renderPage({ site, origin, page, pages }) {
       data-host-url="${origin}"
       data-website-id="${site.umamiWebsiteId}"
     ></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="${FONTS}" rel="stylesheet">
+    <link rel="stylesheet" href="/demo.css">
   </head>
-  <body>
-    <h1>${heading}</h1>
-    <p>Demo site on ${escapeHtml(site.domain)} for the Usage Signals proof of concept.</p>
-    <nav>
-      ${links}
-      <a href="https://stellar.org/">Stellar</a>
-    </nav>
+  <body data-accent="${look.accent}">
+    <header class="top">
+      <div class="wrap">
+        <a class="site-name" href="/demo/">${name}</a>
+        <nav aria-label="Pages">
+          ${navigation(look, page)}
+        </nav>
+      </div>
+    </header>
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <div class="strokes" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+          <h1>${main.heading}</h1>
+          <p>${main.lead}</p>
+        </div>
+      </div>
+      <div class="sections">
+        <div class="wrap">
+        ${sections}
+        <div class="links">
+          ${main.links}
+          <a class="button button-quiet" href="https://stellar.org/">Stellar</a>
+        </div>
+        </div>
+      </div>
+    </main>
+    <footer>
+      <div class="wrap">Sample site for the Usage Signals prototype, served on ${escapeHtml(site.domain)}.</div>
+    </footer>
   </body>
 </html>
 `;
@@ -79,8 +161,8 @@ export async function handleDemoSite(request) {
     return html(503, 'The demo site is unavailable right now. Retry later.');
   }
   if (!site) return html(404, 'No demo site is registered for this host.');
-  const pages = PAGE_SETS[site.position % PAGE_SETS.length];
+  const look = LOOKS[site.position % LOOKS.length];
   const page = new URL(request.url).pathname.replace(/^\/demo\/?/, '');
-  if (page !== '' && !pages.includes(page)) return html(404, 'No such page.');
-  return html(200, renderPage({ site, origin, page, pages }));
+  if (page !== '' && !look.pages.includes(page)) return html(404, 'No such page.');
+  return html(200, renderPage({ site, origin, page, look }));
 }

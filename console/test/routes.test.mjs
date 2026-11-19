@@ -126,7 +126,7 @@ describe('demo site per host', () => {
     const seen = new Set();
     for (const tenant of active) {
       const home = await getAsHost(tenant.site.domain, '/demo/');
-      const links = [...home.body.matchAll(/href="(\/demo\/[a-z-]+)"/g)].map((match) => match[1]);
+      const links = [...new Set([...home.body.matchAll(/href="(\/demo\/[a-z-]+)"/g)].map((match) => match[1]))];
       assert.equal(links.length, 2, tenant.site.domain);
       for (const link of links) {
         const page = await getAsHost(tenant.site.domain, link);
@@ -138,6 +138,39 @@ describe('demo site per host', () => {
       assert.ok(home.body.includes('href="https://stellar.org/"'));
     }
     assert.ok(seen.size >= Math.min(3, active.length), 'the demo sites share the same pages');
+  });
+
+  it('dresses each site in the brand with an accent and a heading of its own, and never as the console', async () => {
+    const accents = new Set();
+    const headings = new Set();
+    for (const tenant of active) {
+      const home = await getAsHost(tenant.site.domain, '/demo/');
+      const second = await getAsHost(tenant.site.domain, home.body.match(/href="(\/demo\/[a-z-]+)"/)[1]);
+      const accent = home.body.match(/<body data-accent="(violet|gold|ink|tone)">/)?.[1];
+      assert.ok(accent, `${tenant.site.domain} has no accent`);
+      assert.ok(second.body.includes(`<body data-accent="${accent}">`), 'the second page changes accent');
+      accents.add(accent);
+      headings.add(home.body.match(/<h1>([^<]+)<\/h1>/)[1]);
+      for (const { body } of [home, second]) {
+        assert.ok(body.includes('<link rel="stylesheet" href="/demo.css">'));
+        assert.equal(body.match(/Usage Signals/g).length, 1, 'the product is named outside the footer line');
+        assert.ok(body.includes('Sample site for the Usage Signals prototype'));
+        assert.ok(!/class="brand"|class="tally"|<svg|<img|<style/.test(body), 'the page carries the console mark, an image or inline styles');
+        assert.equal(body.match(/<script/g).length, 1, 'the page loads a script besides the tracker');
+        assert.match(body, /<meta name="viewport" content="width=device-width, initial-scale=1">/);
+      }
+    }
+    assert.equal(accents.size, active.length);
+    assert.equal(headings.size, active.length);
+  });
+
+  it('serves the demo stylesheet as a static file, square and without motion', async () => {
+    const response = await fetch(`${GATEWAY}/demo.css`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /text\/css/);
+    const css = await response.text();
+    assert.ok(!/border-radius:\s*[1-9]|animation|transition|@import|url\(/.test(css));
+    for (const accent of ['violet', 'gold', 'ink', 'tone']) assert.ok(css.includes(`[data-accent="${accent}"]`), accent);
   });
 
   it('answers 404 on a host that is not a registered active site, and for an unknown page', async () => {
