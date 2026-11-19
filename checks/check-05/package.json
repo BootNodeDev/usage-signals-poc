@@ -1,0 +1,18 @@
+{
+  "name": "us-check-05",
+  "private": true,
+  "type": "module",
+  "description": "Check 05: the OTLP collector pipeline end to end. Dependencies serve the experiment's writer and test service only.",
+  "dependencies": {
+    "@opentelemetry/api": "1.10.0",
+    "@opentelemetry/context-async-hooks": "3.1.1",
+    "@opentelemetry/core": "3.1.1",
+    "@opentelemetry/exporter-metrics-otlp-http": "0.301.2",
+    "@opentelemetry/exporter-metrics-otlp-proto": "0.301.2",
+    "@opentelemetry/instrumentation": "0.301.2",
+    "@opentelemetry/instrumentation-http": "0.301.2",
+    "@opentelemetry/resources": "3.1.1",
+    "@opentelemetry/sdk-metrics": "3.1.1",
+    "pg": "8.23.1"
+  }
+}

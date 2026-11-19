@@ -1,0 +1,151 @@
+# Edge collector for check 05. Upstream components only; builder-manifest.yaml lists them.
+# run.mjs copies this file to the scratch directory, and derives its negative controls from it
+# by removing one named processor or block at a time, so the names below are load-bearing.
+
+extensions:
+  # Verifies each tenant's signed token (a JWT) against a local key file. public_keys_file
+  # switches OpenID discovery off, so the issuer address is an identifier and is never called.
+  oidc/tenant_tokens:
+    providers:
+      - issuer_url: https://ingest.usage-signals.invalid/tokens
+        audience: usage-signals-ingest
+        public_keys_file: /scratch/jwks.json
+
+  file_storage/queue:
+    directory: /scratch/queue
+    fsync: true
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        max_request_body_size: 1048576
+        auth:
+          authenticator: oidc/tenant_tokens
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 80
+
+  # Whatever the client sent under these names is deleted first, then the values of the
+  # verified token are written. insert never keeps a client value, because none is left.
+  resource/tenant:
+    attributes:
+      - { key: tenant.id, action: delete }
+      - { key: usage_signals.token_id, action: delete }
+      - { key: usage_signals.received_at_unix_nano, action: delete }
+      - { key: tenant.id, action: insert, from_context: auth.claims.tenant_id }
+      - { key: usage_signals.token_id, action: insert, from_context: auth.claims.jti }
+
+  transform/receipt:
+    error_mode: propagate
+    metric_statements:
+      - set(resource.attributes["usage_signals.received_at_unix_nano"], UnixNano(Now()))
+
+  # Any condition that holds drops the metric.
+  filter/http_server_only:
+    error_mode: propagate
+    metric_conditions:
+      - resource.attributes["tenant.id"] == nil
+      - metric.type != METRIC_DATA_TYPE_HISTOGRAM
+      - metric.name != "http.server.request.duration" and metric.name != "http.server.duration"
+      - metric.name == "http.server.request.duration" and metric.unit != "s"
+      - metric.name == "http.server.duration" and metric.unit != "ms"
+
+  # The older convention: milliseconds and the old attribute names.
+  transform/legacy:
+    error_mode: propagate
+    metric_statements:
+      - context: metric
+        statements:
+          - scale_metric(0.001, "s") where metric.name == "http.server.duration"
+          - set(metric.name, "http.server.request.duration") where metric.name == "http.server.duration"
+      - context: datapoint
+        statements:
+          - set(datapoint.attributes["http.request.method"], datapoint.attributes["http.method"]) where datapoint.attributes["http.request.method"] == nil and datapoint.attributes["http.method"] != nil
+          - set(datapoint.attributes["http.response.status_code"], datapoint.attributes["http.status_code"]) where datapoint.attributes["http.response.status_code"] == nil and datapoint.attributes["http.status_code"] != nil
+          - set(datapoint.attributes["http.route"], datapoint.attributes["http.target"]) where datapoint.attributes["http.route"] == nil and datapoint.attributes["http.target"] != nil
+
+  # Path rules, RE2 syntax. RE2 has no lookaround, so a rule cannot say "ends at a segment
+  # boundary" without consuming the slash that the next segment needs. Every slash is therefore
+  # doubled first and one is appended: each segment then sits between two slashes of its own,
+  # every rule is the plain form /<pattern>/, and the last two statements undo the doubling.
+  # "$$" is the configuration file's escape for a literal "$".
+  transform/path_rules:
+    error_mode: propagate
+    metric_statements:
+      - replace_pattern(datapoint.attributes["http.route"], "[?#].*$$", "")
+      - replace_pattern(datapoint.attributes["http.route"], "/", "//")
+      - set(datapoint.attributes["http.route"], Concat([datapoint.attributes["http.route"], "/"], "")) where datapoint.attributes["http.route"] != nil
+      # Numeric IDs.
+      - replace_pattern(datapoint.attributes["http.route"], "/[0-9]+/", "/{id}/")
+      # UUIDs.
+      - replace_pattern(datapoint.attributes["http.route"], "/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/", "/{uuid}/")
+      # Hex hashes of 32, 40, 64 or 128 digits, with or without 0x.
+      - replace_pattern(datapoint.attributes["http.route"], "/(?:0[xX])?(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[0-9a-fA-F]{128})/", "/{hash}/")
+      # SEP-23 strkeys. The second character is A to D because the low three bits of the
+      # version byte are zero. The secret seed comes first and has its own placeholder.
+      - replace_pattern(datapoint.attributes["http.route"], "/S[A-D][A-Z2-7]{54}/", "/{redacted}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/G[A-D][A-Z2-7]{54}/", "/{account}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/C[A-D][A-Z2-7]{54}/", "/{contract}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/M[A-D][A-Z2-7]{67}/", "/{muxed_account}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/(?:[TXL][A-D][A-Z2-7]{54}|B[A-D][A-Z2-7]{56}|W[A-D][A-Z2-7]{67})/", "/{strkey}/")
+      # Undo the doubling, then drop trailing slashes except on the root.
+      - replace_pattern(datapoint.attributes["http.route"], "/{2,}", "/")
+      - replace_pattern(datapoint.attributes["http.route"], "(.)/$$", "$$1")
+
+  transform/allowlist:
+    error_mode: propagate
+    metric_statements:
+      - set(datapoint.attributes["http.route"], "(unmatched)") where datapoint.attributes["http.route"] == nil
+      - keep_keys(datapoint.attributes, ["http.route", "http.request.method", "http.response.status_code"])
+      - keep_keys(resource.attributes, ["tenant.id", "service.name", "service.instance.id", "usage_signals.token_id", "usage_signals.received_at_unix_nano"])
+
+  # With no attribute list, only points whose attribute sets are already equal are combined.
+  transform/merge:
+    error_mode: propagate
+    metric_statements:
+      - aggregate_on_attributes("sum") where metric.type == METRIC_DATA_TYPE_HISTOGRAM
+
+exporters:
+  # initial_interval and max_interval are shortened so the experiment finishes quickly.
+  # max_elapsed_time 0 means a batch is retried until it is delivered.
+  otlp_http/writer:
+    endpoint: http://writer:43195
+    encoding: json
+    compression: none
+    retry_on_failure:
+      enabled: true
+      initial_interval: 500ms
+      max_interval: 2s
+      max_elapsed_time: 0
+    sending_queue:
+      enabled: true
+      storage: file_storage/queue
+      queue_size: 10000
+
+  nop:
+
+service:
+  extensions: [oidc/tenant_tokens, file_storage/queue]
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/tenant, transform/receipt, filter/http_server_only, transform/legacy, transform/path_rules, transform/allowlist, transform/merge]
+      exporters: [otlp_http/writer]
+    # BEGIN discard pipelines
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [nop]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [nop]
+    # END discard pipelines
