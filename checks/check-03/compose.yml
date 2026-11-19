@@ -1,0 +1,72 @@
+# Isolated stack for check 03. Same pinned images as console/docker-compose.yml.
+# Credentials are local values, not secrets.
+name: us-check-03
+
+x-umami: &umami
+  image: ghcr.io/umami-software/umami:3.5.0@sha256:b64f40400d77bcadd39cf5c62a1e368c99524ca442024f96e1133355a19a5dbc
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/heartbeat >/dev/null || exit 1"]
+    interval: 3s
+    timeout: 3s
+    retries: 40
+    start_period: 20s
+
+x-umami-env: &umami-env
+  DATABASE_URL: postgresql://poc:poc-local-only@postgres:5432/poc
+  APP_SECRET: check-03-shared-app-secret
+  DISABLE_TELEMETRY: "1"
+
+services:
+  postgres:
+    image: postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
+    environment:
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: poc-local-only
+      POSTGRES_DB: poc
+    ports:
+      - "127.0.0.1:55103:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d poc"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Location A. Starts first and creates Umami's tables.
+  umami-a:
+    <<: *umami
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *umami-env
+      ENABLE_CLIENT_SALT: "1"
+    ports:
+      - "127.0.0.1:33103:3000"
+
+  # Location B: a second Umami instance on the same database with the same APP_SECRET.
+  umami-b:
+    <<: *umami
+    depends_on:
+      umami-a:
+        condition: service_healthy
+    environment:
+      <<: *umami-env
+      ENABLE_CLIENT_SALT: "1"
+    ports:
+      - "127.0.0.1:33203:3000"
+
+  # Control: Umami as it ships, without ENABLE_CLIENT_SALT.
+  umami-default:
+    <<: *umami
+    depends_on:
+      umami-a:
+        condition: service_healthy
+    environment:
+      <<: *umami-env
+    ports:
+      - "127.0.0.1:33303:3000"
+
+volumes:
+  pgdata:

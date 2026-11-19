@@ -1,0 +1,64 @@
+# Isolated stack for check 6. Identical to console/docker-compose.yml except for the project
+# name, the host ports and the Umami image, which comes from UMAMI_IMAGE.
+# Service names and credentials stay the same on purpose: one test in the console suite runs
+# `docker compose -f console/docker-compose.yml exec postgres pg_dump -U poc poc`, and
+# COMPOSE_PROJECT_NAME=us-check-06 points that command at this project.
+# Credentials are local development values, not secrets.
+name: us-check-06
+
+services:
+  postgres:
+    image: postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
+    environment:
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: poc-local-only
+      POSTGRES_DB: poc
+    ports:
+      - "127.0.0.1:55106:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d poc"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  umami:
+    image: ${UMAMI_IMAGE:?set UMAMI_IMAGE to the image under test}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://poc:poc-local-only@postgres:5432/poc
+      APP_SECRET: local-only-umami-app-secret
+      DISABLE_TELEMETRY: "1"
+    ports:
+      - "127.0.0.1:33106:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/heartbeat >/dev/null || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 20s
+
+  umami-nogeo:
+    image: ${UMAMI_IMAGE:?set UMAMI_IMAGE to the image under test}
+    depends_on:
+      umami:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://poc:poc-local-only@postgres:5432/poc
+      APP_SECRET: local-only-umami-app-secret
+      DISABLE_TELEMETRY: "1"
+      GEOLITE_DB_PATH: /nonexistent/GeoLite2-City.mmdb
+    ports:
+      - "127.0.0.1:33206:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/heartbeat >/dev/null || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 20s
+
+volumes:
+  pgdata:
