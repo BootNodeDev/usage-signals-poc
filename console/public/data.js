@@ -19,7 +19,7 @@
    status() -> { state ('ok' | 'not_found' | 'error'), error | null, through | null }
      through = ISO time of the last figures read.
    meta() -> { product_name, tracker { version, path, integrity } | null,
-               rounding { below, step } | null }   (rounding is set by loadOperator)
+               small_counts { below } | null }   (set by loadOperator)
 
    Tenant web figures
    ------------------
@@ -38,10 +38,15 @@
    ----------------
    loadOperator(rangeDays) -> Promise. One read for every project.
    operatorRows() -> [{ project { id, name, domain, state },
-       totals { pageviews, visitors, visits, bounces, bounce_rate, avg_visit_seconds,
+       totals { pageviews, visitors, visits, bounces (each a Count),
+                bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
                 flagged (always null: not classified) },
-       daily [{ day, pageviews }], breakdowns { referrers, countries, devices, browsers } }]
-     Aggregates only. Counts below meta().rounding.below are rounded by the API, not here. */
+       daily [{ day, pageviews Count }], breakdowns { dimension: [{ label, value Count }] } }]
+     Count = number | Small.  Small = { small: true, below }: more than zero and fewer than
+     `below`. The API never sends the exact number, so there is nothing to hide here.
+   sortRows(rows, pick, descending) -> [row]
+     Sorts by pick(row), a Count or a rate. A Small sorts between zero and `below`; null
+     sorts last; equal values stay in project-name order, so the order never jumps. */
 (function () {
   'use strict';
 
@@ -51,7 +56,7 @@
     'chromium-webview': 'Android WebView', 'ios-webview': 'iOS WebView', samsung: 'Samsung Internet'
   };
 
-  var known = { project: null, tracker: null, rounding: null, state: 'ok', error: null, through: null };
+  var known = { project: null, tracker: null, smallCounts: null, state: 'ok', error: null, through: null };
   var webByRange = {};
   var latestWeb = null;
   var operator = [];
@@ -142,7 +147,7 @@
 
   function loadOperator(rangeDays) {
     return getJson('/api/operator/projects?days=' + rangeDays).then(function (body) {
-      known.rounding = body.rounding;
+      known.smallCounts = body.small_counts;
       known.through = body.through;
       operator = body.projects.map(function (row) {
         var breakdowns = {};
@@ -154,12 +159,30 @@
     });
   }
 
+  /* A small count is somewhere above zero and under its bound: half the bound, for ordering only. */
+  function order(value) {
+    return value && value.small ? value.below / 2 : value;
+  }
+
+  function sortRows(rows, pick, descending) {
+    return rows.slice().sort(function (a, b) {
+      var x = order(pick(a));
+      var y = order(pick(b));
+      var byName = a.project.name < b.project.name ? -1 : a.project.name > b.project.name ? 1 : 0;
+      if (x === null || x === undefined) return y === null || y === undefined ? byName : 1;
+      if (y === null || y === undefined) return -1;
+      if (x === y) return byName;
+      return (x < y ? -1 : 1) * (descending ? -1 : 1);
+    });
+  }
+
   window.LData = {
     boot: boot,
+    sortRows: sortRows,
     currentProjectSlug: currentProjectSlug,
     project: function () { return known.project; },
     status: function () { return { state: known.state, error: known.error, through: known.through }; },
-    meta: function () { return { product_name: PRODUCT_NAME, tracker: known.tracker, rounding: known.rounding }; },
+    meta: function () { return { product_name: PRODUCT_NAME, tracker: known.tracker, small_counts: known.smallCounts }; },
     loadWeb: loadWeb,
     web: web,
     breakdown: function (dimension) { return labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]); },

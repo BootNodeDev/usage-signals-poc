@@ -6,9 +6,6 @@ const RANGES = [7, 30, 90];
 const DAY_MS = 86_400_000;
 // Short shared cache: several viewers cost one read, and a new page view shows within seconds.
 const CACHE_CONTROL = 'public, max-age=0, s-maxage=10';
-// Placeholder values for "aggregates only, with small counts rounded": to be set with the fund.
-export const SMALL_COUNT_BELOW = 100;
-export const SMALL_COUNT_STEP = 10;
 const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'device', browsers: 'browser' };
 
 export function json(status, body, headers = {}) {
@@ -32,12 +29,6 @@ export function badRange() {
 export function unavailable(error) {
   console.error(`read: figures unavailable: ${error.message}`);
   return json(503, { error: 'Figures are unavailable right now. Retry later.' });
-}
-
-/** Counts under the threshold are rounded to the step, so a small audience is not exposed. */
-export function roundSmall(count) {
-  if (count >= SMALL_COUNT_BELOW) return count;
-  return Math.round(count / SMALL_COUNT_STEP) * SMALL_COUNT_STEP;
 }
 
 /** A visitor is counted once per day, so a multi-day figure is the sum of the daily figures. */

@@ -6,7 +6,8 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { requireEnv } from '../lib/config.js';
-import { dailyRows, roundSmall, sumOfDaily } from '../lib/web-read.js';
+import { operatorRow, smallCount } from '../lib/operator-api.js';
+import { dailyRows, sumOfDaily } from '../lib/web-read.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
 
 const CONSOLE_ROOT = path.resolve(import.meta.dirname, '..');
@@ -262,22 +263,62 @@ describe('GET /api/tenant/<slug>/project', () => {
   });
 });
 
-describe('small counts', () => {
-  it('rounds counts under 100 to the nearest 10 and leaves the others', () => {
-    const cases = [[0, 0], [4, 0], [5, 10], [14, 10], [95, 100], [99, 100], [100, 100], [1234, 1234]];
-    for (const [count, rounded] of cases) assert.equal(roundSmall(count), rounded, String(count));
+const SMALL = { small: true, below: 10 };
+
+describe('small counts in the operator view', () => {
+  it('keeps zero, hides 1 to 9 behind a marker and gives 10 and above exactly', () => {
+    const cases = [[0, 0], [1, SMALL], [9, SMALL], [10, 10], [11, 11], [1234, 1234]];
+    for (const [count, shown] of cases) assert.deepEqual(smallCount(count), shown, String(count));
+  });
+
+  const site = { id: 'site-id', name: 'Some project', domain: 'some.project.test', state: 'active' };
+  const figures = (totals) => ({
+    totals: { pageviews: 0, visitors: 0, visits: 0, bounces: 0, total_seconds: 0, ...totals },
+    daily: [{ day: '2026-11-17', pageviews: 0, visitors: 0 }, { day: '2026-11-18', pageviews: 1, visitors: 1 },
+      { day: '2026-11-19', pageviews: 12, visitors: 9 }],
+    breakdowns: { referrers: [], countries: [{ label: 'AR', value: 11 }, { label: 'UY', value: 2 }], devices: [], browsers: [] },
+  });
+
+  it('never returns a count of 1 to 9, in the totals, the daily series or a breakdown', () => {
+    const row = operatorRow(site, figures({ pageviews: 13, visitors: 9, visits: 11, bounces: 1, total_seconds: 660 }));
+    assert.deepEqual(row.totals, {
+      pageviews: 13, visitors: SMALL, visits: 11, bounces: SMALL,
+      bounce_rate: 1 / 11, avg_visit_seconds: 60, flagged: null,
+    });
+    assert.deepEqual(row.daily, [
+      { day: '2026-11-17', pageviews: 0 }, { day: '2026-11-18', pageviews: SMALL }, { day: '2026-11-19', pageviews: 12 },
+    ]);
+    assert.deepEqual(row.breakdowns.countries, [{ label: 'AR', value: 11 }, { label: 'UY', value: SMALL }]);
+  });
+
+  it('hides the rates that fewer than 10 visits would give away, and has none without visits', () => {
+    const few = operatorRow(site, figures({ pageviews: 9, visitors: 9, visits: 9, bounces: 3, total_seconds: 90 }));
+    assert.deepEqual(few.totals, {
+      pageviews: SMALL, visitors: SMALL, visits: SMALL, bounces: SMALL,
+      bounce_rate: SMALL, avg_visit_seconds: SMALL, flagged: null,
+    });
+    const none = operatorRow(site, figures({})).totals;
+    assert.deepEqual([none.pageviews, none.visits, none.bounce_rate, none.avg_visit_seconds], [0, 0, null, null]);
+    const ten = operatorRow(site, figures({ pageviews: 10, visitors: 10, visits: 10, bounces: 5, total_seconds: 100 })).totals;
+    assert.deepEqual([ten.visits, ten.bounce_rate, ten.avg_visit_seconds], [10, 0.5, 10]);
   });
 });
 
 describe('GET /api/operator/projects', () => {
   const [, siteB, , siteD] = TENANTS.map((tenant) => tenant.site);
+  const COUNT_KEYS = ['pageviews', 'visitors', 'visits', 'bounces'];
 
   async function exact(site) {
     const response = await fetch(`${GATEWAY}/api/tenant/${site.slug}/web?days=7`);
     return response.json();
   }
 
-  it('returns every site in one answer, with the exact figures after rounding', async () => {
+  function assertShown(shown, exactCount, where) {
+    assert.deepEqual(shown, smallCount(exactCount), where);
+    assert.ok(shown === 0 || shown >= 10 || (shown.small === true && shown.below === 10), `${where} shows ${JSON.stringify(shown)}`);
+  }
+
+  it('returns every site in one answer, exact from 10 up and marked as small below', async () => {
     const origin = { [siteB.id]: `http://${siteB.domain}`, [siteD.id]: `https://${siteD.domain}` };
     for (const site of [siteB, siteD, siteD]) {
       const response = await fetch(`${GATEWAY}/api/e`, {
@@ -296,31 +337,26 @@ describe('GET /api/operator/projects', () => {
     const response = await fetch(`${GATEWAY}/api/operator/projects?days=7`);
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert.deepEqual(body.rounding, { below: 100, step: 10 });
+    assert.deepEqual(body.small_counts, { below: 10 });
     assert.deepEqual(body.projects.map((row) => row.project.id).sort(), TENANTS.map((t) => t.site.id).sort());
 
+    let smallSeen = 0;
     for (const site of [siteB, siteD]) {
       const row = body.projects.find((candidate) => candidate.project.id === site.id);
-      assert.deepEqual(row.project, { id: site.id, name: TENANTS.find((t) => t.site === site).name, domain: site.domain, state: 'active' });
       const web = await exact(site);
-      assert.ok(web.totals.pageviews > 0);
-      assert.deepEqual(row.totals, {
-        pageviews: roundSmall(web.totals.pageviews),
-        visitors: roundSmall(web.totals.visitors),
-        visits: roundSmall(web.totals.visits),
-        bounces: roundSmall(web.totals.bounces),
-        bounce_rate: web.totals.visits ? web.totals.bounces / web.totals.visits : 0,
-        avg_visit_seconds: web.totals.visits ? web.totals.total_seconds / web.totals.visits : 0,
-        flagged: null,
-      });
-      assert.deepEqual(row.daily, web.daily.map((d) => ({ day: d.day, pageviews: roundSmall(d.pageviews) })));
+      assert.deepEqual(row.project, { id: site.id, name: TENANTS.find((t) => t.site === site).name, domain: site.domain, state: 'active' });
+      for (const key of COUNT_KEYS) assertShown(row.totals[key], web.totals[key], `${site.slug} ${key}`);
+      assert.equal(row.daily.length, web.daily.length);
+      row.daily.forEach((day, index) => assertShown(day.pageviews, web.daily[index].pageviews, `${site.slug} ${day.day}`));
       for (const dimension of ['referrers', 'countries', 'devices', 'browsers']) {
-        assert.deepEqual(
-          row.breakdowns[dimension],
-          web.breakdowns[dimension].map((entry) => ({ label: entry.label, value: roundSmall(entry.value) })),
-        );
+        row.breakdowns[dimension].forEach((entry, index) => {
+          assert.equal(entry.label, web.breakdowns[dimension][index].label);
+          assertShown(entry.value, web.breakdowns[dimension][index].value, `${site.slug} ${dimension} ${entry.label}`);
+          if (entry.value.small) smallSeen += 1;
+        });
       }
     }
+    assert.ok(smallSeen > 0, 'the local data has no small count, so the marker was not exercised');
   });
 
   it('answers 400 for an unsupported range and 405 to anything but GET', async () => {

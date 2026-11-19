@@ -79,17 +79,17 @@
     var STATE_FILTERS = [['', 'All states'], ['pending_verification', 'Pending verification'], ['pending_approval', 'Pending approval'],
       ['active', 'Active'], ['unverified', 'Unverified'], ['suspended', 'Suspended']];
     var BREAKDOWNS = {
-      referrers: ['Referrers', 'Share of visitors in the period by referring host'],
-      countries: ['Countries', 'Share of visitors in the period by country'],
-      devices: ['Devices', 'Share of visitors in the period by device class'],
-      browsers: ['Browsers', 'Share of visitors in the period by browser']
+      referrers: ['Referrers', 'Visitors in the period by referring host'],
+      countries: ['Countries', 'Visitors in the period by country'],
+      devices: ['Devices', 'Visitors in the period by device class'],
+      browsers: ['Browsers', 'Visitors in the period by browser']
     };
     var columns = [
       { key: 'pageviews', label: 'Page views', value: function (r) { return r.totals.pageviews; } },
       { key: 'visitors', label: 'Visitors (sum of daily)', value: function (r) { return r.totals.visitors; } },
       { key: 'visits', label: 'Visits', value: function (r) { return r.totals.visits; } },
-      { key: 'bounce', label: 'Bounce rate', value: function (r) { return r.totals.visits ? r.totals.bounce_rate : null; } },
-      { key: 'duration', label: 'Visit duration', value: function (r) { return r.totals.visits ? r.totals.avg_visit_seconds : null; } }
+      { key: 'bounce', label: 'Bounce rate', value: function (r) { return r.totals.bounce_rate; } },
+      { key: 'duration', label: 'Visit duration', value: function (r) { return r.totals.avg_visit_seconds; } }
     ];
     var state = { range: 30, search: '', stateFilter: '', sort: 'pageviews', descending: true,
       comparing: false, compared: [], view: 'list', open: null, drawerTab: 'referrers', compareTab: 'referrers' };
@@ -98,8 +98,25 @@
     var opener = null;
 
     function find(id) { return all.filter(function (r) { return r.project.id === id; })[0] || null; }
-    function hasData(r) { return r.totals.pageviews > 0; }
-    function rate(r, text) { return r.totals.visits ? text : App.dash(); }
+    function hasData(r) { return r.totals.pageviews !== 0; }
+    function isSmall(value) { return Boolean(value && value.small); }
+    /* A count as text: exact, or "<10" when the API only says it is small. */
+    function count(value) {
+      return isSmall(value)
+        ? '<span class="muted" title="More than zero and fewer than ' + value.below + '. The exact number is not shown.">&lt;' + value.below + '</span>'
+        : fmt.int(value);
+    }
+    /* A rate as text; it is withheld when it rests on a small number of visits. */
+    function rate(value, format) {
+      if (value === null) return App.dash();
+      return isSmall(value) ? '<span class="muted" title="Not shown for fewer than ' + value.below + ' visits">Too few visits</span>' : format(value);
+    }
+    /* For drawing only: a small count has no height, and the chart says so. */
+    function drawn(value) { return isSmall(value) ? 0 : value; }
+    function hasSmallDay(r) { return r.daily.some(function (d) { return isSmall(d.pageviews); }); }
+    function chartNote(r) {
+      return hasSmallDay(r) ? '<p class="caption">Days with fewer than ' + D.meta().small_counts.below + ' page views are not drawn.</p>' : '';
+    }
 
     function visible() {
       var needle = state.search.trim().toLowerCase();
@@ -112,14 +129,7 @@
 
     function sorted(list) {
       var column = columns.filter(function (c) { return c.key === state.sort; })[0] || columns[0];
-      return list.slice().sort(function (a, b) {
-        var x = column.value(a);
-        var y = column.value(b);
-        if (x === null) return 1;
-        if (y === null) return -1;
-        var order = x < y ? -1 : x > y ? 1 : 0;
-        return state.descending ? -order : order;
-      });
+      return D.sortRows(list, column.value, state.descending);
     }
 
     function listMessage(title, text, action) {
@@ -148,17 +158,18 @@
         return '<tr data-id="' + p.id + '"' + (state.open === p.id || (state.comparing && picked) ? ' class="is-open"' : '') + '>' + check +
           '<td><button class="row-open" type="button" data-open="' + p.id + '">' + App.projectName(p) + '</button><span class="sub">' + esc(p.domain) + '</span></td>' +
           '<td>' + App.statePill(p.state) + '</td>' +
-          '<td class="num"><span class="cell-trend">' + Charts.spark(r.daily.map(function (d) { return d.pageviews; }), 'Page views per day, last ' + state.range + ' days') +
-          fmt.int(t.pageviews) + '</span></td>' +
+          '<td class="num"><span class="cell-trend">' + Charts.spark(r.daily.map(function (d) { return drawn(d.pageviews); }), 'Page views per day, last ' + state.range + ' days') +
+          count(t.pageviews) + '</span></td>' +
           '<td><span class="muted">Not classified</span></td>' +
-          '<td class="num">' + fmt.int(t.visitors) + '</td><td class="num">' + fmt.int(t.visits) + '</td>' +
-          '<td class="num">' + rate(r, fmt.pct(t.bounce_rate)) + '</td><td class="num">' + rate(r, fmt.duration(t.avg_visit_seconds)) + '</td></tr>';
+          '<td class="num">' + count(t.visitors) + '</td><td class="num">' + count(t.visits) + '</td>' +
+          '<td class="num">' + rate(t.bounce_rate, fmt.pct) + '</td><td class="num">' + rate(t.avg_visit_seconds, fmt.duration) + '</td></tr>';
       }).join('');
       if (!list.length) body = '<tr><td colspan="9" class="muted">No project matches this search.</td></tr>';
       byId('projects').innerHTML = head + '<tbody>' + body + '</tbody>';
-      var rounding = D.meta().rounding;
-      byId('caption').textContent = list.length + ' of ' + all.length + ' projects · Aggregates only; counts under ' + rounding.below +
-        ' are rounded to the nearest ' + rounding.step + ' (a placeholder threshold). Flagged traffic: ' + NOT_CLASSIFIED.toLowerCase() + '.';
+      var below = D.meta().small_counts.below;
+      byId('caption').textContent = list.length + ' of ' + all.length + ' projects · Aggregates only. A count from 1 to ' + (below - 1) +
+        ' is shown as <' + below + ', and rates over fewer than ' + below + ' visits are not shown (a placeholder threshold). Flagged traffic: ' +
+        NOT_CLASSIFIED.toLowerCase() + '.';
     }
 
     function renderTray() {
@@ -170,21 +181,21 @@
       byId('compare-toggle').setAttribute('aria-pressed', String(state.comparing));
     }
 
-    function shareRows(rows) {
-      if (!rows || !rows.length) return App.dash();
-      var total = rows.reduce(function (a, r) { return a + r.value; }, 0);
+    /* Top five rows with their counts. Shares are not shown: with small counts hidden they cannot be computed honestly. */
+    function valueRows(rows) {
+      if (!rows || !rows.length) return App.empty('No data in this period.');
       var list = rows.slice(0, 5);
-      var max = Math.max.apply(null, list.map(function (r) { return r.value; }));
-      return '<div class="bars">' + list.map(function (r) {
+      var max = Math.max.apply(null, list.map(function (r) { return drawn(r.value); }));
+      return list.map(function (r) {
         return '<div class="bar-row is-share"><span class="bar-label">' + esc(r.label) + '</span>' +
-          '<span class="bar-value">' + fmt.pct(total ? r.value / total : 0) + '</span>' +
-          '<span class="bar-track"><span class="bar-fill" style="width:' + (max ? r.value / max * 100 : 0) + '%"></span></span></div>';
-      }).join('') + '</div>';
+          '<span class="bar-value">' + count(r.value) + '</span>' +
+          '<span class="bar-track"><span class="bar-fill" style="width:' + (max ? drawn(r.value) / max * 100 : 0) + '%"></span></span></div>';
+      }).join('');
     }
 
     function renderCompareBreakdown(picked) {
       byId('compare-breakdown-label').textContent = BREAKDOWNS[state.compareTab][1];
-      picked.forEach(function (r, i) { byId('compare-breakdown-' + i).innerHTML = shareRows(r.breakdowns[state.compareTab]); });
+      picked.forEach(function (r, i) { byId('compare-breakdown-' + i).innerHTML = '<div class="bars">' + valueRows(r.breakdowns[state.compareTab]) + '</div>'; });
     }
 
     function renderCompare() {
@@ -197,9 +208,9 @@
       }
       byId('compare-summary').textContent = picked.length + ' projects, last ' + state.range + ' days, one scale';
       var cells = function (label, cell, bar, first) {
-        var max = bar ? Math.max.apply(null, picked.map(bar)) : 0;
+        var max = bar ? Math.max.apply(null, picked.map(function (r) { return drawn(bar(r)); })) : 0;
         return '<div class="compare-label' + (first ? ' compare-first' : '') + '">' + label + '</div>' + picked.map(function (r) {
-          var track = bar && max ? '<span class="bar-track"><span class="bar-fill" style="width:' + (bar(r) / max * 100) + '%"></span></span>' : '';
+          var track = bar && max ? '<span class="bar-track"><span class="bar-fill" style="width:' + (drawn(bar(r)) / max * 100) + '%"></span></span>' : '';
           return '<div' + (first ? ' class="compare-first"' : '') + '>' + cell(r) + track + '</div>';
         }).join('');
       };
@@ -208,15 +219,15 @@
           return '<div class="compare-head"><button class="row-open" type="button" data-open="' + r.project.id + '">' + App.projectName(r.project) + '</button></div>';
         }).join('') +
         '<div class="compare-chart compare-label">Page views per day</div>' + picked.map(function (r, i) {
-          return '<div class="compare-chart"><div class="chart" id="multiple-' + i + '"></div></div>';
+          return '<div class="compare-chart"><div class="chart" id="multiple-' + i + '"></div>' + chartNote(r) + '</div>';
         }).join('') +
         '<div class="compare-group">Web <span class="source">Observed by the tracker</span></div>' +
-        cells('Page views', function (r) { return '<b>' + fmt.int(r.totals.pageviews) + '</b>'; }, function (r) { return r.totals.pageviews; }, true) +
+        cells('Page views', function (r) { return '<b>' + count(r.totals.pageviews) + '</b>'; }, function (r) { return r.totals.pageviews; }, true) +
         cells('Flagged share', function () { return '<span class="muted">' + NOT_CLASSIFIED + '</span>'; }) +
-        cells('Visitors (sum of daily)', function (r) { return fmt.int(r.totals.visitors); }, function (r) { return r.totals.visitors; }) +
-        cells('Visits', function (r) { return fmt.int(r.totals.visits); }, function (r) { return r.totals.visits; }) +
-        cells('Bounce rate', function (r) { return rate(r, fmt.pct(r.totals.bounce_rate)); }) +
-        cells('Visit duration', function (r) { return rate(r, fmt.duration(r.totals.avg_visit_seconds)); }) +
+        cells('Visitors (sum of daily)', function (r) { return count(r.totals.visitors); }, function (r) { return r.totals.visitors; }) +
+        cells('Visits', function (r) { return count(r.totals.visits); }, function (r) { return r.totals.visits; }) +
+        cells('Bounce rate', function (r) { return rate(r.totals.bounce_rate, fmt.pct); }) +
+        cells('Visit duration', function (r) { return rate(r.totals.avg_visit_seconds, fmt.duration); }) +
         '<div class="compare-tabs"><div class="tabs" role="tablist" aria-label="Breakdown" id="compare-tabs">' +
         Object.keys(BREAKDOWNS).map(function (key) {
           return '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.compareTab) + '">' + BREAKDOWNS[key][0] + '</button>';
@@ -227,13 +238,13 @@
       App.tabs(byId('compare-tabs'), function (tab) { state.compareTab = tab; renderCompareBreakdown(picked); });
       renderCompareBreakdown(picked);
       var max = Math.max.apply(null, picked.map(function (r) {
-        return Math.max.apply(null, r.daily.map(function (d) { return d.pageviews; }).concat([0]));
+        return Math.max.apply(null, r.daily.map(function (d) { return drawn(d.pageviews); }).concat([0]));
       }));
       picked.forEach(function (r, i) {
         Charts.columns(byId('multiple-' + i), {
           label: r.project.name + ': page views per day', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 180, max: max,
           format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
-          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return d.pageviews; }) }]
+          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return drawn(d.pageviews); }) }]
         });
       });
     }
@@ -261,12 +272,12 @@
       opener = from || document.querySelector('tr[data-id="' + id + '"] .row-open');
       state.open = id;
       var web = hasData(r)
-        ? '<div class="drawer-hero"><b>' + fmt.int(t.pageviews) + '</b><span class="muted">page views</span></div>' +
-          '<div class="chart" id="drawer-chart" style="margin-top:16px"></div></section>' +
+        ? '<div class="drawer-hero"><b>' + count(t.pageviews) + '</b><span class="muted">page views</span></div>' +
+          '<div class="chart" id="drawer-chart" style="margin-top:16px"></div>' + chartNote(r) + '</section>' +
           '<section class="drawer-section"><h3>Flagged page views by rule</h3><p class="muted">' + NOT_CLASSIFIED + '. No traffic has been checked, so there is no flagged share and no rule to show.</p></section>' +
           '<section class="drawer-section">' + kv([
-            ['Visitors (sum of daily)', fmt.int(t.visitors)], ['Visits', fmt.int(t.visits)],
-            ['Bounce rate', rate(r, fmt.pct(t.bounce_rate))], ['Visit duration', rate(r, fmt.duration(t.avg_visit_seconds))]
+            ['Visitors (sum of daily)', count(t.visitors)], ['Visits', count(t.visits)],
+            ['Bounce rate', rate(t.bounce_rate, fmt.pct)], ['Visit duration', rate(t.avg_visit_seconds, fmt.duration)]
           ]) + '</section>' +
           '<section class="drawer-section"><div class="tabs" role="tablist" aria-label="Breakdown" id="drawer-tabs">' +
           Object.keys(BREAKDOWNS).map(function (key) {
@@ -287,9 +298,9 @@
         Charts.columns(byId('drawer-chart'), {
           label: p.name + ': page views per day', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 200,
           format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
-          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return d.pageviews; }) }]
+          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return drawn(d.pageviews); }) }]
         });
-        var paintBreakdown = function () { App.barList(byId('drawer-breakdown'), r.breakdowns[state.drawerTab] || [], { limit: 5 }); };
+        var paintBreakdown = function () { byId('drawer-breakdown').innerHTML = valueRows(r.breakdowns[state.drawerTab]); };
         App.tabs(byId('drawer-tabs'), function (tab) { state.drawerTab = tab; paintBreakdown(); });
         paintBreakdown();
       }
