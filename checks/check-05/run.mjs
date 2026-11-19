@@ -3,9 +3,7 @@
 // Starts an isolated stack, runs every case, prints the tables and the verdict, and exits
 // non-zero when any figure differs from what the verdict and the README rest on.
 // Usage: node run.mjs   (CHECK_KEEP_STACK=1 leaves the containers up afterwards)
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -16,6 +14,7 @@ import {
   clearRows,
   compose,
   databaseDump,
+  driveRealService,
   headersOnly,
   post,
   queueFiles,
@@ -58,6 +57,7 @@ import {
   unsignedToken,
   withSwappedClaims,
 } from './lib.mjs';
+import { reviewPhases } from './review.mjs';
 import { VECTORS } from './vectors.mjs';
 
 const TENANT_A = randomUUID();
@@ -571,7 +571,7 @@ async function checkDiscard() {
   };
   const rawAddress = strkey('G', 77);
   // The writer answers 503, so whatever the collector queued stays on its disk.
-  setWriterMode('503');
+  await setWriterMode('503');
   const from = captureLength();
   const traces = await post('/v1/traces', traceBody(markers.span), { token: tokenA });
   const logs = await post('/v1/logs', logBody(markers.log), { token: tokenA });
@@ -651,7 +651,7 @@ async function checkDiscard() {
     storedRows().length === 0,
   );
 
-  setWriterMode('ok');
+  await setWriterMode('ok');
   await waitFor('the queued metric', () => storedRows(markers.metric).length > 0);
   await settle(tokenA);
   const dump = databaseDump();
@@ -774,16 +774,18 @@ async function checkPathRules() {
   const changing = VECTORS.map((vector, i) => ({ vector, seen: raw[i] })).filter(
     ({ vector }) => vector.expected !== vector.raw,
   );
-  const stillRaw = changing.filter(
-    ({ vector, seen }) => seen.viaRoute === vector.raw && seen.viaTarget === vector.raw,
+  // Some raw paths cannot be stored at all (a NUL, 6,000 characters), so the control counts
+  // the vectors that no longer come out as expected, not the ones stored raw.
+  const stillRight = changing.filter(
+    ({ vector, seen }) => seen.viaRoute === vector.expected || seen.viaTarget === vector.expected,
   );
   record(
     4,
     'control',
-    'path rules removed: the raw path is stored',
-    `${changing.length} of ${changing.length} rewritten vectors arrive raw`,
-    `${stillRaw.length} of ${changing.length}`,
-    changing.length > 0 && stillRaw.length === changing.length,
+    'path rules removed: no vector that needs a rule is stored as expected',
+    `0 of ${changing.length}`,
+    `${stillRight.length} of ${changing.length}`,
+    changing.length > 0 && stillRight.length === 0,
   );
   await useConfig('design');
 }
@@ -1381,42 +1383,16 @@ const REAL_PLAN = [
   { method: 'GET', path: (i) => `/nowhere/${i}`, times: 25, route: '(unmatched)', status: 200 },
 ];
 
-/** Starts service.cjs, sends it the planned HTTP requests, and stops it so that it flushes. */
-async function driveRealService(serviceName, temporality, plan) {
-  const env = {
-    ...process.env,
-    CHECK_TEMPORALITY: temporality,
-    CHECK_COLLECTOR: COLLECTOR,
-    CHECK_TOKEN: tokenB,
-    CHECK_SERVICE_NAME: serviceName,
-  };
-  const child = spawn(process.execPath, [path.join(HERE, 'service.cjs')], {
-    env,
-    stdio: ['ignore', 'pipe', 'inherit'],
-  });
-  const [firstLine] = await once(child.stdout, 'data');
-  const port = Number(String(firstLine).trim().split(' ')[1]);
-  const calls = plan.flatMap((item) => Array.from({ length: item.times }, (_, i) => ({ item, i })));
-  const statuses = [];
-  for (const [n, { item, i }] of calls.entries()) {
-    const response = await fetch(`http://127.0.0.1:${port}${item.path(i)}`, {
-      method: item.method,
-    });
-    statuses.push(response.status === item.status);
-    await response.arrayBuffer();
-    // Spread over several export intervals of one second.
-    if (n % 20 === 19) await sleep(250);
-  }
-  child.kill('SIGTERM');
-  await once(child, 'exit');
-  return { sent: calls.length, answeredAsPlanned: statuses.filter(Boolean).length };
-}
-
 async function checkRealExporter() {
   clearRows();
   const service = `real-${runTag}`;
   const from = captureLength();
-  const { sent, answeredAsPlanned } = await driveRealService(service, 'delta', REAL_PLAN);
+  const { sent, answeredAsPlanned } = await driveRealService({
+    serviceName: service,
+    temporality: 'delta',
+    plan: REAL_PLAN,
+    token: tokenB,
+  });
   await storedAtLeast(service, sent);
   await settle(tokenA);
   const expected = new Map(
@@ -1486,7 +1462,12 @@ async function checkRealExporter() {
 
   const cumulativeService = `real-cumulative-${runTag}`;
   const cumulativeFrom = captureLength();
-  await driveRealService(cumulativeService, 'cumulative', [{ ...REAL_PLAN[2], times: 20 }]);
+  await driveRealService({
+    serviceName: cumulativeService,
+    temporality: 'cumulative',
+    plan: [{ ...REAL_PLAN[2], times: 20 }],
+    token: tokenB,
+  });
   await settle(tokenA);
   const cumulative = writerSaw(cumulativeService, cumulativeFrom);
   const stored = storedRows(cumulativeService).length;
@@ -1503,6 +1484,7 @@ async function checkRealExporter() {
 // ---------------------------------------------------------------- report
 
 const POINTS = {
+  0: 'The experiment ran to its end',
   1: 'Authentication with per-tenant attribution',
   2: 'Only HTTP server duration histograms continue',
   3: 'Traces and logs never reach storage or a queue',
@@ -1546,7 +1528,8 @@ function verdict() {
     const required = results.filter(
       (item) => String(item.point) === point && item.kind === 'required',
     );
-    return required.length > 0 && required.every((item) => item.pass);
+    // Point 0 has entries only when a phase aborted.
+    return (point === '0' || required.length > 0) && required.every((item) => item.pass);
   });
   console.log('\n## Verdict\n');
   for (const point of Object.keys(POINTS))
@@ -1578,6 +1561,7 @@ async function main() {
   const version = compose('exec', '-T', 'collector', '/otelcol-contrib', '--version').trim();
   console.log(`collector: ${version}; issuer and audience in the tokens: offline, ${AUDIENCE}`);
   checkTools();
+  const context = { TENANT_A, TENANT_B, tokenA, tokenB, key, BASE_MS, expected: {} };
   const phases = [
     checkAuthentication,
     checkFilter,
@@ -1588,24 +1572,37 @@ async function main() {
     checkQueue,
     checkEndToEnd,
     checkRealExporter,
+    ...reviewPhases(context),
   ];
-  for (const phase of phases) {
+  // CHECK_ONLY=name,name runs only those phases; the verdict then covers only them.
+  const only = process.env.CHECK_ONLY?.split(',');
+  for (const phase of phases.filter((item) => !only || only.includes(item.name))) {
     const started = Date.now();
-    await phase();
+    try {
+      await phase();
+    } catch (error) {
+      // An aborted phase is a failed assertion; the next phase starts from the design again.
+      record(0, 'required', `${phase.name} ran to its end`, 'no error', error.message, false);
+      await setWriterMode('ok');
+      await useConfig('design').catch(() => {});
+    }
     console.log(`${phase.name} done in ${((Date.now() - started) / 1000).toFixed(1)} s`);
   }
   const outcomes = {};
   for (const entry of capture()) outcomes[entry.outcome] = (outcomes[entry.outcome] ?? 0) + 1;
-  const trouble = ['storage-error', 'undecodable', 'writer-bug'].filter(
-    (outcome) => outcomes[outcome],
-  );
+  // The review phases provoke a database outage and send one undecodable body on purpose.
+  const allowed = { 'storage-error': 0, undecodable: 0, 'writer-bug': 0, ...context.expected };
+  const text = (counts) =>
+    Object.keys(allowed)
+      .map((outcome) => `${outcome} ${counts[outcome] ?? 0}`)
+      .join(', ');
   record(
     9,
     'control',
-    'writer outcomes over the whole run: no storage error, no undecodable body',
-    'none',
-    trouble.join(', ') || 'none',
-    trouble.length === 0,
+    'writer outcomes over the whole run: only the provoked storage errors and undecodable body',
+    text(allowed),
+    text(outcomes),
+    text(allowed) === text(outcomes),
   );
 }
 

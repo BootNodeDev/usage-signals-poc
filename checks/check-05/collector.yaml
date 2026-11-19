@@ -30,13 +30,17 @@ processors:
     limit_mib: 400
     spike_limit_mib: 80
 
-  # Whatever the client sent under these names is deleted first, then the values of the
-  # verified token are written. insert never keeps a client value, because none is left.
+  # Whatever the client sent under a name the edge stamps is removed first. A request can
+  # carry the same key more than once, and delete_matching_keys removes every occurrence;
+  # delete_key and the resource processor's delete action remove only the first one.
+  transform/strip:
+    error_mode: propagate
+    metric_statements:
+      - delete_matching_keys(resource.attributes, "^(tenant[.]id|usage_signals[.].*)$$")
+
+  # The values of the verified token. insert cannot keep a client value: none is left.
   resource/tenant:
     attributes:
-      - { key: tenant.id, action: delete }
-      - { key: usage_signals.token_id, action: delete }
-      - { key: usage_signals.received_at_unix_nano, action: delete }
       - { key: tenant.id, action: insert, from_context: auth.claims.tenant_id }
       - { key: usage_signals.token_id, action: insert, from_context: auth.claims.jti }
 
@@ -69,40 +73,98 @@ processors:
           - set(datapoint.attributes["http.response.status_code"], datapoint.attributes["http.status_code"]) where datapoint.attributes["http.response.status_code"] == nil and datapoint.attributes["http.status_code"] != nil
           - set(datapoint.attributes["http.route"], datapoint.attributes["http.target"]) where datapoint.attributes["http.route"] == nil and datapoint.attributes["http.target"] != nil
 
+  # The allowlist is built, not filtered: each kept value is read once into the statement
+  # cache, the attribute map is emptied, and the value is written back. A key that was sent
+  # several times therefore ends as one key with the value every later statement works on,
+  # and a route or method that is not a string, or a status code that is not an integer, is
+  # not kept at all. Exemplars, the metric description and metadata, the scope and both
+  # schema URLs are cleared, so that none of them reaches the disk queue.
+  transform/allowlist:
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - set(resource.cache["tenant"], resource.attributes["tenant.id"])
+          - set(resource.cache["token"], resource.attributes["usage_signals.token_id"])
+          - set(resource.cache["received"], resource.attributes["usage_signals.received_at_unix_nano"])
+          - set(resource.cache["service"], resource.attributes["service.name"]) where IsString(resource.attributes["service.name"])
+          - set(resource.cache["instance"], resource.attributes["service.instance.id"]) where IsString(resource.attributes["service.instance.id"])
+          - keep_keys(resource.attributes, [])
+          - set(resource.attributes["tenant.id"], resource.cache["tenant"]) where resource.cache["tenant"] != nil
+          - set(resource.attributes["usage_signals.token_id"], resource.cache["token"]) where resource.cache["token"] != nil
+          - set(resource.attributes["usage_signals.received_at_unix_nano"], resource.cache["received"]) where resource.cache["received"] != nil
+          - set(resource.attributes["service.name"], resource.cache["service"]) where resource.cache["service"] != nil
+          - set(resource.attributes["service.instance.id"], resource.cache["instance"]) where resource.cache["instance"] != nil
+          - set(resource.schema_url, "")
+      - context: scope
+        statements:
+          - set(scope.name, "")
+          - set(scope.version, "")
+          - keep_keys(scope.attributes, [])
+          - set(scope.schema_url, "")
+      - context: metric
+        statements:
+          - set(metric.description, "")
+          - keep_keys(metric.metadata, [])
+      - context: datapoint
+        statements:
+          - set(datapoint.cache["route"], datapoint.attributes["http.route"]) where IsString(datapoint.attributes["http.route"])
+          - set(datapoint.cache["method"], datapoint.attributes["http.request.method"]) where IsString(datapoint.attributes["http.request.method"])
+          - set(datapoint.cache["status"], datapoint.attributes["http.response.status_code"]) where IsInt(datapoint.attributes["http.response.status_code"])
+          - keep_keys(datapoint.attributes, [])
+          - set(datapoint.attributes["http.route"], datapoint.cache["route"]) where datapoint.cache["route"] != nil
+          - set(datapoint.attributes["http.request.method"], datapoint.cache["method"]) where datapoint.cache["method"] != nil
+          - set(datapoint.attributes["http.response.status_code"], datapoint.cache["status"]) where datapoint.cache["status"] != nil
+          - set(datapoint.exemplars, nil)
+
   # Path rules, RE2 syntax. RE2 has no lookaround, so a rule cannot say "ends at a segment
   # boundary" without consuming the slash that the next segment needs. Every slash is therefore
-  # doubled first and one is appended: each segment then sits between two slashes of its own,
-  # every rule is the plain form /<pattern>/, and the last two statements undo the doubling.
+  # doubled and the route is wrapped in two more: each segment then sits between two slashes of
+  # its own, every rule is the plain form /<pattern>/, and the last two statements undo it.
   # "$$" is the configuration file's escape for a literal "$".
   transform/path_rules:
     error_mode: propagate
     metric_statements:
-      - replace_pattern(datapoint.attributes["http.route"], "[?#].*$$", "")
+      - set(datapoint.attributes["http.route"], "(too_long)") where datapoint.attributes["http.route"] != nil and Len(datapoint.attributes["http.route"]) > 1024
+      # Everything from the first "?", "#" or control character on, newlines included.
+      - replace_pattern(datapoint.attributes["http.route"], "(?s)[?#[:cntrl:]].*$$", "")
+      # The scheme and host of an absolute URL.
+      - replace_pattern(datapoint.attributes["http.route"], "^[A-Za-z][A-Za-z0-9+.-]*://[^/]*", "")
       - replace_pattern(datapoint.attributes["http.route"], "/", "//")
-      - set(datapoint.attributes["http.route"], Concat([datapoint.attributes["http.route"], "/"], "")) where datapoint.attributes["http.route"] != nil
-      # Numeric IDs.
+      - set(datapoint.attributes["http.route"], Concat(["/", datapoint.attributes["http.route"], "/"], "")) where datapoint.attributes["http.route"] != nil
+      # Numeric IDs, then Horizon paging tokens.
       - replace_pattern(datapoint.attributes["http.route"], "/[0-9]+/", "/{id}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/[0-9]{10,}-[0-9]+/", "/{paging_token}/")
       # UUIDs.
       - replace_pattern(datapoint.attributes["http.route"], "/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/", "/{uuid}/")
-      # Hex hashes of 32, 40, 64 or 128 digits, with or without 0x.
-      - replace_pattern(datapoint.attributes["http.route"], "/(?:0[xX])?(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[0-9a-fA-F]{128})/", "/{hash}/")
-      # SEP-23 strkeys. The second character is A to D because the low three bits of the
-      # version byte are zero. The secret seed comes first and has its own placeholder.
+      # Hex runs of 24 digits or more, with or without 0x.
+      - replace_pattern(datapoint.attributes["http.route"], "/(?:0[xX])?[0-9a-fA-F]{24,}/", "/{hash}/")
+      # E-mail addresses and JWTs.
+      - replace_pattern(datapoint.attributes["http.route"], "/[^/@]+@[^/@]+[.][^/@]+/", "/{email}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*/", "/{jwt}/")
+      # SEP-23 strkeys as whole segments. The second character is A to D because the low
+      # three bits of the version byte are zero. The secret seed comes first.
       - replace_pattern(datapoint.attributes["http.route"], "/S[A-D][A-Z2-7]{54}/", "/{redacted}/")
       - replace_pattern(datapoint.attributes["http.route"], "/G[A-D][A-Z2-7]{54}/", "/{account}/")
       - replace_pattern(datapoint.attributes["http.route"], "/C[A-D][A-Z2-7]{54}/", "/{contract}/")
       - replace_pattern(datapoint.attributes["http.route"], "/M[A-D][A-Z2-7]{67}/", "/{muxed_account}/")
-      - replace_pattern(datapoint.attributes["http.route"], "/(?:[TXL][A-D][A-Z2-7]{54}|B[A-D][A-Z2-7]{56}|W[A-D][A-Z2-7]{67})/", "/{strkey}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/(?:[TXL][A-D][A-Z2-7]{54}|B[A-D][A-Z2-7]{56}|W[A-D][A-Z2-7]{67}|P[A-D][A-Z2-7]{67,163})/", "/{strkey}/")
+      # An account, contract or muxed address next to other text in its segment, as in
+      # USDC:G... or G....json. Only the address is replaced.
+      - replace_pattern(datapoint.attributes["http.route"], "/([^/]*[^A-Z2-7/])?G[A-D][A-Z2-7]{54}([^A-Z2-7/][^/]*)?/", "/$${1}{account}$${2}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/([^/]*[^A-Z2-7/])?C[A-D][A-Z2-7]{54}([^A-Z2-7/][^/]*)?/", "/$${1}{contract}$${2}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/([^/]*[^A-Z2-7/])?M[A-D][A-Z2-7]{67}([^A-Z2-7/][^/]*)?/", "/$${1}{muxed_account}$${2}/")
+      # Anything that still looks like a secret seed, in either case, anywhere in a segment,
+      # down to 52 of its 56 characters: the whole segment is redacted.
+      - replace_pattern(datapoint.attributes["http.route"], "/[^/]*(?i:S[A-D][A-Z2-7]{50,})[^/]*/", "/{redacted}/")
       # Undo the doubling, then drop trailing slashes except on the root.
       - replace_pattern(datapoint.attributes["http.route"], "/{2,}", "/")
       - replace_pattern(datapoint.attributes["http.route"], "(.)/$$", "$$1")
 
-  transform/allowlist:
+  transform/unmatched:
     error_mode: propagate
     metric_statements:
       - set(datapoint.attributes["http.route"], "(unmatched)") where datapoint.attributes["http.route"] == nil
-      - keep_keys(datapoint.attributes, ["http.route", "http.request.method", "http.response.status_code"])
-      - keep_keys(resource.attributes, ["tenant.id", "service.name", "service.instance.id", "usage_signals.token_id", "usage_signals.received_at_unix_nano"])
 
   # With no attribute list, only points whose attribute sets are already equal are combined.
   transform/merge:
@@ -137,7 +199,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resource/tenant, transform/receipt, filter/http_server_only, transform/legacy, transform/path_rules, transform/allowlist, transform/merge]
+      processors: [memory_limiter, transform/strip, resource/tenant, transform/receipt, filter/http_server_only, transform/legacy, transform/allowlist, transform/path_rules, transform/unmatched, transform/merge]
       exporters: [otlp_http/writer]
     # BEGIN discard pipelines
     traces:

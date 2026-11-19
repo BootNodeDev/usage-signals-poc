@@ -155,6 +155,14 @@ export function strkeyOf(type, payload) {
   return base32([...body, crc & 0xff, crc >> 8]);
 }
 
+/** A signed-payload strkey (type P): a public key, a length and a 32-byte payload. */
+export function signedPayloadStrkey(seed) {
+  const bytes = Array.from({ length: 64 }, (_, i) => (seed * 13 + i * 29 + 3) & 0xff);
+  const body = [15 << 3, ...bytes.slice(0, 32), 0, 0, 0, 32, ...bytes.slice(32)];
+  const crc = crc16Xmodem(body);
+  return base32([...body, crc & 0xff, crc >> 8]);
+}
+
 /** A strkey with a valid checksum over a payload derived from the seed. */
 export function strkey(type, seed) {
   const length = STRKEY_TYPES[type][1];

@@ -47,5 +47,15 @@ services:
       - .:/app:ro
       - ${CHECK_SCRATCH:?run through run.mjs}:/scratch
 
+  # A tenant's own Collector, the route the design recommends: cumulative to delta, then the
+  # edge. run.mjs writes its configuration and starts it for one case only.
+  tenant-collector:
+    image: otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea
+    command: ["--config=/scratch/tenant-collector.yaml"]
+    ports:
+      - "127.0.0.1:43186:4318"
+    volumes:
+      - ${CHECK_SCRATCH:?run through run.mjs}:/scratch
+
 volumes:
   pgdata:

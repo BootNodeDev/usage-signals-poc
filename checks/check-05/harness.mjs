@@ -1,6 +1,7 @@
 // Plumbing of check 05: the isolated stack, the collector configurations, HTTP and SQL access,
 // and the list of results. The experiment itself is in run.mjs.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import {
   chmodSync,
   existsSync,
@@ -121,6 +122,15 @@ const VARIANTS = {
     text
       .replace('limit_mib: 400', 'limit_mib: 2')
       .replace('spike_limit_mib: 80', 'spike_limit_mib: 1'),
+  // What the first review proposed: delete_key, which removes one occurrence of a key.
+  'strip-first-duplicate-only': (text) =>
+    text.replace(
+      /^( +)- delete_matching_keys\(resource\.attributes, .*\n/m,
+      '$1- delete_key(resource.attributes, "tenant.id")\n$1- delete_key(resource.attributes, "usage_signals.token_id")\n',
+    ),
+  'no-attribute-rebuild': (text) =>
+    text.replace(/^ +- keep_keys\(datapoint\.attributes, \[\]\)\n/m, ''),
+  'keep-exemplars': (text) => text.replace(/^ +- set\(datapoint\.exemplars, nil\)\n/m, ''),
 };
 
 /** Restarts the collector with the design configuration or one of its negative controls. */
@@ -142,7 +152,7 @@ export async function startStack(jwks) {
   writeFileSync(path.join(scratch, 'jwks.json'), JSON.stringify(jwks));
   writeFileSync(CAPTURE, '');
   chmodSync(CAPTURE, 0o666);
-  setWriterMode('ok');
+  writeWriterMode('ok');
   compose('down', '-v', '--remove-orphans');
   compose('up', '-d', '--wait', 'postgres');
   docker(
@@ -184,9 +194,21 @@ export async function startWriter() {
 
 export const stopStack = () => compose('down', '-v', '--remove-orphans');
 
-export function setWriterMode(mode) {
+function writeWriterMode(mode) {
   writeFileSync(path.join(scratch, 'writer-mode'), mode);
   chmodSync(path.join(scratch, 'writer-mode'), 0o666);
+}
+
+/**
+ * Makes the writer answer 503 ("503") or work normally ("ok"), and returns once the writer
+ * itself reports the new mode: a file written on the host reaches a container with a delay.
+ */
+export async function setWriterMode(mode) {
+  writeWriterMode(mode);
+  await waitFor(`the writer to enter mode ${mode}`, async () => {
+    const response = await fetch('http://127.0.0.1:43195/mode').catch(() => null);
+    return response?.ok && (await response.json()).mode === mode;
+  });
 }
 
 /** Every entry the writer logged from the given line on. */
@@ -209,6 +231,8 @@ export function writerSaw(service, fromLine = 0) {
   return {
     accepted: entries.flatMap((entry) => entry.accepted.filter(ofService)),
     refused: entries.flatMap((entry) => entry.refused.filter(ofService)),
+    // Zero-count points: valid, and nothing to store.
+    empty: entries.flatMap((entry) => (entry.empty ?? []).filter(ofService)),
   };
 }
 
@@ -220,8 +244,19 @@ export function queueHolds(text) {
 
 export const queueFiles = () => (existsSync(QUEUE) ? readdirSync(QUEUE) : []);
 
-export async function post(route, body, { token, authorization, gzip = false, headers = {} } = {}) {
-  const requestHeaders = { 'content-type': 'application/json', ...headers };
+export async function post(
+  route,
+  body,
+  {
+    token,
+    authorization,
+    gzip = false,
+    headers = {},
+    contentType = 'application/json',
+    base = COLLECTOR,
+  } = {},
+) {
+  const requestHeaders = { 'content-type': contentType, ...headers };
   if (token) requestHeaders.authorization = `Bearer ${token}`;
   if (authorization !== undefined) requestHeaders.authorization = authorization;
   let payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
@@ -229,7 +264,7 @@ export async function post(route, body, { token, authorization, gzip = false, he
     payload = gzipSync(payload);
     requestHeaders['content-encoding'] = 'gzip';
   }
-  const response = await fetch(`${COLLECTOR}${route}`, {
+  const response = await fetch(`${base}${route}`, {
     method: 'POST',
     headers: requestHeaders,
     body: payload,
@@ -304,6 +339,103 @@ export async function settle(token) {
   if (status !== 200) throw new Error(`the sentinel was answered ${status}`);
   await waitFor('the sentinel point', () => writerSaw(service, from).accepted.length > 0);
   await sleep(500);
+}
+
+export const WRITER = 'http://127.0.0.1:43195';
+export const TENANT_COLLECTOR = 'http://127.0.0.1:43186';
+
+/**
+ * Starts a second collector in the role of a tenant's own Collector: it converts cumulative
+ * histograms to delta and forwards them to the edge with the tenant's token.
+ */
+export async function startTenantCollector(token) {
+  const config = `receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  filter/only_http_server:
+    metric_conditions:
+      - metric.name != "http.server.request.duration"
+  cumulativetodelta:
+exporters:
+  otlp_http:
+    endpoint: http://collector:4318
+    headers:
+      authorization: "Bearer ${token}"
+    sending_queue:
+      enabled: false
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [filter/only_http_server, cumulativetodelta]
+      exporters: [otlp_http]
+`;
+  writeFileSync(path.join(scratch, 'tenant-collector.yaml'), config);
+  compose('up', '-d', '--no-deps', 'tenant-collector');
+  await waitFor('the tenant collector', async () => {
+    try {
+      await fetch(`${TENANT_COLLECTOR}/`, { signal: AbortSignal.timeout(1000) });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+export async function stopPostgres() {
+  compose('stop', 'postgres');
+}
+
+export async function startPostgres() {
+  compose('up', '-d', '--wait', '--no-deps', 'postgres');
+}
+
+/**
+ * Starts service.cjs, sends it the planned HTTP requests, leaves it idle for a while and stops
+ * it so that it flushes.
+ */
+export async function driveRealService({
+  serviceName,
+  temporality,
+  plan,
+  token,
+  exportTo = COLLECTOR,
+  idleMs = 0,
+}) {
+  const env = {
+    ...process.env,
+    CHECK_TEMPORALITY: temporality,
+    CHECK_COLLECTOR: exportTo,
+    CHECK_TOKEN: token,
+    CHECK_SERVICE_NAME: serviceName,
+  };
+  const child = spawn(process.execPath, [path.join(HERE, 'service.cjs')], {
+    env,
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  const [firstLine] = await once(child.stdout, 'data');
+  const port = Number(String(firstLine).trim().split(' ')[1]);
+  const calls = plan.flatMap((item) => Array.from({ length: item.times }, (_, i) => ({ item, i })));
+  const statuses = [];
+  for (const [n, { item, i }] of calls.entries()) {
+    const response = await fetch(`http://127.0.0.1:${port}${item.path(i)}`, {
+      method: item.method,
+    });
+    statuses.push(response.status === item.status);
+    await response.arrayBuffer();
+    // Spread over several export intervals of one second.
+    if (n % 20 === 19) await sleep(250);
+  }
+  await sleep(idleMs);
+  child.kill('SIGTERM');
+  await once(child, 'exit');
+  return { sent: calls.length, answeredAsPlanned: statuses.filter(Boolean).length };
 }
 
 export { sleep };
