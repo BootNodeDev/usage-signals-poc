@@ -18,8 +18,16 @@ CREATE TABLE IF NOT EXISTS usage_signals.site (
   tenant_id         uuid NOT NULL REFERENCES usage_signals.tenant(id),
   domain            text NOT NULL UNIQUE,
   umami_website_id  uuid NOT NULL UNIQUE,
-  created_at        timestamptz NOT NULL DEFAULT now()
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  slug              text NOT NULL UNIQUE
+                    CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length(slug) <= 63)
 );
+
+-- The slug addresses the tenant console (/<slug>/web). Databases created before it existed get
+-- the column here; scripts/seed.mjs fills it and then sets NOT NULL.
+ALTER TABLE usage_signals.site
+  ADD COLUMN IF NOT EXISTS slug text UNIQUE
+  CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length(slug) <= 63);
 
 CREATE INDEX IF NOT EXISTS site_tenant_id_idx ON usage_signals.site (tenant_id);
 

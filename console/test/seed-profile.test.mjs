@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { renderDemoPages } from '../scripts/demo-pages.mjs';
 import { TENANTS } from '../scripts/fixtures.mjs';
 import {
-  PRODUCTION_WEBSITE_ID,
+  PRODUCTION_TENANTS,
+  assertSlugs,
   missingInputs,
+  parseDemoSiteHosts,
   selectProfile,
 } from '../scripts/seed-profile.mjs';
 
@@ -12,65 +13,138 @@ const LOCAL_ENV = {
   DATABASE_URL_UNPOOLED: 'postgresql://local',
   UMAMI_URL: 'http://127.0.0.1:3301',
   UMAMI_ADMIN_PASSWORD: 'local-password',
-  GATEWAY_URL: 'http://localhost:4300',
 };
+const HOSTS = 'site-a.usage-signals.org,site-b.usage-signals.org,site-c.usage-signals.org';
+const CONSOLE = 'console.usage-signals.org';
 const PRODUCTION_ENV = {
   VERCEL: '1',
   VERCEL_ENV: 'production',
-  VERCEL_PROJECT_PRODUCTION_URL: 'console.usage-signals.org',
+  VERCEL_PROJECT_PRODUCTION_URL: CONSOLE,
+  DEMO_SITE_HOSTS: HOSTS,
   DATABASE_URL_UNPOOLED: 'postgresql://neon',
   UMAMI_URL: 'https://umami.usage-signals.org',
   UMAMI_ADMIN_PASSWORD: 'production-password',
 };
-const MANIFEST = { path: '/s/3.5.0-abcdef12/t.js', integrity: 'sha384-AAAA' };
+const RESERVED = /localhost|\.example$|^127\.|^\[::1\]/;
 
 describe('selectProfile', () => {
   it('uses the four local fixtures outside Vercel', () => {
     const profile = selectProfile(LOCAL_ENV);
     assert.equal(profile.name, 'local');
     assert.deepEqual(profile.tenants, TENANTS);
-    assert.deepEqual(profile.demo, {
-      websiteId: TENANTS[0].site.umamiWebsiteId,
-      gatewayOrigin: 'http://localhost:4300',
-    });
   });
 
-  it('uses one tenant on the production host in a Vercel production build', () => {
-    const profile = selectProfile(PRODUCTION_ENV);
-    assert.equal(profile.name, 'production');
-    assert.equal(profile.tenants.length, 1);
-    const [tenant] = profile.tenants;
-    assert.equal(tenant.name, 'Usage Signals demo');
-    assert.equal(tenant.status, 'active');
-    assert.equal(tenant.site.domain, 'console.usage-signals.org');
-    assert.equal(tenant.site.umamiWebsiteId, PRODUCTION_WEBSITE_ID);
-    assert.deepEqual(profile.demo, {
-      websiteId: PRODUCTION_WEBSITE_ID,
-      gatewayOrigin: 'https://console.usage-signals.org',
-    });
+  it('seeds Demo site A, B and C on the configured hosts in production', () => {
+    const { name, tenants } = selectProfile(PRODUCTION_ENV);
+    assert.equal(name, 'production');
+    assert.deepEqual(tenants.map((t) => [t.name, t.site.slug, t.status, t.site.domain]), [
+      ['Demo site A', 'demo-site-a', 'active', 'site-a.usage-signals.org'],
+      ['Demo site B', 'demo-site-b', 'active', 'site-b.usage-signals.org'],
+      ['Demo site C', 'demo-site-c', 'active', 'site-c.usage-signals.org'],
+    ]);
+    const ids = tenants.flatMap((t) => [t.id, t.site.id, t.site.umamiWebsiteId]);
+    assert.equal(new Set(ids).size, 9);
+    assert.deepEqual(selectProfile(PRODUCTION_ENV).tenants, tenants, 'ids change between builds');
   });
 
-  it('never shares an id between the production tenant and the local fixtures', () => {
-    const [tenant] = selectProfile(PRODUCTION_ENV).tenants;
+  it('keeps for Demo site A the ids the first production site was created with', () => {
+    const [siteA] = selectProfile(PRODUCTION_ENV).tenants;
+    assert.equal(siteA.id, 'f0000000-0000-4000-8000-000000000001');
+    assert.equal(siteA.site.id, 'f0000000-0000-4000-8000-0000000000f1');
+    assert.equal(siteA.site.umamiWebsiteId, 'f0000000-0000-4000-8000-0000000000ff');
+    assert.deepEqual(PRODUCTION_TENANTS.map((t) => t.name), ['Demo site A', 'Demo site B', 'Demo site C']);
+  });
+
+  it('never puts a site on the console host, a loopback host or a reserved host', () => {
+    for (const tenant of selectProfile(PRODUCTION_ENV).tenants) {
+      assert.ok(!RESERVED.test(tenant.site.domain) && tenant.site.domain !== CONSOLE, tenant.site.domain);
+    }
+  });
+
+  it('never shares an id between production and the local fixtures', () => {
     const localIds = TENANTS.flatMap((local) => [local.id, local.site.id, local.site.umamiWebsiteId]);
-    for (const id of [tenant.id, tenant.site.id, tenant.site.umamiWebsiteId]) {
-      assert.ok(!localIds.includes(id), id);
+    for (const tenant of selectProfile(PRODUCTION_ENV).tenants) {
+      for (const id of [tenant.id, tenant.site.id, tenant.site.umamiWebsiteId]) {
+        assert.ok(!localIds.includes(id), id);
+      }
     }
   });
 
-  it('refuses a loopback or reserved production host', () => {
-    const hosts = ['localhost', 'localhost:4300', 'app.localhost', '127.0.0.1', 'drift.example', 'EXAMPLE'];
-    for (const host of hosts) {
-      const env = { ...PRODUCTION_ENV, VERCEL_PROJECT_PRODUCTION_URL: host };
-      assert.throws(() => selectProfile(env), /VERCEL_PROJECT_PRODUCTION_URL/, host);
+  it('stops a production build that has no demo host configured', () => {
+    for (const value of [undefined, '']) {
+      assert.throws(() => selectProfile({ ...PRODUCTION_ENV, DEMO_SITE_HOSTS: value }), /DEMO_SITE_HOSTS.*at least one host/);
     }
   });
 
-  it('seeds nothing in a Vercel preview build but still points the demo at production', () => {
-    const profile = selectProfile({ ...PRODUCTION_ENV, VERCEL_ENV: 'preview' });
+  it('seeds nothing in a Vercel preview build', () => {
+    const profile = selectProfile({ ...PRODUCTION_ENV, VERCEL_ENV: 'preview', DEMO_SITE_HOSTS: undefined });
     assert.equal(profile.name, 'preview');
     assert.deepEqual(profile.tenants, []);
-    assert.equal(profile.demo.websiteId, PRODUCTION_WEBSITE_ID);
+  });
+});
+
+describe('parseDemoSiteHosts', () => {
+  it('accepts one to three host names separated by a comma', () => {
+    assert.deepEqual(parseDemoSiteHosts('a.usage-signals.org', CONSOLE), ['a.usage-signals.org']);
+    assert.deepEqual(parseDemoSiteHosts(HOSTS, CONSOLE), HOSTS.split(','));
+  });
+
+  const malformed = {
+    'a scheme': 'https://b.usage-signals.org',
+    'a path': 'b.usage-signals.org/demo',
+    'a port': 'b.usage-signals.org:443',
+    'a space after the comma': 'b.usage-signals.org, c.usage-signals.org',
+    'an empty item': 'b.usage-signals.org,',
+    'upper case': 'B.usage-signals.org',
+    'a single label': 'intranet',
+    'a wildcard': '*.usage-signals.org',
+    'four hosts': `${HOSTS},d.usage-signals.org`,
+  };
+  for (const [what, value] of Object.entries(malformed)) {
+    it(`refuses ${what} and names the variable`, () => {
+      assert.throws(() => parseDemoSiteHosts(value, CONSOLE), /DEMO_SITE_HOSTS/);
+    });
+  }
+
+  it("refuses a host listed twice or equal to the console's own host", () => {
+    assert.throws(() => parseDemoSiteHosts('b.usage-signals.org,b.usage-signals.org', CONSOLE), /twice/);
+    assert.throws(() => parseDemoSiteHosts(CONSOLE, CONSOLE), /console's own host/);
+  });
+
+  it('refuses loopback and reserved hosts', () => {
+    for (const host of ['app.localhost', 'drift.example', '127.0.0.1']) {
+      assert.throws(() => parseDemoSiteHosts(host, CONSOLE), /DEMO_SITE_HOSTS/, host);
+    }
+  });
+});
+
+describe('assertSlugs', () => {
+  const withSlug = (slug, name = 'Some project') => ({ name, site: { slug } });
+
+  it('accepts lower-case letters, digits and single hyphens', () => {
+    assertSlugs(['demo-site-a', 'a', 'x1', 'site-2-b'].map((slug) => withSlug(slug)));
+  });
+
+  for (const reserved of ['api', 'demo', 'operator', 's', 'tenant']) {
+    it(`refuses the reserved word "${reserved}" and names the project`, () => {
+      assert.throws(() => assertSlugs([withSlug(reserved, 'Clashing project')]), /"Clashing project" is reserved/);
+    });
+  }
+
+  it('refuses a malformed slug', () => {
+    const slugs = ['Demo', 'demo_site', 'demo--site', '-demo', 'demo-', 'demo site', 'demo.site', '', undefined, 'x'.repeat(64)];
+    for (const slug of slugs) {
+      assert.throws(() => assertSlugs([withSlug(slug)]), /must be lower-case letters/, String(slug));
+    }
+  });
+
+  it('refuses the same slug on two sites', () => {
+    assert.throws(() => assertSlugs([withSlug('same'), withSlug('same')]), /used by two sites/);
+  });
+
+  it('gives every fixture and every production site a valid slug', () => {
+    assertSlugs(TENANTS);
+    assertSlugs(selectProfile(PRODUCTION_ENV).tenants);
   });
 });
 
@@ -87,38 +161,14 @@ describe('missingInputs', () => {
     });
   }
 
-  const production = ['VERCEL_PROJECT_PRODUCTION_URL', 'DATABASE_URL_UNPOOLED', 'UMAMI_URL', 'UMAMI_ADMIN_PASSWORD'];
+  const production = ['DEMO_SITE_HOSTS', 'DATABASE_URL_UNPOOLED', 'UMAMI_URL', 'UMAMI_ADMIN_PASSWORD'];
   for (const name of production) {
     it(`names ${name} when it is absent or empty in production`, () => {
       assert.deepEqual(missingInputs({ ...PRODUCTION_ENV, [name]: '' }), [name]);
     });
   }
 
-  it('asks a preview build only for the production host', () => {
-    assert.deepEqual(missingInputs({ VERCEL: '1', VERCEL_ENV: 'preview' }), [
-      'VERCEL_PROJECT_PRODUCTION_URL',
-    ]);
-  });
-});
-
-describe('renderDemoPages', () => {
-  const pages = renderDemoPages({ ...selectProfile(PRODUCTION_ENV).demo, manifest: MANIFEST });
-
-  it('renders two pages that link to each other and one outbound link', () => {
-    assert.deepEqual(Object.keys(pages).sort(), ['about.html', 'index.html']);
-    assert.ok(pages['index.html'].includes('href="about.html"'));
-    assert.ok(pages['about.html'].includes('href="./"'));
-    for (const html of Object.values(pages)) assert.ok(html.includes('href="https://stellar.org/"'));
-  });
-
-  it('carries the pinned tag for the site the production seed registers', () => {
-    for (const html of Object.values(pages)) {
-      assert.ok(html.includes('src="https://console.usage-signals.org/s/3.5.0-abcdef12/t.js"'));
-      assert.ok(html.includes('integrity="sha384-AAAA"'));
-      assert.ok(html.includes('crossorigin="anonymous"'));
-      assert.ok(html.includes('data-host-url="https://console.usage-signals.org"'));
-      assert.ok(html.includes(`data-website-id="${PRODUCTION_WEBSITE_ID}"`));
-      assert.ok(!/localhost|\.example/.test(html));
-    }
+  it('asks a preview build for nothing', () => {
+    assert.deepEqual(missingInputs({ VERCEL: '1', VERCEL_ENV: 'preview' }), []);
   });
 });

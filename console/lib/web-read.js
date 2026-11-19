@@ -1,17 +1,43 @@
 // Web figures for one site, read from Umami's statistics API with the admin account. The
-// browser never talks to Umami: it calls /api/web, and this module is the only reader.
-import { findSiteById, listSites } from './db.js';
+// browser never talks to Umami: the tenant and operator endpoints call this module.
 import { umamiGet } from './umami-admin.js';
 
 const RANGES = [7, 30, 90];
 const DAY_MS = 86_400_000;
-const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 // Short shared cache: several viewers cost one read, and a new page view shows within seconds.
 const CACHE_CONTROL = 'public, max-age=0, s-maxage=10';
+// Placeholder values for "aggregates only, with small counts rounded": to be set with the fund.
+export const SMALL_COUNT_BELOW = 100;
+export const SMALL_COUNT_STEP = 10;
 const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'device', browsers: 'browser' };
 
-function json(status, body, headers = {}) {
+export function json(status, body, headers = {}) {
   return Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } });
+}
+
+export function cached(body) {
+  return json(200, body, { 'cache-control': CACHE_CONTROL });
+}
+
+/** Returns the number of days asked for, or null when it is not a supported range. */
+export function rangeParam(request) {
+  const dayCount = Number(new URL(request.url).searchParams.get('days'));
+  return RANGES.includes(dayCount) ? dayCount : null;
+}
+
+export function badRange() {
+  return json(400, { error: `days must be one of ${RANGES.join(', ')}.` });
+}
+
+export function unavailable(error) {
+  console.error(`read: figures unavailable: ${error.message}`);
+  return json(503, { error: 'Figures are unavailable right now. Retry later.' });
+}
+
+/** Counts under the threshold are rounded to the step, so a small audience is not exposed. */
+export function roundSmall(count) {
+  if (count >= SMALL_COUNT_BELOW) return count;
+  return Math.round(count / SMALL_COUNT_STEP) * SMALL_COUNT_STEP;
 }
 
 /** A visitor is counted once per day, so a multi-day figure is the sum of the daily figures. */
@@ -56,7 +82,8 @@ function totalsOf(stats, visitors) {
   };
 }
 
-async function readFigures(site, dayCount) {
+/** Exact figures of one site for the last `dayCount` UTC days, today included. */
+export async function readFigures(site, dayCount) {
   const now = Date.now();
   const { days, startAt, endAt } = rangeOf(dayCount, now);
   const base = `/api/websites/${site.umamiWebsiteId}`;
@@ -73,7 +100,6 @@ async function readFigures(site, dayCount) {
     breakdowns[name] = metrics[index].map((row) => ({ label: row.x, value: row.y }));
   });
   return {
-    site: { id: site.id, name: site.name, domain: site.domain, state: site.state },
     days: dayCount,
     through: new Date(now).toISOString(),
     totals: totalsOf(stats, sumOfDaily(daily)),
@@ -84,36 +110,3 @@ async function readFigures(site, dayCount) {
   };
 }
 
-function unavailable(error) {
-  console.error(`web read: figures unavailable: ${error.message}`);
-  return json(503, { error: 'Figures are unavailable right now. Retry later.' });
-}
-
-/** GET /api/web?site=<site id>&days=7|30|90 */
-export async function handleWebRead(request) {
-  if (request.method !== 'GET') return json(405, { error: 'Use GET.' }, { allow: 'GET' });
-  const query = new URL(request.url).searchParams;
-  const dayCount = Number(query.get('days'));
-  if (!RANGES.includes(dayCount)) {
-    return json(400, { error: `days must be one of ${RANGES.join(', ')}.` });
-  }
-  try {
-    const siteId = query.get('site') ?? '';
-    const site = UUID.test(siteId) ? await findSiteById(siteId.toLowerCase()) : null;
-    if (!site) return json(404, { error: 'No such site.' });
-    return json(200, await readFigures(site, dayCount), { 'cache-control': CACHE_CONTROL });
-  } catch (error) {
-    return unavailable(error);
-  }
-}
-
-/** GET /api/sites */
-export async function handleSites(request) {
-  if (request.method !== 'GET') return json(405, { error: 'Use GET.' }, { allow: 'GET' });
-  try {
-    const sites = await listSites();
-    return json(200, { sites }, { 'cache-control': CACHE_CONTROL });
-  } catch (error) {
-    return unavailable(error);
-  }
-}

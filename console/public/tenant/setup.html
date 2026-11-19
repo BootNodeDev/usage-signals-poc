@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup · Usage Signals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body data-audience="tenant" data-active="setup">
+<div class="frame">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <main class="sheet">
+      <div class="title-row">
+        <div>
+          <h1>Setup</h1>
+          <p class="title-sub">What is registered for this project, and the tag its site loads</p>
+        </div>
+      </div>
+      <div id="content"></div>
+    </main>
+  </div>
+</div>
+
+<script src="/data.js"></script>
+<script>
+(function () {
+  'use strict';
+  var D = window.LData;
+  var content = document.getElementById('content');
+
+  function message(title, text, action) {
+    content.innerHTML = '<div class="empty-state"><h2>' + title + '</h2><p>' + text + '</p>' + (action || '') + '</div>';
+  }
+
+  /* Shared by the three tenant pages: what to show when the address names no project. */
+  function projectMissing(message) {
+    var status = D.status();
+    if (status.state === 'error') {
+      message('The project could not be read', App.escapeHtml(status.error || '') + ' Nothing is shown in its place.',
+        '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
+      document.getElementById('retry').addEventListener('click', function () { window.location.reload(); });
+    } else {
+      message('Project not found', 'No project is registered at this address. The console is opened from a project\'s own address.');
+    }
+  }
+
+  var PLANNED = [
+    'Sign-in with a Stellar wallet',
+    'Notification channel for notices about the project',
+    'Domain proof by page tag, DNS TXT record or stellar.toml',
+    'Evidence of the project and its review',
+    'Data processing agreement',
+    'Ingest token and endpoint for API metrics'
+  ];
+  var STATE_NOTES = {
+    active: 'Page views from the registered domain are counted.',
+    suspended: 'Events from this project are refused and nothing is counted.',
+    pending_verification: 'Nothing is counted yet.',
+    pending_approval: 'Nothing is counted yet.',
+    unverified: 'Nothing is counted yet.',
+    removed: ''
+  };
+
+  function start() {
+    var App = window.App;
+    var esc = App.escapeHtml;
+    var project = App.tenant;
+    var tracker = D.meta().tracker;
+    if (!project) { projectMissing(message); return; }
+
+    var origin = window.location.origin;
+    var tag = '<script\n  defer\n  src="' + origin + tracker.path + '"\n  integrity="' + tracker.integrity + '"\n  crossorigin="anonymous"\n' +
+      '  data-host-url="' + origin + '"\n  data-website-id="' + project.website_id + '"\n><\/script>';
+
+    content.innerHTML =
+      '<section class="block"><div class="block-head"><h2>Project</h2></div>' +
+      '<dl class="kv"><dt>Name</dt><dd>' + esc(project.name) + '</dd>' +
+      '<dt>Registered domain</dt><dd class="mono">' + esc(project.domain) + '</dd>' +
+      '<dt>State</dt><dd>' + App.statePill(project.state) + ' <span class="muted">' + esc(STATE_NOTES[project.state] || '') + '</span></dd>' +
+      '<dt>How it was registered</dt><dd>Seeded when this prototype was deployed. There is no enrollment flow yet.</dd></dl></section>' +
+
+      '<section class="block"><div class="block-head"><h2>Tracking tag</h2></div>' +
+      '<p class="muted">Add this to every page of <span class="mono">' + esc(project.domain) + '</span>. The file is pinned: tracker version <b>' + esc(tracker.version) +
+      '</b>, and the browser refuses it if its content does not match the integrity value.</p>' +
+      '<pre class="code" id="tag"></pre>' +
+      '<p class="muted">Events are accepted only when the page\'s origin is exactly the registered domain, over https (http is accepted for a local address only).</p></section>' +
+
+      '<section class="block"><div class="block-head"><h2>Check that it works</h2></div>' +
+      '<ol class="steps"><li>Open a page of the site that carries the tag.</li>' +
+      '<li>In the browser\'s network panel, the request to <span class="mono">/api/e</span> answers <b>202</b>. A <b>403</b> means the page is not on the registered domain.</li>' +
+      '<li>Open <a href="/' + encodeURIComponent(project.slug) + '/web">Web</a>: the page view appears within about ten seconds.</li></ol></section>' +
+
+      '<section class="block"><div class="block-head"><h2>Planned, not in this prototype</h2></div>' +
+      '<ul class="steps">' + PLANNED.map(function (item) { return '<li>' + item + '</li>'; }).join('') + '</ul></section>';
+    document.getElementById('tag').textContent = tag;
+  }
+
+  message('Loading', 'Reading the project.');
+  D.boot(start);
+})();
+</script>
+</body>
+</html>

@@ -42,7 +42,8 @@ export async function isDomainOfActiveTenant(domain) {
   return rowCount > 0;
 }
 
-const SITE_COLUMNS = `s.id, t.name, s.domain, t.status AS state`;
+const SITE_COLUMNS = `s.id, s.slug, t.name, s.domain, t.status AS state, s.umami_website_id AS "umamiWebsiteId"`;
+const SITE_ORDER = 's.created_at, s.id';
 
 /** Sites of every project that has not been removed, oldest first. */
 export async function listSites() {
@@ -51,18 +52,31 @@ export async function listSites() {
        FROM usage_signals.site s
        JOIN usage_signals.tenant t ON t.id = s.tenant_id
       WHERE t.status <> 'removed'
-      ORDER BY s.created_at, s.id`,
+      ORDER BY ${SITE_ORDER}`,
   );
   return rows;
 }
 
-export async function findSiteById(siteId) {
+export async function findSiteBySlug(slug) {
   const { rows } = await getPool().query(
-    `SELECT ${SITE_COLUMNS}, s.umami_website_id AS "umamiWebsiteId"
+    `SELECT ${SITE_COLUMNS}
        FROM usage_signals.site s
        JOIN usage_signals.tenant t ON t.id = s.tenant_id
-      WHERE s.id = $1 AND t.status <> 'removed'`,
-    [siteId],
+      WHERE s.slug = $1 AND t.status <> 'removed'`,
+    [slug],
+  );
+  return rows[0] ?? null;
+}
+
+/** The active site registered for this host, with its 0-based position among all sites. */
+export async function findActiveSiteByDomain(domain) {
+  const { rows } = await getPool().query(
+    `SELECT *
+       FROM (SELECT ${SITE_COLUMNS}, (row_number() OVER (ORDER BY ${SITE_ORDER}))::int - 1 AS position
+               FROM usage_signals.site s
+               JOIN usage_signals.tenant t ON t.id = s.tenant_id) ranked
+      WHERE domain = $1 AND state = 'active'`,
+    [domain],
   );
   return rows[0] ?? null;
 }

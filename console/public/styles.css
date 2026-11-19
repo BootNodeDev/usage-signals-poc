@@ -74,10 +74,6 @@ code { background: var(--tone); padding: 1px 4px; }
 .nav svg { flex: none; }
 .sidebar-foot { margin-top: auto; display: grid; gap: 16px; padding: 0 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
 .account b { display: block; color: var(--ink); font-weight: 500; font-size: 14px; line-height: 20px; overflow: hidden; text-overflow: ellipsis; }
-.demo { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--rule); }
-.demo .seg { width: 100%; background: var(--ink-tint); }
-.demo .seg a { flex: 1; height: 24px; font-size: 12px; }
-.demo select { height: 28px; width: 100%; padding: 0 6px; font-size: 12px; background: var(--ground); border: 1px solid var(--control); }
 
 .main { display: flex; flex-direction: column; min-width: 0; }
 .notice {
@@ -487,7 +483,6 @@ table.rows td.col-check, table.rows th.col-check { width: 36px; padding-right: 0
   .nav { grid-auto-flow: column; }
   .scope, .account { display: none; }
   .sidebar-foot { margin: 0 0 0 auto; }
-  .demo { border: 0; padding: 0; grid-auto-flow: column; align-items: center; }
   .notice { position: static; padding: 6px 16px; }
   .sheet { padding: 20px 16px 64px; }
   .setup { grid-template-columns: minmax(0, 1fr); }

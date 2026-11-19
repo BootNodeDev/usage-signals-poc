@@ -1,13 +1,13 @@
-// Local stand-in for the Vercel platform: serves public/, sends /api/* to the shared function
-// in api/index.js (the same rewrite vercel.json declares) and serves public/ again on a second
-// port so the demo pages under /demo/ have a different Origin from the gateway.
+// Local stand-in for the Vercel platform: serves public/ with clean URLs and sends /api/* and
+// /demo/* to the shared function in api/index.js, as vercel.json declares.
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import api from './api/index.js';
 import { requireEnv } from './lib/config.js';
 
-const ROOT = import.meta.dirname;
+const PUBLIC_ROOT = path.join(import.meta.dirname, 'public');
+const TENANT_SCREEN = /^\/[^/]+\/(web|requests|setup)$/;
 const CONTENT_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -52,23 +52,46 @@ async function runFunction(incoming, outgoing) {
   outgoing.end(Buffer.from(await response.arrayBuffer()));
 }
 
-async function serveStatic(directory, incoming, outgoing, extraHeaders = {}) {
+async function sendFile(file, outgoing, extraHeaders) {
+  const content = await readFile(file);
+  const type = CONTENT_TYPES[path.extname(file)] ?? 'application/octet-stream';
+  outgoing.writeHead(200, { 'content-type': type, ...extraHeaders });
+  outgoing.end(content);
+}
+
+// Mirrors Vercel's cleanUrls: /web serves web.html, and /web.html redirects to /web with 308.
+async function serveStatic(incoming, outgoing) {
   const pathname = decodeURIComponent(new URL(incoming.url, 'http://localhost').pathname);
-  const relative = pathname.endsWith('/') ? `${pathname}index.html` : pathname;
-  const file = path.join(directory, relative);
-  if (!file.startsWith(directory + path.sep)) {
-    outgoing.writeHead(403).end();
+  const file = path.join(PUBLIC_ROOT, pathname);
+  if (!file.startsWith(PUBLIC_ROOT + path.sep)) {
+    outgoing.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
     return;
   }
+  if (pathname.endsWith('.html')) {
+    outgoing.writeHead(308, { location: pathname.slice(0, -'.html'.length) }).end();
+    return;
+  }
+  const extraHeaders = pathname.startsWith('/s/') ? PINNED_ASSET_HEADERS : {};
+  const candidate = path.extname(file) ? file : `${file}.html`;
   try {
-    const content = await readFile(file);
-    const type = CONTENT_TYPES[path.extname(file)] ?? 'application/octet-stream';
-    outgoing.writeHead(200, { 'content-type': type, ...extraHeaders });
-    outgoing.end(content);
+    await sendFile(candidate, outgoing, extraHeaders);
   } catch (error) {
     if (error.code !== 'ENOENT' && error.code !== 'EISDIR') throw error;
     outgoing.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
   }
+}
+
+// The rewrites of vercel.json: /api/* and /demo/* go to the function, and /<slug>/<screen>
+// serves the one tenant page for that screen, whatever the slug.
+function route(incoming, outgoing) {
+  const { pathname } = new URL(incoming.url, 'http://localhost');
+  if (pathname.startsWith('/api/') || pathname === '/demo' || pathname.startsWith('/demo/')) {
+    return runFunction(incoming, outgoing);
+  }
+  const tenant = pathname.match(TENANT_SCREEN);
+  if (tenant) incoming.url = `/tenant/${tenant[1]}`;
+  else if (pathname === '/') incoming.url = '/index';
+  return serveStatic(incoming, outgoing);
 }
 
 function listen(name, port, handler) {
@@ -82,12 +105,7 @@ function listen(name, port, handler) {
   server.listen(port, '127.0.0.1', () => console.log(`${name}: http://localhost:${port}`));
 }
 
-listen('gateway', Number(requireEnv('GATEWAY_PORT')), (incoming, outgoing) => {
-  if (incoming.url.startsWith('/api/')) return runFunction(incoming, outgoing);
-  const headers = incoming.url.startsWith('/s/') ? PINNED_ASSET_HEADERS : {};
-  return serveStatic(path.join(ROOT, 'public'), incoming, outgoing, headers);
-});
-
-listen('demo site', Number(requireEnv('DEMO_PORT')), (incoming, outgoing) =>
-  serveStatic(path.join(ROOT, 'public'), incoming, outgoing),
-);
+// The second port serves the same deployment under another host, as an extra domain does on
+// Vercel: its /demo/ pages belong to the site registered for that host.
+listen('gateway', Number(requireEnv('GATEWAY_PORT')), route);
+listen('demo site', Number(requireEnv('DEMO_PORT')), route);

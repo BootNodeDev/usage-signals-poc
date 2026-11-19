@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="/styles.css">
 </head>
 <body data-audience="tenant" data-active="web">
 <div class="frame">
@@ -57,8 +57,8 @@
   </div>
 </div>
 
-<script src="data.js"></script>
-<script src="charts.js"></script>
+<script src="/data.js"></script>
+<script src="/charts.js"></script>
 <script>
 (function () {
   'use strict';
@@ -72,12 +72,16 @@
     byId('empty').innerHTML = '<div class="empty-state"><h2>' + title + '</h2><p>' + text + '</p>' + (action || '') + '</div>';
   }
 
-  function loadScript(src, done) {
-    var script = document.createElement('script');
-    script.src = src;
-    script.onload = done;
-    script.onerror = function () { message('This page could not be loaded', 'A script failed to load. Reload the page.'); };
-    document.body.appendChild(script);
+  /* Shared by the three tenant pages: what to show when the address names no project. */
+  function projectMissing(message) {
+    var status = D.status();
+    if (status.state === 'error') {
+      message('The project could not be read', App.escapeHtml(status.error || '') + ' Nothing is shown in its place.',
+        '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
+      document.getElementById('retry').addEventListener('click', function () { window.location.reload(); });
+    } else {
+      message('Project not found', 'No project is registered at this address. The console is opened from a project\'s own address.');
+    }
   }
 
   function start() {
@@ -94,11 +98,6 @@
     };
     var retry = '<button class="btn btn-primary" type="button" id="retry">Try again</button>';
 
-    function stamp() {
-      var through = D.status().through;
-      return through ? 'Through ' + fmt.date(through.slice(0, 10)) + ', ' + through.slice(11, 16) + ' UTC' : '';
-    }
-
     function figure(label, value, note) {
       return '<div class="figure"><div class="figure-label">' + label + '</div>' +
         '<div class="figure-value">' + value + '</div><div class="figure-note">' + note + '</div></div>';
@@ -109,12 +108,12 @@
         '<div class="figure hero"><div class="figure-label">' +
         App.info('pageviews', 'Page views', '<p>Every page view the tracker reported, as counted. Known bots are excluded before counting.</p>' +
           '<p>This prototype does not classify traffic yet, so there is no flagged or filtered figure: nothing has been checked, and nothing has been removed.</p>') + '</div>' +
-        '<div class="figure-row"><div class="figure-value">' + fmt.int(t.pageviews_raw) + '</div>' +
-        '<div class="figure-note">' + App.delta(t.pageviews_raw, prior && prior.pageviews_raw, { range: range, good: 'up' }) + '</div></div>' +
+        '<div class="figure-row"><div class="figure-value">' + fmt.int(t.pageviews) + '</div>' +
+        '<div class="figure-note">' + App.delta(t.pageviews, prior && prior.pageviews, { range: range, good: 'up' }) + '</div></div>' +
         '<div class="flagline"><span><b>' + NOT_CLASSIFIED + '</b> <span class="muted">· flagged traffic and the rules that fired will show here</span></span></div></div>' +
 
         figure(App.info('visitors', 'Visitors (sum of daily)', '<p>A visitor is counted once per day and never linked across days, so a multi-day figure is the sum of daily visitors.</p>'),
-          fmt.int(t.visitors_raw), NOT_CLASSIFIED) +
+          fmt.int(t.visitors), NOT_CLASSIFIED) +
         figure(App.info('duration', 'Visit duration', '<p>A visit is one visitor\'s activity within one clock hour.</p><p>Average over <b>' + fmt.int(t.visits) + '</b> visits.</p>'),
           fmt.duration(t.avg_visit_seconds), App.delta(t.avg_visit_seconds, prior && prior.avg_visit_seconds, { range: range, good: 'up' })) +
         figure(App.info('bounce', 'Bounce rate', '<p>A bounce is a visit with one page view and no custom event.</p><p><b>' + fmt.int(t.bounces) + '</b> of <b>' + fmt.int(t.visits) + '</b> visits.</p>'),
@@ -123,7 +122,7 @@
 
     function renderBreakdown() {
       byId('breakdown-caption').textContent = dimensions[state.tab];
-      App.barList(byId('breakdown'), D.breakdown(project.id, state.tab));
+      App.barList(byId('breakdown'), D.breakdown(state.tab));
     }
 
     function renderEmpty(range) {
@@ -140,17 +139,17 @@
     }
 
     function paint(range) {
-      var result = D.web(project.id, range);
+      var result = D.web(range);
       var t = result.totals;
       var rows = result.rows;
-      byId('stamp').textContent = stamp();
+      byId('stamp').textContent = App.stamp();
       if (!t) { renderEmpty(range); return; }
       byId('content').hidden = false;
       byId('empty').hidden = true;
 
       renderHeadline(t, result.prior, range);
       byId('legend').innerHTML = Charts.legend(series) + '<span class="muted">Flagged band: ' + NOT_CLASSIFIED.toLowerCase() + '</span>';
-      series[0].values = rows.map(function (r) { return r.pageviews_raw; });
+      series[0].values = rows.map(function (r) { return r.pageviews; });
       Charts.columns(byId('chart'), {
         label: 'Page views per day, as counted, last ' + range + ' days',
         labels: rows.map(function (r) { return fmt.day(r.day); }),
@@ -158,22 +157,15 @@
         annotations: [], emptyText: 'No page views in this period.'
       });
       App.dataTable(byId('table'), ['Day', 'Page views', 'Visitors', 'Flagged'], rows.slice().reverse().map(function (r) {
-        return [fmt.date(r.day), fmt.int(r.pageviews_raw), fmt.int(r.visitors_raw), 'Not classified'];
+        return [fmt.date(r.day), fmt.int(r.pageviews), fmt.int(r.visitors), 'Not classified'];
       }));
       renderBreakdown();
     }
 
     function render(range) {
       state.range = range;
-      if (!project) {
-        message('No project', D.status().error
-          ? 'The list of projects could not be read: ' + App.escapeHtml(D.status().error)
-          : 'No project is enrolled yet.', D.status().error ? retry : '');
-        if (byId('retry')) byId('retry').addEventListener('click', function () { window.location.reload(); });
-        return;
-      }
       message('Loading figures', 'Reading the last ' + range + ' days for ' + App.escapeHtml(project.domain) + '.');
-      D.loadWeb(project.id, range).then(function () {
+      D.loadWeb(range).then(function () {
         if (state.range === range) paint(range);
       }, function (error) {
         if (state.range !== range) return;
@@ -183,6 +175,7 @@
       });
     }
 
+    if (!project) { projectMissing(message); return; }
     if (!dimensions[state.tab]) state.tab = 'referrers';
     Array.prototype.forEach.call(byId('tabs').children, function (tab) {
       tab.setAttribute('aria-selected', String(tab.dataset.tab === state.tab));
@@ -190,15 +183,14 @@
     App.tabs(byId('tabs'), function (tab) {
       state.tab = tab;
       App.store.set('web-tab', tab);
-      if (project && D.web(project.id, state.range).totals) renderBreakdown();
+      if (D.web(state.range).totals) renderBreakdown();
     });
     App.viewToggle(byId('toggle'), byId('chart'), byId('table'));
     App.rangeControl(byId('range'), render);
   }
 
-  /* The seam is asked which projects exist before app.js picks one. */
-  message('Loading', 'Reading the list of projects.');
-  D.connect().then(function () { loadScript('app.js', start); });
+  message('Loading', 'Reading the project.');
+  D.boot(start);
 })();
 </script>
 </body>

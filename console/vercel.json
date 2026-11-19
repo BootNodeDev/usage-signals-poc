@@ -2,10 +2,31 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "buildCommand": "node scripts/seed.mjs",
+  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api"
+    },
+    {
+      "source": "/demo",
+      "destination": "/api"
+    },
+    {
+      "source": "/demo/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/:slug/web",
+      "destination": "/tenant/web"
+    },
+    {
+      "source": "/:slug/requests",
+      "destination": "/tenant/requests"
+    },
+    {
+      "source": "/:slug/setup",
+      "destination": "/tenant/setup"
     }
   ],
   "headers": [

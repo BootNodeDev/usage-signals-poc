@@ -426,9 +426,9 @@ describe('gateway', () => {
     assert.equal(tracker.headers.get('access-control-allow-origin'), '*');
     const digest = createHash('sha384').update(Buffer.from(await tracker.arrayBuffer()));
     assert.equal(`sha384-${digest.digest('base64')}`, manifest.integrity);
-    for (const page of ['/demo/', '/demo/about.html']) {
+    for (const page of ['/demo/', '/demo/pricing']) {
       const html = await (await fetch(`${DEMO}${page}`)).text();
-      assert.ok(html.includes(`src="${GATEWAY}${manifest.path}"`), `${page} script src`);
+      assert.ok(html.includes(`src="${DEMO}${manifest.path}"`), `${page} script src`);
       assert.ok(html.includes(`integrity="${manifest.integrity}"`), `${page} integrity`);
       assert.ok(html.includes('crossorigin="anonymous"'), `${page} crossorigin`);
       assert.ok(html.includes(`data-website-id="${SITE_A.umamiWebsiteId}"`), `${page} site`);

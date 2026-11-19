@@ -1,29 +1,32 @@
-// Applies db/schema.sql, creates the Umami websites, upserts the tenants and sites of the
-// profile for this environment and renders the demo pages. Safe to run repeatedly. It is the
+// Applies db/schema.sql, creates the Umami websites and upserts the tenants and sites of the
+// profile for this environment. Safe to run repeatedly. It is the
 // Vercel build command (vercel.json), so its messages must never carry a connection string.
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import { umamiLogin, umamiRequest } from '../lib/umami-admin.js';
-import { writeDemoPages } from './demo-pages.mjs';
 import { missingInputs, selectProfile } from './seed-profile.mjs';
 
 const SCHEMA_FILE = path.resolve(import.meta.dirname, '..', 'db', 'schema.sql');
 
+async function umamiWrite(session, path, body, action) {
+  const response = await umamiRequest(session, path, { method: 'POST', body: JSON.stringify(body) });
+  if (!response.ok) {
+    throw new Error(`Umami refused to ${action} (HTTP ${response.status}): ${await response.text()}`);
+  }
+}
+
+// Creates the website, or renames it when a site was renamed or moved to another host.
 async function ensureUmamiWebsite(session, tenant) {
-  const { umamiWebsiteId, domain } = tenant.site;
+  const { umamiWebsiteId: id, domain } = tenant.site;
+  const wanted = { name: tenant.name, domain };
   // Umami answers 200 with a null body for a website that does not exist.
-  const existing = await umamiRequest(session, `/api/websites/${umamiWebsiteId}`);
-  if (existing.ok && (await existing.json())?.id === umamiWebsiteId) return;
-  const created = await umamiRequest(session, '/api/websites', {
-    method: 'POST',
-    body: JSON.stringify({ id: umamiWebsiteId, name: tenant.name, domain }),
-  });
-  if (!created.ok) {
-    throw new Error(
-      `Umami refused to create website ${umamiWebsiteId} (HTTP ${created.status}): ` +
-        `${await created.text()}`,
-    );
+  const response = await umamiRequest(session, `/api/websites/${id}`);
+  const existing = response.ok ? await response.json() : null;
+  if (existing?.id !== id) {
+    await umamiWrite(session, '/api/websites', { id, ...wanted }, `create website ${id}`);
+  } else if (existing.name !== wanted.name || existing.domain !== wanted.domain) {
+    await umamiWrite(session, `/api/websites/${id}`, wanted, `update website ${id}`);
   }
 }
 
@@ -34,11 +37,12 @@ async function upsertTenant(client, tenant) {
     [tenant.id, tenant.name, tenant.status],
   );
   await client.query(
-    `INSERT INTO usage_signals.site (id, tenant_id, domain, umami_website_id)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO usage_signals.site (id, tenant_id, domain, umami_website_id, slug)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (id) DO UPDATE
-       SET domain = EXCLUDED.domain, umami_website_id = EXCLUDED.umami_website_id`,
-    [tenant.site.id, tenant.id, tenant.site.domain, tenant.site.umamiWebsiteId],
+       SET domain = EXCLUDED.domain, umami_website_id = EXCLUDED.umami_website_id,
+           slug = EXCLUDED.slug`,
+    [tenant.site.id, tenant.id, tenant.site.domain, tenant.site.umamiWebsiteId, tenant.site.slug],
   );
 }
 
@@ -64,6 +68,7 @@ async function seedTenants(tenants) {
       await ensureUmamiWebsite(session, tenant);
       await upsertTenant(client, tenant);
     }
+    await client.query('ALTER TABLE usage_signals.site ALTER COLUMN slug SET NOT NULL');
   } finally {
     await client.end();
   }
@@ -79,7 +84,6 @@ async function main() {
   }
   const profile = selectProfile(process.env);
   if (profile.tenants.length > 0) await seedTenants(profile.tenants);
-  await writeDemoPages(profile.demo);
   const names = profile.tenants.map((tenant) => `${tenant.name} (${tenant.status})`).join(', ');
   console.log(`Seeded ${profile.tenants.length} tenants with the ${profile.name} profile: ${names}`);
 }

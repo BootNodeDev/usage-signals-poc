@@ -6,6 +6,7 @@ export const TENANTS = [
     status: 'active',
     site: {
       id: 'a0000000-0000-4000-8000-0000000000a1',
+      slug: 'aurora-wallet',
       domain: 'localhost:4301',
       umamiWebsiteId: 'a0000000-0000-4000-8000-0000000000aa',
     },
@@ -16,6 +17,7 @@ export const TENANTS = [
     status: 'active',
     site: {
       id: 'b0000000-0000-4000-8000-0000000000b1',
+      slug: 'blend-explorer',
       domain: 'localhost:4302',
       umamiWebsiteId: 'b0000000-0000-4000-8000-0000000000bb',
     },
@@ -26,6 +28,7 @@ export const TENANTS = [
     status: 'suspended',
     site: {
       id: 'c0000000-0000-4000-8000-0000000000c1',
+      slug: 'comet-pay',
       domain: 'localhost:4303',
       umamiWebsiteId: 'c0000000-0000-4000-8000-0000000000cc',
     },
@@ -36,6 +39,7 @@ export const TENANTS = [
     status: 'active',
     site: {
       id: 'd0000000-0000-4000-8000-0000000000d1',
+      slug: 'drift-markets',
       domain: 'drift.example',
       umamiWebsiteId: 'd0000000-0000-4000-8000-0000000000dd',
     },

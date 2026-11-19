@@ -1,15 +1,13 @@
-/* Shared shell, formatters and small components for the Usage Signals mockups. */
+/* Shared shell, formatters and small components for the Usage Signals consoles. */
 (function () {
   'use strict';
 
   var D = window.LData;
   var META = D.meta();
-  /* Live pages show what the tracker observed; every other page shows sample data. */
-  var LIVE = D.status().live;
   var RANGES = [7, 30, 90];
-  var INERT_NOTE = 'Inactive in the proof of concept';
-  var SAMPLE_NOTICE = 'Project names are real SCF-awarded projects used as examples. ' +
-    'All figures are invented; no project has been measured.';
+  var NOT_IN_PROTOTYPE = 'Not in this prototype';
+  var TENANT_NAV = [['web', 'Web'], ['requests', 'API'], ['setup', 'Setup']];
+  var OPERATOR_NAV = [['/operator/projects', 'projects', 'Projects'], ['/operator/access', 'access', 'Access']];
 
   /* Session storage is a convenience: every read and write may fail in a sandboxed viewer. */
   var store = {
@@ -21,14 +19,8 @@
     }
   };
 
-  /* The tenant shown comes from ?project=<id or slug>, then from the session, then the default.
-     An unknown value falls back to the default. */
-  var requested = null;
-  try { requested = new URLSearchParams(window.location.search).get('project'); } catch (error) { /* no query string here */ }
-  var tenant = (requested ? D.project(requested) : D.project(store.get('project') || '')) ||
-    D.project(META.default_project_id) || D.projects()[0] || null;
-  if (tenant && requested && D.project(requested)) store.set('project', tenant.slug);
-  var projectQuery = tenant && tenant.id !== META.default_project_id ? '?project=' + encodeURIComponent(tenant.slug) : '';
+  /* The project of a tenant page, as the seam resolved it. Operator pages have none. */
+  var tenant = D.project();
 
   var STATES = {
     pending_verification: ['Pending verification', 'pill pill-warning'],
@@ -42,6 +34,7 @@
   var icons = {
     web: '<path d="M2 2.5h12v11H2zM2 6h12M6 6v7.5"/>',
     api: '<path d="M5 4.5 1.75 8 5 11.5M11 4.5 14.25 8 11 11.5M9.25 3 6.75 13"/>',
+    requests: '<path d="M5 4.5 1.75 8 5 11.5M11 4.5 14.25 8 11 11.5M9.25 3 6.75 13"/>',
     setup: '<path d="M2 4.5h12M2 8h12M2 11.5h7"/>',
     projects: '<path d="M2 4h12M2 8h12M2 12h12"/>',
     access: '<path d="M2.5 7.5h11v6h-11zM5 7.5V5a3 3 0 0 1 6 0v2.5"/>',
@@ -127,7 +120,7 @@
   }
 
   function projectName(project) {
-    return escapeHtml(project.name) + (project.fictional ? ' <span class="tag tag-fictional">Fictional</span>' : '');
+    return escapeHtml(project.name);
   }
 
   function dash() { return '<span class="muted" aria-label="No data">–</span>'; }
@@ -305,7 +298,8 @@
   }
 
   function stamp() {
-    return 'Through ' + fmt.date(META.last_complete_day) + ' (UTC) · rule set ' + META.rule_set_version;
+    var through = D.status().through;
+    return through ? 'Through ' + fmt.date(through.slice(0, 10)) + ', ' + through.slice(11, 16) + ' UTC' : '';
   }
 
   /* Plot height follows the window so the first viewport holds the whole answer. */
@@ -319,65 +313,40 @@
     return '<a href="' + href + '"' + (active === name ? ' aria-current="page"' : '') + '>' + icon(name) + text + '</a>';
   }
 
-  function shell() {
-    var audience = document.body.dataset.audience;
-    var active = document.body.dataset.active;
-    var isOperator = audience === 'operator';
-    var scope = isOperator
-      ? '<div class="scope-name">Stellar Community Fund</div><div class="scope-meta"><span>Operator view, all projects</span></div>'
-      : (tenant
-        ? '<div class="scope-name">' + projectName(tenant) + '</div><div class="scope-meta"><span>' + escapeHtml(tenant.domain) + '</span>' +
-          statePill(tenant.state) + '</div>'
-        : '<div class="scope-name">No project</div>');
-    var nav = isOperator
-      ? navLink('operator.html', 'projects', 'Projects', active) + navLink('operator-access.html', 'access', 'Access', active)
-      : navLink('tenant-web.html' + projectQuery, 'web', 'Web', active) +
-        navLink('tenant-api.html' + projectQuery, 'api', 'API', active) +
-        navLink('enroll.html' + projectQuery, 'setup', 'Setup', active);
-    var account = isOperator
-      ? '<div class="account"><b>' + escapeHtml(META.operator_account) + '</b>Allowlisted account, one-time code</div>'
-      : (LIVE
-        ? '<div class="account"><b>No sign-in</b>This prototype has no accounts: the figures of the listed projects are public.</div>'
-        : '<div class="account"><b class="mono" title="Sample account">' + escapeHtml(fmt.account(tenant && tenant.account)) +
-          '</b>Signed in with a Stellar wallet</div>');
-    var picker = isOperator ? '' : '<select id="demo-project" aria-label="' + (LIVE ? 'Project' : 'Sample project') + '">' + D.projects().map(function (p) {
-      return '<option value="' + escapeHtml(p.slug) + '"' + (tenant && p.id === tenant.id ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
-    }).join('') + '</select>';
-
-    document.getElementById('sidebar').innerHTML =
-      '<a class="brand" href="' + (isOperator ? 'operator.html' : 'tenant-web.html' + projectQuery) + '">' + tally(5, 26) +
-      '<span>' + escapeHtml(META.product_name) + '</span></a>' +
-      '<div class="scope">' + scope + '</div>' +
-      '<nav class="nav" aria-label="Main">' + nav + '</nav>' +
-      '<div class="sidebar-foot">' + account +
-      '<div class="demo" title="Switches the sample view. Not part of the product: tenants and operators sign in separately."><span>Demo control</span>' +
-      '<div class="seg" role="group" aria-label="Sample view">' +
-      '<a href="tenant-web.html' + projectQuery + '" aria-current="' + !isOperator + '">Tenant</a>' +
-      '<a href="operator.html" aria-current="' + isOperator + '">Operator</a></div>' + picker + '</div></div>';
-
-    var select = document.getElementById('demo-project');
-    if (select) {
-      select.addEventListener('change', function () {
-        store.set('project', select.value);
-        window.location.href = window.location.pathname.split('/').pop() + '?project=' + encodeURIComponent(select.value);
-      });
-    }
-
-    if (LIVE) return;
-    var main = document.querySelector('.main');
-    var notice = document.createElement('p');
-    notice.className = 'notice';
-    notice.setAttribute('role', 'note');
-    notice.innerHTML = '<b>Sample data</b><span>' + SAMPLE_NOTICE + '</span>';
-    main.insertBefore(notice, main.firstChild);
+  /* The two consoles share nothing but this frame: each builds its navigation from its own
+     list, and neither links to the other. */
+  function tenantShell(active) {
+    var slug = D.currentProjectSlug();
+    var base = '/' + encodeURIComponent(slug || '');
+    var scope = tenant
+      ? '<div class="scope-name">' + projectName(tenant) + '</div><div class="scope-meta"><span>' + escapeHtml(tenant.domain) + '</span>' +
+        statePill(tenant.state) + '</div>'
+      : '<div class="scope-name">No project</div>';
+    var nav = tenant ? TENANT_NAV.map(function (item) { return navLink(base + '/' + item[0], item[0], item[1], active); }).join('') : '';
+    return '<a class="brand" href="' + (tenant ? base + '/web' : '#') + '">' + tally(5, 26) + '<span>' + escapeHtml(META.product_name) + '</span></a>' +
+      '<div class="scope">' + scope + '</div><nav class="nav" aria-label="Main">' + nav + '</nav>' +
+      '<div class="sidebar-foot"><div class="account"><b>No sign-in</b>This prototype has no accounts: the address names the project.</div></div>';
   }
 
-  /* A live page loads this file after its first read, when the document is already parsed. */
+  function operatorShell(active) {
+    return '<a class="brand" href="/operator/projects">' + tally(5, 26) + '<span>' + escapeHtml(META.product_name) + '</span></a>' +
+      '<div class="scope"><div class="scope-name">Stellar Community Fund</div><div class="scope-meta"><span>Operator console, all projects</span></div></div>' +
+      '<nav class="nav" aria-label="Main">' + OPERATOR_NAV.map(function (item) { return navLink(item[0], item[1], item[2], active); }).join('') + '</nav>' +
+      '<div class="sidebar-foot"><div class="account"><b>No sign-in</b>This prototype has no accounts: anyone with this address sees it.</div></div>';
+  }
+
+  function shell() {
+    var active = document.body.dataset.active;
+    var isOperator = document.body.dataset.audience === 'operator';
+    document.getElementById('sidebar').innerHTML = isOperator ? operatorShell(active) : tenantShell(active);
+  }
+
+  /* Pages load this file after their first read, when the document is already parsed. */
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', shell);
   else shell();
 
   window.App = {
-    tenant: tenant, projectQuery: projectQuery, INERT_NOTE: INERT_NOTE, store: store,
+    tenant: tenant, NOT_IN_PROTOTYPE: NOT_IN_PROTOTYPE, store: store,
     fmt: fmt, delta: delta, escapeHtml: escapeHtml, lowerFirst: lowerFirst, icon: icon,
     statePill: statePill, projectName: projectName, empty: empty, emptyState: emptyState, dash: dash, tally: tally,
     qualityBar: qualityBar, barRows: barRows, barList: barList, dataTable: dataTable, viewToggle: viewToggle,

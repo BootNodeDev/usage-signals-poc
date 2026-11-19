@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects · Operator · Usage Signals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body data-audience="operator" data-active="projects">
+<div class="frame">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <main class="sheet">
+
+      <div class="view" id="view-list">
+        <div class="title-row">
+          <div>
+            <h1>Projects</h1>
+            <p class="title-sub"><span class="source">Observed by the tracker</span><span class="stamp" id="stamp"></span></p>
+          </div>
+          <div class="controls" id="controls"><div id="range"></div></div>
+        </div>
+
+        <div class="toolbar">
+          <input class="input" id="search" type="search" placeholder="Search project or domain" aria-label="Search project or domain">
+          <select class="select" id="state-filter" aria-label="State"></select>
+          <span class="spacer"></span>
+          <button class="btn" type="button" id="compare-toggle" aria-pressed="false">Compare</button>
+        </div>
+
+        <div id="list-message" hidden></div>
+        <div class="table-wrap"><table class="data rows" id="projects"></table></div>
+        <p class="caption" id="caption"></p>
+      </div>
+
+      <div class="view" id="view-compare" hidden>
+        <button class="back" type="button" id="compare-back"></button>
+        <div class="title-row">
+          <div>
+            <h1>Compare</h1>
+            <p class="title-sub" id="compare-summary"></p>
+          </div>
+          <div class="controls" id="compare-controls"></div>
+        </div>
+        <div id="compare"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<div class="tray" id="tray" aria-hidden="true">
+  <span id="tray-text" aria-live="polite"></span>
+  <span id="tray-picked" class="flags"></span>
+  <span class="spacer"></span>
+  <button class="btn btn-quiet" type="button" id="tray-cancel">Cancel</button>
+  <button class="btn btn-primary" type="button" id="tray-open">Compare</button>
+</div>
+
+<dialog class="drawer" id="drawer" aria-labelledby="drawer-title"></dialog>
+
+<script src="/data.js"></script>
+<script src="/charts.js"></script>
+<script>
+(function () {
+  'use strict';
+  var D = window.LData;
+  var byId = function (id) { return document.getElementById(id); };
+
+  function start() {
+    var App = window.App;
+    var fmt = App.fmt;
+    var esc = App.escapeHtml;
+    var MAX_COMPARED = 3;
+    var NOT_CLASSIFIED = 'Not classified in this prototype';
+    var STATE_FILTERS = [['', 'All states'], ['pending_verification', 'Pending verification'], ['pending_approval', 'Pending approval'],
+      ['active', 'Active'], ['unverified', 'Unverified'], ['suspended', 'Suspended']];
+    var BREAKDOWNS = {
+      referrers: ['Referrers', 'Share of visitors in the period by referring host'],
+      countries: ['Countries', 'Share of visitors in the period by country'],
+      devices: ['Devices', 'Share of visitors in the period by device class'],
+      browsers: ['Browsers', 'Share of visitors in the period by browser']
+    };
+    var columns = [
+      { key: 'pageviews', label: 'Page views', value: function (r) { return r.totals.pageviews; } },
+      { key: 'visitors', label: 'Visitors (sum of daily)', value: function (r) { return r.totals.visitors; } },
+      { key: 'visits', label: 'Visits', value: function (r) { return r.totals.visits; } },
+      { key: 'bounce', label: 'Bounce rate', value: function (r) { return r.totals.visits ? r.totals.bounce_rate : null; } },
+      { key: 'duration', label: 'Visit duration', value: function (r) { return r.totals.visits ? r.totals.avg_visit_seconds : null; } }
+    ];
+    var state = { range: 30, search: '', stateFilter: '', sort: 'pageviews', descending: true,
+      comparing: false, compared: [], view: 'list', open: null, drawerTab: 'referrers', compareTab: 'referrers' };
+    var all = [];
+    var loaded = false;
+    var opener = null;
+
+    function find(id) { return all.filter(function (r) { return r.project.id === id; })[0] || null; }
+    function hasData(r) { return r.totals.pageviews > 0; }
+    function rate(r, text) { return r.totals.visits ? text : App.dash(); }
+
+    function visible() {
+      var needle = state.search.trim().toLowerCase();
+      return all.filter(function (r) {
+        var p = r.project;
+        if (needle && (p.name + ' ' + p.domain).toLowerCase().indexOf(needle) < 0) return false;
+        return !state.stateFilter || p.state === state.stateFilter;
+      });
+    }
+
+    function sorted(list) {
+      var column = columns.filter(function (c) { return c.key === state.sort; })[0] || columns[0];
+      return list.slice().sort(function (a, b) {
+        var x = column.value(a);
+        var y = column.value(b);
+        if (x === null) return 1;
+        if (y === null) return -1;
+        var order = x < y ? -1 : x > y ? 1 : 0;
+        return state.descending ? -order : order;
+      });
+    }
+
+    function listMessage(title, text, action) {
+      byId('list-message').hidden = !title;
+      byId('projects').hidden = Boolean(title);
+      byId('list-message').innerHTML = title ? App.emptyState(title, text, action) : '';
+    }
+
+    function renderTable() {
+      var list = sorted(visible());
+      var head = '<thead><tr>' + (state.comparing ? '<th class="col-check"><span class="sr-only">Select</span></th>' : '') +
+        '<th>Project</th><th>State</th>' + columns.map(function (c, index) {
+          var sort = state.sort === c.key ? ' aria-sort="' + (state.descending ? 'descending' : 'ascending') + '"' : '';
+          return '<th class="num"' + sort + '><button type="button" data-sort="' + c.key + '">' + c.label + '</button></th>' +
+            (index === 0 ? '<th>Flagged</th>' : '');
+        }).join('') + '</tr></thead>';
+      var body = list.map(function (r) {
+        var p = r.project;
+        var t = r.totals;
+        var picked = state.compared.indexOf(p.id) >= 0;
+        var full = state.compared.length >= MAX_COMPARED && !picked;
+        var check = state.comparing
+          ? '<td class="col-check"><input type="checkbox" data-compare="' + p.id + '"' + (picked ? ' checked' : '') + (!hasData(r) || full ? ' disabled' : '') +
+            ' aria-label="Compare ' + esc(p.name) + '"' + (!hasData(r) ? ' title="No web data to compare"' : '') + '></td>'
+          : '';
+        return '<tr data-id="' + p.id + '"' + (state.open === p.id || (state.comparing && picked) ? ' class="is-open"' : '') + '>' + check +
+          '<td><button class="row-open" type="button" data-open="' + p.id + '">' + App.projectName(p) + '</button><span class="sub">' + esc(p.domain) + '</span></td>' +
+          '<td>' + App.statePill(p.state) + '</td>' +
+          '<td class="num"><span class="cell-trend">' + Charts.spark(r.daily.map(function (d) { return d.pageviews; }), 'Page views per day, last ' + state.range + ' days') +
+          fmt.int(t.pageviews) + '</span></td>' +
+          '<td><span class="muted">Not classified</span></td>' +
+          '<td class="num">' + fmt.int(t.visitors) + '</td><td class="num">' + fmt.int(t.visits) + '</td>' +
+          '<td class="num">' + rate(r, fmt.pct(t.bounce_rate)) + '</td><td class="num">' + rate(r, fmt.duration(t.avg_visit_seconds)) + '</td></tr>';
+      }).join('');
+      if (!list.length) body = '<tr><td colspan="9" class="muted">No project matches this search.</td></tr>';
+      byId('projects').innerHTML = head + '<tbody>' + body + '</tbody>';
+      var rounding = D.meta().rounding;
+      byId('caption').textContent = list.length + ' of ' + all.length + ' projects · Aggregates only; counts under ' + rounding.below +
+        ' are rounded to the nearest ' + rounding.step + ' (a placeholder threshold). Flagged traffic: ' + NOT_CLASSIFIED.toLowerCase() + '.';
+    }
+
+    function renderTray() {
+      var picked = state.compared.map(find).filter(Boolean);
+      byId('tray').setAttribute('aria-hidden', String(!(state.comparing && state.view === 'list')));
+      byId('tray-text').textContent = picked.length ? picked.length + ' of ' + MAX_COMPARED + ' selected' : 'Select two or three projects to compare';
+      byId('tray-picked').innerHTML = picked.map(function (r) { return '<span class="pill">' + esc(r.project.name) + '</span>'; }).join('');
+      byId('tray-open').disabled = picked.length < 2;
+      byId('compare-toggle').setAttribute('aria-pressed', String(state.comparing));
+    }
+
+    function shareRows(rows) {
+      if (!rows || !rows.length) return App.dash();
+      var total = rows.reduce(function (a, r) { return a + r.value; }, 0);
+      var list = rows.slice(0, 5);
+      var max = Math.max.apply(null, list.map(function (r) { return r.value; }));
+      return '<div class="bars">' + list.map(function (r) {
+        return '<div class="bar-row is-share"><span class="bar-label">' + esc(r.label) + '</span>' +
+          '<span class="bar-value">' + fmt.pct(total ? r.value / total : 0) + '</span>' +
+          '<span class="bar-track"><span class="bar-fill" style="width:' + (max ? r.value / max * 100 : 0) + '%"></span></span></div>';
+      }).join('') + '</div>';
+    }
+
+    function renderCompareBreakdown(picked) {
+      byId('compare-breakdown-label').textContent = BREAKDOWNS[state.compareTab][1];
+      picked.forEach(function (r, i) { byId('compare-breakdown-' + i).innerHTML = shareRows(r.breakdowns[state.compareTab]); });
+    }
+
+    function renderCompare() {
+      var picked = state.compared.map(find).filter(function (r) { return r && hasData(r); });
+      byId('compare-back').innerHTML = App.icon('back') + 'Projects';
+      if (picked.length < 2) {
+        byId('compare-summary').textContent = 'Same metrics, same period, same scale';
+        byId('compare').innerHTML = App.emptyState('Nothing to compare yet', 'Select two or three projects with web data in the projects list.');
+        return;
+      }
+      byId('compare-summary').textContent = picked.length + ' projects, last ' + state.range + ' days, one scale';
+      var cells = function (label, cell, bar, first) {
+        var max = bar ? Math.max.apply(null, picked.map(bar)) : 0;
+        return '<div class="compare-label' + (first ? ' compare-first' : '') + '">' + label + '</div>' + picked.map(function (r) {
+          var track = bar && max ? '<span class="bar-track"><span class="bar-fill" style="width:' + (bar(r) / max * 100) + '%"></span></span>' : '';
+          return '<div' + (first ? ' class="compare-first"' : '') + '>' + cell(r) + track + '</div>';
+        }).join('');
+      };
+      byId('compare').innerHTML = '<div class="compare" style="grid-template-columns:200px repeat(' + picked.length + ', minmax(0, 1fr))">' +
+        '<div class="compare-head"></div>' + picked.map(function (r) {
+          return '<div class="compare-head"><button class="row-open" type="button" data-open="' + r.project.id + '">' + App.projectName(r.project) + '</button></div>';
+        }).join('') +
+        '<div class="compare-chart compare-label">Page views per day</div>' + picked.map(function (r, i) {
+          return '<div class="compare-chart"><div class="chart" id="multiple-' + i + '"></div></div>';
+        }).join('') +
+        '<div class="compare-group">Web <span class="source">Observed by the tracker</span></div>' +
+        cells('Page views', function (r) { return '<b>' + fmt.int(r.totals.pageviews) + '</b>'; }, function (r) { return r.totals.pageviews; }, true) +
+        cells('Flagged share', function () { return '<span class="muted">' + NOT_CLASSIFIED + '</span>'; }) +
+        cells('Visitors (sum of daily)', function (r) { return fmt.int(r.totals.visitors); }, function (r) { return r.totals.visitors; }) +
+        cells('Visits', function (r) { return fmt.int(r.totals.visits); }, function (r) { return r.totals.visits; }) +
+        cells('Bounce rate', function (r) { return rate(r, fmt.pct(r.totals.bounce_rate)); }) +
+        cells('Visit duration', function (r) { return rate(r, fmt.duration(r.totals.avg_visit_seconds)); }) +
+        '<div class="compare-tabs"><div class="tabs" role="tablist" aria-label="Breakdown" id="compare-tabs">' +
+        Object.keys(BREAKDOWNS).map(function (key) {
+          return '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.compareTab) + '">' + BREAKDOWNS[key][0] + '</button>';
+        }).join('') + '</div></div>' +
+        '<div class="compare-label compare-first" id="compare-breakdown-label"></div>' + picked.map(function (r, i) {
+          return '<div class="compare-first" id="compare-breakdown-' + i + '"></div>';
+        }).join('') + '</div>';
+      App.tabs(byId('compare-tabs'), function (tab) { state.compareTab = tab; renderCompareBreakdown(picked); });
+      renderCompareBreakdown(picked);
+      var max = Math.max.apply(null, picked.map(function (r) {
+        return Math.max.apply(null, r.daily.map(function (d) { return d.pageviews; }).concat([0]));
+      }));
+      picked.forEach(function (r, i) {
+        Charts.columns(byId('multiple-' + i), {
+          label: r.project.name + ': page views per day', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 180, max: max,
+          format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
+          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return d.pageviews; }) }]
+        });
+      });
+    }
+
+    function showView(view) {
+      state.view = view;
+      byId('view-list').hidden = view !== 'list';
+      byId('view-compare').hidden = view !== 'compare';
+      (view === 'compare' ? byId('compare-controls') : byId('view-list').querySelector('.title-row')).appendChild(byId('controls'));
+      renderTray();
+      if (view === 'compare') renderCompare(); else renderTable();
+      window.scrollTo(0, 0);
+    }
+
+    function kv(pairs) {
+      return '<dl class="kv">' + pairs.map(function (pair) { return '<dt>' + pair[0] + '</dt><dd>' + pair[1] + '</dd>'; }).join('') + '</dl>';
+    }
+
+    function openDrawer(id, from) {
+      var r = find(id);
+      if (!r) return;
+      var p = r.project;
+      var t = r.totals;
+      var drawer = byId('drawer');
+      opener = from || document.querySelector('tr[data-id="' + id + '"] .row-open');
+      state.open = id;
+      var web = hasData(r)
+        ? '<div class="drawer-hero"><b>' + fmt.int(t.pageviews) + '</b><span class="muted">page views</span></div>' +
+          '<div class="chart" id="drawer-chart" style="margin-top:16px"></div></section>' +
+          '<section class="drawer-section"><h3>Flagged page views by rule</h3><p class="muted">' + NOT_CLASSIFIED + '. No traffic has been checked, so there is no flagged share and no rule to show.</p></section>' +
+          '<section class="drawer-section">' + kv([
+            ['Visitors (sum of daily)', fmt.int(t.visitors)], ['Visits', fmt.int(t.visits)],
+            ['Bounce rate', rate(r, fmt.pct(t.bounce_rate))], ['Visit duration', rate(r, fmt.duration(t.avg_visit_seconds))]
+          ]) + '</section>' +
+          '<section class="drawer-section"><div class="tabs" role="tablist" aria-label="Breakdown" id="drawer-tabs">' +
+          Object.keys(BREAKDOWNS).map(function (key) {
+            return '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.drawerTab) + '" aria-controls="drawer-breakdown">' + BREAKDOWNS[key][0] + '</button>';
+          }).join('') + '</div><div class="bars" id="drawer-breakdown" role="tabpanel"></div>'
+        : App.empty('No page views in the last ' + state.range + ' days.');
+      drawer.innerHTML =
+        '<div class="drawer-head"><div><h2 id="drawer-title">' + App.projectName(p) + '</h2>' +
+        '<p><span>' + esc(p.domain) + '</span>' + App.statePill(p.state) + '<span>Last ' + state.range + ' days</span></p></div>' +
+        '<button class="icon-btn" type="button" id="drawer-close" aria-label="Close details">' + App.icon('close') + '</button></div>' +
+        '<div class="drawer-body"><section class="drawer-section"><h3>Web <span class="source">Observed by the tracker</span></h3>' + web + '</section>' +
+        '<section class="drawer-section"><h3>API <span class="source source-reported">Reported by the project</span></h3>' +
+        '<p class="muted">No API metrics received. API ingestion is the next step of this prototype.</p></section></div>' +
+        '<div class="drawer-foot"><span class="muted">Approve, suspend and remove: ' + App.NOT_IN_PROTOTYPE.toLowerCase() + '.</span></div>';
+      if (!drawer.open) drawer.showModal();
+      byId('drawer-close').addEventListener('click', function () { drawer.close(); });
+      if (hasData(r)) {
+        Charts.columns(byId('drawer-chart'), {
+          label: p.name + ': page views per day', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 200,
+          format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
+          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return d.pageviews; }) }]
+        });
+        var paintBreakdown = function () { App.barList(byId('drawer-breakdown'), r.breakdowns[state.drawerTab] || [], { limit: 5 }); };
+        App.tabs(byId('drawer-tabs'), function (tab) { state.drawerTab = tab; paintBreakdown(); });
+        paintBreakdown();
+      }
+    }
+
+    function paint() {
+      byId('stamp').textContent = App.stamp();
+      state.compared = state.compared.filter(function (id) { var r = find(id); return r && hasData(r); });
+      if (!all.length) { listMessage('No project is registered', 'Projects appear here once they are seeded.'); byId('caption').textContent = ''; return; }
+      listMessage('');
+      renderTray();
+      if (state.view === 'compare') renderCompare(); else renderTable();
+      if (byId('drawer').open && state.open) openDrawer(state.open, opener);
+    }
+
+    function render(range) {
+      state.range = range;
+      if (!loaded) listMessage('Loading figures', 'Reading the last ' + range + ' days for every project.');
+      D.loadOperator(range).then(function () {
+        if (state.range !== range) return;
+        loaded = true;
+        all = D.operatorRows();
+        paint();
+      }, function (error) {
+        if (state.range !== range) return;
+        loaded = false;
+        byId('caption').textContent = '';
+        listMessage('Figures are unavailable', esc(error.message || 'The figures could not be read.') + ' Nothing is shown in their place.',
+          '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
+        byId('retry').addEventListener('click', function () { render(range); });
+      });
+    }
+
+    byId('state-filter').innerHTML = STATE_FILTERS.map(function (f) { return '<option value="' + f[0] + '">' + f[1] + '</option>'; }).join('');
+    byId('search').addEventListener('input', function (event) { state.search = event.target.value; renderTable(); });
+    byId('state-filter').addEventListener('change', function (event) { state.stateFilter = event.target.value; renderTable(); });
+    byId('projects').addEventListener('click', function (event) {
+      var sort = event.target.closest('[data-sort]');
+      var open = event.target.closest('[data-open]');
+      if (sort) {
+        state.descending = state.sort === sort.dataset.sort ? !state.descending : true;
+        state.sort = sort.dataset.sort;
+        renderTable();
+      } else if (open) {
+        openDrawer(open.dataset.open, open);
+      }
+    });
+    byId('projects').addEventListener('change', function (event) {
+      var id = event.target.dataset.compare;
+      if (!id) return;
+      state.compared = event.target.checked ? state.compared.concat([id]) : state.compared.filter(function (other) { return other !== id; });
+      renderTray();
+      renderTable();
+    });
+    byId('compare').addEventListener('click', function (event) {
+      var open = event.target.closest('[data-open]');
+      if (open) openDrawer(open.dataset.open, open);
+    });
+    byId('compare-toggle').addEventListener('click', function () { state.comparing = !state.comparing; if (!state.comparing) state.compared = []; renderTray(); renderTable(); });
+    byId('tray-cancel').addEventListener('click', function () { state.comparing = false; state.compared = []; renderTray(); renderTable(); });
+    byId('tray-open').addEventListener('click', function () { showView('compare'); });
+    byId('compare-back').addEventListener('click', function () { showView('list'); });
+    byId('drawer').addEventListener('close', function () { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list' && loaded) renderTable(); });
+    App.rangeControl(byId('range'), render);
+  }
+
+  D.boot(start);
+})();
+</script>
+</body>
+</html>

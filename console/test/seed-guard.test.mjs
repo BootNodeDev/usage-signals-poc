@@ -4,9 +4,12 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import pg from 'pg';
+import { umamiLogin, umamiRequest } from '../lib/umami-admin.js';
+import { TENANTS } from '../scripts/fixtures.mjs';
 
 const CONSOLE_ROOT = path.resolve(import.meta.dirname, '..');
-const INPUTS = ['DATABASE_URL_UNPOOLED', 'UMAMI_URL', 'UMAMI_ADMIN_PASSWORD', 'GATEWAY_URL'];
+const INPUTS = ['DATABASE_URL_UNPOOLED', 'UMAMI_URL', 'UMAMI_ADMIN_PASSWORD'];
 const SECRETS = [process.env.DATABASE_URL_UNPOOLED, process.env.UMAMI_ADMIN_PASSWORD];
 
 function runSeed(overrides) {
@@ -42,6 +45,40 @@ describe('seed as a build step', () => {
       assertNoSecret(output);
     });
   }
+
+  it('renames a site that still has an old name, slug and host, in our tables and in Umami, and is stable when run twice', async () => {
+    const tenant = TENANTS[3];
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+    await client.connect();
+    const row = async () =>
+      (await client.query(
+        `SELECT t.name, s.slug, s.domain FROM usage_signals.site s JOIN usage_signals.tenant t ON t.id = s.tenant_id WHERE s.id = $1`,
+        [tenant.site.id],
+      )).rows[0];
+    const session = await umamiLogin();
+    const website = async () => (await umamiRequest(session, `/api/websites/${tenant.site.umamiWebsiteId}`)).json();
+    try {
+      await client.query(`UPDATE usage_signals.tenant SET name = 'Old name' WHERE id = $1`, [tenant.id]);
+      await client.query(`UPDATE usage_signals.site SET slug = 'old-slug', domain = 'old.host.test' WHERE id = $1`, [tenant.site.id]);
+      const renamed = await umamiRequest(session, `/api/websites/${tenant.site.umamiWebsiteId}`, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Old name', domain: 'old.host.test' }),
+      });
+      assert.equal(renamed.status, 200);
+
+      for (const run of [1, 2]) {
+        const { status, output } = runSeed({});
+        assert.equal(status, 0, output);
+        assert.deepEqual(await row(), { name: tenant.name, slug: tenant.site.slug, domain: tenant.site.domain }, `run ${run}`);
+        const { id, name, domain } = await website();
+        assert.deepEqual({ id, name, domain }, { id: tenant.site.umamiWebsiteId, name: tenant.name, domain: tenant.site.domain });
+      }
+      const count = await client.query(`SELECT count(*)::int AS sites FROM usage_signals.site`);
+      assert.equal(count.rows[0].sites, TENANTS.length, 'the rename created a second row');
+    } finally {
+      await client.end();
+    }
+  });
 
   it('fails with a database message when the database is unreachable', () => {
     const unreachable = 'postgresql://poc:hunter2-secret@127.0.0.1:1/poc';
