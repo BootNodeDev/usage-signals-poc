@@ -1,4 +1,4 @@
-import { requireEnv } from './config.js';
+import { requireEnv, umamiAccessHeaders } from './config.js';
 
 const FORWARD_TIMEOUT_MS = 5_000;
 // Headers Umami reads before any other source: the first for the client address, the second
@@ -13,7 +13,11 @@ const COUNTRY_HEADER = 'cf-ipcountry';
  * the two-letter country.
  */
 export async function forwardToUmami(payload, visitor) {
-  const headers = { 'content-type': 'application/json', [ADDRESS_HEADER]: visitor.address };
+  const headers = {
+    'content-type': 'application/json',
+    [ADDRESS_HEADER]: visitor.address,
+    ...umamiAccessHeaders(),
+  };
   if (visitor.country) headers[COUNTRY_HEADER] = visitor.country;
   const response = await fetch(`${requireEnv('UMAMI_URL')}/api/send`, {
     method: 'POST',

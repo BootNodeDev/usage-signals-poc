@@ -1,5 +1,5 @@
 // Authenticated Umami API access: the seed script, the tests and the read endpoint.
-import { requireEnv } from './config.js';
+import { requireEnv, umamiAccessHeaders } from './config.js';
 
 const READ_TIMEOUT_MS = 8_000;
 // Kept for the life of the instance: Fluid compute reuses module state across invocations.
@@ -13,7 +13,7 @@ export async function umamiLogin() {
   try {
     response = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...umamiAccessHeaders() },
       body: JSON.stringify({ username, password: requireEnv('UMAMI_ADMIN_PASSWORD') }),
     });
   } catch (error) {
@@ -36,6 +36,7 @@ export async function umamiRequest(session, path, init = {}) {
     headers: {
       authorization: `Bearer ${session.token}`,
       'content-type': 'application/json',
+      ...umamiAccessHeaders(),
       ...init.headers,
     },
   });
