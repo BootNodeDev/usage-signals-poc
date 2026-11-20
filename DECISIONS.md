@@ -114,9 +114,9 @@ in `docker-compose.yml` on that date.
 
 - `DATABASE_URL`: the pooled Neon string, with no `?schema=` (decision 10). `DIRECT_DATABASE_URL`: the unpooled string, used for migrations since v3.2.0. `APP_SECRET`: required since v3.5.0, `openssl rand -hex 32`. Source: https://docs.umami.is/docs/guides/running-on-vercel, https://docs.umami.is/docs/environment-variables.
 - It can share the Neon database with this project: Umami in `public`, ours in `usage_signals`. Verified on local PostgreSQL 18, not on Neon.
-- Change the default `admin` / `umami` password at once; that deployment is public. The seed then needs `UMAMI_ADMIN_PASSWORD` set to the new value.
+- Change the default `admin` / `umami` password at once. The seed then needs `UMAMI_ADMIN_PASSWORD` set to the new value.
 - Umami's docs ask for Node 20.19 or newer and recommend 22; Vercel's default is 26.x. Umami on 26 is unverified: set that project to 22.x.
-- Open: Umami's own `/api/send` stays publicly reachable there, so the gateway can be bypassed. Accepted for the prototype (see the task document header).
+- The Umami deployment is closed to the public with Vercel Authentication on all deployments, so its own `/api/send` cannot be used to go around the gateway. The console reaches it with a Protection Bypass for Automation secret, created on the Umami project and stored on the console project as `UMAMI_BYPASS_SECRET`, sent in the `x-vercel-protection-bypass` header. Verified live: read, write and the build-time seed. Source: https://vercel.com/docs/deployment-protection, https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation.
 
 ## Later (T3, not built)
 

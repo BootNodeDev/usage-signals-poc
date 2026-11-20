@@ -23,8 +23,8 @@ After cloning, fetch Umami with `git submodule update --init`.
 
 ## What differs from the intended architecture
 
-Umami is publicly reachable, there is no OpenTelemetry Collector, no disk spool and a single
-location. `DECISIONS.md` lists these gaps.
+Umami is a separate Vercel deployment closed with Vercel Authentication, not a private
+network service. There is no OpenTelemetry Collector, no disk spool and a single location. `DECISIONS.md` lists these gaps.
 
 ## Licence
 
