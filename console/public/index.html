@@ -3,18 +3,70 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Console · Usage Signals</title>
+<title>Usage Signals prototype</title>
+<meta name="description" content="Working prototype of Usage Signals, a shared web and API analytics service for projects built on Stellar.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/demo.css">
+<style>
+  .sections ul { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .sections li a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+</style>
 </head>
-<body>
-<main class="sheet">
-  <div class="empty-state">
-    <h2>Usage Signals</h2>
-    <p>The console is opened from a project's own address. There is nothing to choose from here.</p>
+<body data-accent="violet">
+<header class="top">
+  <div class="wrap">
+    <span class="site-name">Usage Signals</span>
+    <nav aria-label="Source">
+      <a href="https://github.com/BootNodeDev/usage-signals-poc">Source on GitHub</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <div class="strokes" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+      <h1>A working prototype you can try</h1>
+      <p>Usage Signals is a shared web and API analytics service for projects built on Stellar. Open a sample site, browse a few pages, then see the visit in that project's console and in the operator view.</p>
+    </div>
+  </div>
+  <div class="sections">
+    <div class="wrap">
+      <section>
+        <h2>1. Visit a sample site</h2>
+        <p>Three sample sites carry the tracker. Each page view goes through our gateway before it reaches Umami.</p>
+        <ul>
+          <li><a href="https://usage-signals-poc-demo-site-a.vercel.app/demo/">Demo site A</a></li>
+          <li><a href="https://usage-signals-poc-demo-site-b.vercel.app/demo/">Demo site B</a></li>
+          <li><a href="https://usage-signals-poc-demo-site-c.vercel.app/demo/">Demo site C</a></li>
+        </ul>
+      </section>
+      <section>
+        <h2>2. See it as the project</h2>
+        <p>What a project sees for its own site: page views, visitors, referrers, visit duration, bounce rate, countries, devices and browsers.</p>
+        <ul>
+          <li><a href="/demo-site-a/web">Console of Demo site A</a></li>
+          <li><a href="/demo-site-b/web">Console of Demo site B</a></li>
+          <li><a href="/demo-site-c/web">Console of Demo site C</a></li>
+        </ul>
+      </section>
+      <section>
+        <h2>3. See it as the operator</h2>
+        <p>What SCF sees across projects: comparable totals, with small counts shown as fewer than 10.</p>
+        <ul>
+          <li><a href="/operator/projects">Operator view of all projects</a></li>
+        </ul>
+      </section>
+      <section>
+        <h2>What this prototype is</h2>
+        <p>The web path runs end to end. There is no sign-in: the address picks the project. Most of the figures come from generated sample traffic, loaded so the views have something to show. API analytics was tested as a local experiment and is not in this deployment; the repository lists every check and its result.</p>
+      </section>
+    </div>
   </div>
 </main>
+<footer>
+  <div class="wrap">Prototype for the SCF RFP "Web and API Analytics for Stellar Ecosystem Projects". Apache-2.0.</div>
+</footer>
 </body>
 </html>
