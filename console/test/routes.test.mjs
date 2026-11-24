@@ -82,11 +82,14 @@ describe('operator console', () => {
 });
 
 describe('other paths', () => {
-  it('shows a plain page at / that names no project and links nowhere', async () => {
+  it('shows the start page at /, linking the sample sites, each project console and the operator view', async () => {
     const root = await get('/');
     assert.equal(root.status, 200);
-    assert.match(root.text, /opened from a project's own address/);
-    assert.ok(!/<a\s|<script|operator/i.test(root.text));
+    for (const slug of ['demo-site-a', 'demo-site-b', 'demo-site-c']) {
+      assert.ok(root.text.includes(`href="/${slug}/web"`), `no link to the console of ${slug}`);
+      assert.match(root.text, new RegExp(`href="https://[^"]*${slug}[^"]*/demo/"`), `no link to the site ${slug}`);
+    }
+    assert.ok(root.text.includes('href="/operator/projects"'));
   });
 
   it('answers 404 for unknown paths, old screen names and paths outside public', async () => {
@@ -201,7 +204,8 @@ describe('no sample data', () => {
       }
       assert.ok(!/\.html\b/.test(text), `${file} names a .html file`);
       assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-/.test(text), `${file} hardcodes an id`);
-      assert.ok(!/umami/i.test(text), `${file} mentions Umami`);
+      // The start page explains the prototype; the console screens never name the engine behind them.
+      if (file !== 'index.html') assert.ok(!/umami/i.test(text), `${file} mentions Umami`);
     }
   });
 });
