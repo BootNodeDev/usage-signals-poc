@@ -122,6 +122,10 @@ describe('parseDemoSiteHosts', () => {
     assert.throws(() => parseDemoSiteHosts(CONSOLE, CONSOLE), /console's own host/);
   });
 
+  it('refuses the host of a live site', () => {
+    assert.throws(() => parseDemoSiteHosts('strata-vault-kit-app.vercel.app', CONSOLE), /live site/);
+  });
+
   it('refuses loopback and reserved hosts', () => {
     for (const host of ['app.localhost', 'drift.example', '127.0.0.1']) {
       assert.throws(() => parseDemoSiteHosts(host, CONSOLE), /DEMO_SITE_HOSTS/, host);

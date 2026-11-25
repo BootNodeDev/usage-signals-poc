@@ -1,4 +1,3 @@
-// Decides what the seed creates: the local fixtures, or the demo and live sites in a production build.
 import { RESERVED_SLUGS, isSlug } from '../lib/slug.js';
 import { TENANTS } from './fixtures.mjs';
 
@@ -82,6 +81,7 @@ export function parseDemoSiteHosts(value, consoleHost) {
     if (!HOST_NAME.test(host)) fail(`"${host}" is not a plain host name`);
     if (RESERVED_HOST.test(host)) fail(`"${host}" is a loopback or reserved host`);
     if (host === consoleHost) fail(`"${host}" is the console's own host`);
+    if (LIVE_TENANTS.some(({ site }) => site.domain === host)) fail(`"${host}" is the host of a live site`);
     if (hosts.indexOf(host) !== hosts.lastIndexOf(host)) fail(`"${host}" is listed twice`);
   }
   return hosts;
