@@ -35,7 +35,7 @@ records a demo.
 | 3.3 | Tenant isolation on the API path | Partial: check 5 only | [check 5](checks/check-05/README.md) |
 | 3.3 | 1,000,000 requests a day | Partial: one day's disk use measured in check 5 | [check 5](checks/check-05/README.md) |
 | 3.3 | 24-month retention | Planned | |
-| 3.3 | Tenant and operator API dashboards | Planned | |
+| 3.3 | Tenant and operator API dashboards | Partial: built on sample data; real ingestion is #21 | [`tenant/requests.html`](console/public/tenant/requests.html), [`api-read.js`](console/lib/api-read.js), [`api-read.test.mjs`](console/test/api-read.test.mjs) |
 | 5 | Automated test suite | Built | [`console/test/`](console/test/), [`checks/`](checks/README.md) |
 | 5 | Tenant screen-capture video | Built | [Demo video](https://vimeo.com/1248550588) |
 | 5 | Three SCF projects and one API project live | Planned: three demo sites stand in | |

@@ -65,7 +65,9 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 | `POST /api/e` | `lib/gateway.js` | Tracker events |
 | `GET /api/tenant/<slug>/project` | `lib/tenant-api.js` | The project, its website id and the pinned tracker |
 | `GET /api/tenant/<slug>/web?days=7\|30\|90` | `lib/tenant-api.js` | Web figures of one site |
-| `GET /api/operator/projects?days=7\|30\|90` | `lib/operator-api.js` | Figures of every site, small counts masked |
+| `GET /api/tenant/<slug>/api?days=7\|30\|90` | `lib/tenant-api.js`, `lib/api-read.js` | API figures of one project, per route and day |
+| `GET /api/operator/projects?days=7\|30\|90` | `lib/operator-api.js` | Web and API figures of every project, small counts masked |
+| `GET /api/cron/sample-traffic` | `lib/sample-traffic.js` | Vercel cron: sample page views and API rows for the demo sites |
 | `/s/<version>/...` | `public/s/` | Pinned tracker, served with immutable caching |
 
 ## Data Flow
