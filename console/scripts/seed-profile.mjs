@@ -1,10 +1,8 @@
-// Decides what the seed creates from the environment it runs in: the local fixtures on a
-// developer machine, the demo tenants on the deployment's own hosts in a Vercel production build.
+// Decides what the seed creates: the local fixtures, or the demo and live sites in a production build.
 import { RESERVED_SLUGS, isSlug } from '../lib/slug.js';
 import { TENANTS } from './fixtures.mjs';
 
-// One per host in DEMO_SITE_HOSTS, in order. Ids are fixed so a site keeps its history across
-// builds; the first kept its ids when it was renamed from "Usage Signals demo".
+// One per host in DEMO_SITE_HOSTS, in order; ids are fixed so a site keeps its history across builds.
 export const PRODUCTION_TENANTS = [
   {
     id: 'f0000000-0000-4000-8000-000000000001',
@@ -26,6 +24,20 @@ export const PRODUCTION_TENANTS = [
     slug: 'demo-site-c',
     siteId: 'f0000000-0000-4000-8000-0000000000f3',
     umamiWebsiteId: 'f0000000-0000-4000-8000-0000000003ff',
+  },
+];
+
+const LIVE_TENANTS = [
+  {
+    id: 'f0000000-0000-4000-8000-000000000004',
+    name: 'Strata Vault Kit',
+    status: 'active',
+    site: {
+      id: 'f0000000-0000-4000-8000-0000000000f4',
+      slug: 'strata-vault-kit',
+      domain: 'strata-vault-kit-app.vercel.app',
+      umamiWebsiteId: 'f0000000-0000-4000-8000-0000000004ff',
+    },
   },
 ];
 
@@ -77,10 +89,11 @@ export function parseDemoSiteHosts(value, consoleHost) {
 
 function productionTenants(env) {
   const hosts = parseDemoSiteHosts(env.DEMO_SITE_HOSTS, env.VERCEL_PROJECT_PRODUCTION_URL);
-  return hosts.map((domain, index) => {
+  const demoTenants = hosts.map((domain, index) => {
     const { id, name, slug, siteId, umamiWebsiteId } = PRODUCTION_TENANTS[index];
     return { id, name, status: 'active', site: { id: siteId, slug, domain, umamiWebsiteId } };
   });
+  return [...demoTenants, ...LIVE_TENANTS];
 }
 
 /**

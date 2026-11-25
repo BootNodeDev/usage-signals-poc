@@ -34,17 +34,28 @@ describe('selectProfile', () => {
     assert.deepEqual(profile.tenants, TENANTS);
   });
 
-  it('seeds Demo site A, B and C on the configured hosts in production', () => {
+  it('seeds Demo site A, B and C on the configured hosts and Strata Vault Kit on its own in production', () => {
     const { name, tenants } = selectProfile(PRODUCTION_ENV);
     assert.equal(name, 'production');
     assert.deepEqual(tenants.map((t) => [t.name, t.site.slug, t.status, t.site.domain]), [
       ['Demo site A', 'demo-site-a', 'active', 'site-a.usage-signals.org'],
       ['Demo site B', 'demo-site-b', 'active', 'site-b.usage-signals.org'],
       ['Demo site C', 'demo-site-c', 'active', 'site-c.usage-signals.org'],
+      ['Strata Vault Kit', 'strata-vault-kit', 'active', 'strata-vault-kit-app.vercel.app'],
     ]);
     const ids = tenants.flatMap((t) => [t.id, t.site.id, t.site.umamiWebsiteId]);
-    assert.equal(new Set(ids).size, 9);
+    assert.equal(new Set(ids).size, 12);
     assert.deepEqual(selectProfile(PRODUCTION_ENV).tenants, tenants, 'ids change between builds');
+  });
+
+  it('seeds Strata Vault Kit whatever DEMO_SITE_HOSTS holds', () => {
+    const { tenants } = selectProfile({ ...PRODUCTION_ENV, DEMO_SITE_HOSTS: 'site-a.usage-signals.org' });
+    assert.deepEqual(tenants.map((t) => t.name), ['Demo site A', 'Strata Vault Kit']);
+  });
+
+  it("keeps Strata Vault Kit's website id, which its site's tracker tag carries", () => {
+    const strata = selectProfile(PRODUCTION_ENV).tenants.find((t) => t.site.slug === 'strata-vault-kit');
+    assert.equal(strata.site.umamiWebsiteId, 'f0000000-0000-4000-8000-0000000004ff');
   });
 
   it('keeps for Demo site A the ids the first production site was created with', () => {
