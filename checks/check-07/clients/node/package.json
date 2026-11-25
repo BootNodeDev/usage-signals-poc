@@ -1,0 +1,12 @@
+{
+  "name": "us-check-07-node-client",
+  "private": true,
+  "type": "module",
+  "description": "Check 07: the OpenTelemetry SDK for Node.js as a tenant would use it.",
+  "dependencies": {
+    "@opentelemetry/api": "1.10.0",
+    "@opentelemetry/exporter-metrics-otlp-proto": "0.301.2",
+    "@opentelemetry/resources": "3.1.1",
+    "@opentelemetry/sdk-metrics": "3.1.1"
+  }
+}
