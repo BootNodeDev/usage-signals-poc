@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tenant page with Stellar Wallets Kit</title>
+  </head>
+  <body>
+    <h1>Tenant page</h1>
+    <!-- The kit's own button: opens the auth modal, or the profile modal once connected. -->
+    <div id="kit-button"></div>
+    <!-- The tenant's own button, calling the kit's authModal() as the kit's guide shows. -->
+    <button id="connect" type="button">Connect with my own button</button>
+    <p>Account: <span id="account">none</span></p>
+    <p>Last error: <span id="error">none</span></p>
+    <script type="module" src="/__BUNDLE__/app.js"></script>
+    <!-- Everything below is ours, added by the tenant's one tracker tag in production. -->
+__OURS__
+  </body>
+</html>

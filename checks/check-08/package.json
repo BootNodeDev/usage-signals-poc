@@ -1,0 +1,11 @@
+{
+  "name": "us-check-08",
+  "private": true,
+  "type": "module",
+  "description": "Check 08: passive capture of the Stellar Wallets Kit modal. The kit is the tenant page's dependency; esbuild bundles that page; Playwright drives Chromium.",
+  "dependencies": {
+    "@creit.tech/stellar-wallets-kit": "2.8.0",
+    "esbuild": "0.28.2",
+    "playwright": "1.64.1"
+  }
+}

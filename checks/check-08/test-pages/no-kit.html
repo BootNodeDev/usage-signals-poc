@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Page without the kit</title>
+  </head>
+  <body>
+    <h1>Page without Stellar Wallets Kit</h1>
+    <button id="connect" type="button">Choose a wallet</button>
+    <p>Chosen: <span id="account">none</span></p>
+    <script>
+      // A hand-made wallet chooser appended to the body, with a list like the kit's.
+      document.querySelector('#connect').addEventListener('click', () => {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML =
+          '<section class="wallet-chooser"><div></div><section><header><h1>Connect Wallet</h1>' +
+          '<button type="button">x</button></header><ul><li><p>Varial</p></li></ul></section></section>';
+        document.body.appendChild(wrapper);
+        wrapper.querySelector('li').addEventListener('click', () => {
+          document.querySelector('#account').textContent = 'Varial';
+          wrapper.remove();
+        });
+      });
+    </script>
+__OURS__
+  </body>
+</html>
