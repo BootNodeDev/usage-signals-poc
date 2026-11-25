@@ -36,12 +36,16 @@
 
    Operator console
    ----------------
-   loadOperator(rangeDays) -> Promise. One read for every project.
+   loadOperator(rangeDays, query) -> Promise. One read for every project.
+     query (optional) = { figures: 'totals' } to leave out the breakdowns, or
+     { figures: 'one', project: slug } for the figures of one project only (without project:
+     the first active one). The start page passes it; the operator console reads everything.
    operatorRows() -> [{ project { id, slug, name, domain, state },
        totals { pageviews, visitors, visits, bounces (each a Count),
                 bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
                 flagged (always null: not classified) },
        daily [{ day, pageviews Count }], breakdowns { dimension: [{ label, value Count }] } }]
+     A project that figures 'one' did not read has no totals or daily and empty breakdowns.
      Count = number | Small.  Small = { small: true, below }: more than zero and fewer than
      `below`. The API never sends the exact number, so there is nothing to hide here.
    sortRows(rows, pick, descending) -> [row]
@@ -145,13 +149,15 @@
     return (rows || []).map(function (row) { return { label: label(dimension, row.label), value: row.value }; });
   }
 
-  function loadOperator(rangeDays) {
-    return getJson('/api/operator/projects?days=' + rangeDays).then(function (body) {
+  function loadOperator(rangeDays, query) {
+    var url = '/api/operator/projects?days=' + rangeDays;
+    Object.keys(query || {}).forEach(function (name) { url += '&' + name + '=' + encodeURIComponent(query[name]); });
+    return getJson(url).then(function (body) {
       known.smallCounts = body.small_counts;
       known.through = body.through;
       operator = body.projects.map(function (row) {
         var breakdowns = {};
-        Object.keys(row.breakdowns).forEach(function (dimension) {
+        Object.keys(row.breakdowns || {}).forEach(function (dimension) {
           breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension]);
         });
         return { project: row.project, totals: row.totals, daily: row.daily, breakdowns: breakdowns };

@@ -6,6 +6,7 @@ import { badRange, cached, json, rangeParam, readFigures, unavailable } from './
 
 // Placeholder threshold, to be agreed with the program.
 export const SMALL_COUNT_BELOW = 10;
+const FIGURES = ['all', 'totals', 'one'];
 
 /** Zero and counts from the threshold up are exact; anything between is only "small". */
 export function smallCount(count) {
@@ -19,6 +20,10 @@ function rateOver(visits, rate) {
   return visits < SMALL_COUNT_BELOW ? smallCount(visits) : rate;
 }
 
+function identity(site) {
+  return { id: site.id, slug: site.slug, name: site.name, domain: site.domain, state: site.state };
+}
+
 /** One row of the operator list, from the exact figures of a site. */
 export function operatorRow(site, figures) {
   const { totals, breakdowns } = figures;
@@ -27,7 +32,7 @@ export function operatorRow(site, figures) {
     shown[dimension] = rows.map((row) => ({ label: row.label, value: smallCount(row.value) }));
   }
   return {
-    project: { id: site.id, slug: site.slug, name: site.name, domain: site.domain, state: site.state },
+    project: identity(site),
     totals: {
       pageviews: smallCount(totals.pageviews),
       visitors: smallCount(totals.visitors),
@@ -43,19 +48,41 @@ export function operatorRow(site, figures) {
   };
 }
 
-/** GET /api/operator/projects?days=7|30|90 */
+// Must be the project that tenantRows() in landing.js offers first.
+function previewed(sites, slug) {
+  if (slug) return sites.find((site) => site.slug === slug);
+  return sites.find((site) => site.state === 'active') ?? sites[0];
+}
+
+/**
+ * GET /api/operator/projects?days=7|30|90[&figures=all|totals|one[&project=<slug>]]
+ * Every site is listed. `all` (the default) reads every figure; `totals` leaves out the breakdowns;
+ * `one` reads only the project named, or the first active one, and lists the others without figures.
+ */
 export async function handleOperatorProjects(request) {
   if (request.method !== 'GET') return json(405, { error: 'Use GET.' }, { allow: 'GET' });
   const dayCount = rangeParam(request);
   if (!dayCount) return badRange();
+  const params = new URL(request.url).searchParams;
+  const mode = params.get('figures') ?? 'all';
+  if (!FIGURES.includes(mode)) return json(400, { error: `figures must be one of ${FIGURES.join(', ')}.` });
   try {
     const sites = await listSites();
-    const figures = await Promise.all(sites.map((site) => readFigures(site, dayCount)));
+    let read = sites;
+    if (mode === 'one') {
+      const site = previewed(sites, params.get('project'));
+      if (!site && params.get('project')) return json(404, { error: 'Project not found.' });
+      read = site ? [site] : [];
+    }
+    const figures = await Promise.all(read.map((site) => readFigures(site, dayCount, { breakdowns: mode !== 'totals' })));
     return cached({
       days: dayCount,
       through: figures[0]?.through ?? new Date().toISOString(),
       small_counts: { below: SMALL_COUNT_BELOW },
-      projects: figures.map((siteFigures, index) => operatorRow(sites[index], siteFigures)),
+      projects: sites.map((site) => {
+        const index = read.indexOf(site);
+        return index < 0 ? { project: identity(site) } : operatorRow(site, figures[index]);
+      }),
     });
   } catch (error) {
     return unavailable(error);

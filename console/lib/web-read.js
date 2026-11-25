@@ -73,22 +73,22 @@ function totalsOf(stats, visitors) {
   };
 }
 
-/** Exact figures of one site for the last `dayCount` UTC days, today included. */
-export async function readFigures(site, dayCount) {
+/** Exact figures of one site for the last `dayCount` UTC days, today included. `breakdowns: false` skips their four reads. */
+export async function readFigures(site, dayCount, { breakdowns = true } = {}) {
   const now = Date.now();
   const { days, startAt, endAt } = rangeOf(dayCount, now);
   const base = `/api/websites/${site.umamiWebsiteId}`;
   const range = `startAt=${startAt}&endAt=${endAt}`;
-  const dimensions = Object.keys(BREAKDOWNS);
+  const dimensions = breakdowns ? Object.keys(BREAKDOWNS) : [];
   const [stats, series, ...metrics] = await Promise.all([
     umamiGet(`${base}/stats?${range}`),
     umamiGet(`${base}/pageviews?${range}&unit=day&timezone=UTC`),
     ...dimensions.map((name) => umamiGet(`${base}/metrics?${range}&type=${BREAKDOWNS[name]}`)),
   ]);
   const daily = dailyRows(days, series, series);
-  const breakdowns = {};
+  const byDimension = {};
   dimensions.forEach((name, index) => {
-    breakdowns[name] = metrics[index].map((row) => ({ label: row.x, value: row.y }));
+    byDimension[name] = metrics[index].map((row) => ({ label: row.x, value: row.y }));
   });
   return {
     days: dayCount,
@@ -97,7 +97,7 @@ export async function readFigures(site, dayCount) {
     // Umami's comparison period; its visitor figure is not a sum of daily and is left out.
     prior: stats.comparison ? totalsOf(stats.comparison, null) : null,
     daily,
-    breakdowns,
+    breakdowns: byDimension,
   };
 }
 

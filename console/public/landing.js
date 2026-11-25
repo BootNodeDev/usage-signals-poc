@@ -1,4 +1,4 @@
-/* Start page: a role picker over a preview of each console, all read from the operator endpoint. */
+/* Start page: a role picker over a preview of each console, each read from the operator endpoint when first shown. */
 (function () {
   'use strict';
 
@@ -6,8 +6,11 @@
   var RANGE_DAYS = 30;
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var state = { role: 'tenant', slug: null, rows: [] };
+  var views = {};
 
   function byId(id) { return document.getElementById(id); }
+
+  var LOADING = byId('preview').innerHTML;
 
   function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, function (c) {
@@ -163,6 +166,30 @@
     byId('visit').hidden = project.state !== 'active';
   }
 
+  function viewKey() { return state.role === 'tenant' ? 'project:' + (state.slug || '') : 'totals'; }
+
+  /* Renders the current view, reading its figures the first time. Resolves true once it is on screen. */
+  function show() {
+    var key = viewKey();
+    if (views[key]) {
+      state.rows = views[key];
+      render();
+      return Promise.resolve(true);
+    }
+    var query = state.role !== 'tenant' ? { figures: 'totals' } : state.slug ? { figures: 'one', project: state.slug } : { figures: 'one' };
+    byId('preview').innerHTML = LOADING;
+    return D.loadOperator(RANGE_DAYS, query).then(function () {
+      views[key] = D.operatorRows();
+      return key === viewKey() && show();
+    }, function (error) {
+      if (key === viewKey()) {
+        byId('preview').innerHTML = '<p class="status">The figures could not be read: ' + escapeHtml(error.message) +
+          ' The <a href="/operator/projects">operator console</a> may say more.</p>';
+      }
+      return false;
+    });
+  }
+
   function selectRole(tab) {
     var tabs = document.querySelectorAll('.role');
     for (var i = 0; i < tabs.length; i++) {
@@ -171,7 +198,7 @@
     }
     state.role = tab.dataset.role;
     byId('role-select').value = state.role;
-    if (state.rows.length) render();
+    show();
   }
 
   byId('role-select').addEventListener('change', function (event) {
@@ -205,9 +232,10 @@
     }
     var choice = event.target.closest('[data-slug]');
     if (!choice) return;
-    state.slug = choice.dataset.slug;
-    render();
-    byId('project-button').focus();
+    if (choice.dataset.slug !== current().project.slug) state.slug = choice.dataset.slug;
+    show().then(function (shown) {
+      if (shown) byId('project-button').focus();
+    });
   });
 
   document.addEventListener('click', function (event) {
@@ -237,11 +265,5 @@
   // Unloading the player is what stops the sound.
   dialog.addEventListener('close', function () { player.removeAttribute('src'); });
 
-  D.loadOperator(RANGE_DAYS).then(function () {
-    state.rows = D.operatorRows();
-    render();
-  }, function (error) {
-    byId('preview').innerHTML = '<p class="status">The figures could not be read: ' + escapeHtml(error.message) +
-      ' The <a href="/operator/projects">operator console</a> may say more.</p>';
-  });
+  show();
 })();
