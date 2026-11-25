@@ -52,7 +52,9 @@
        totals { pageviews, visitors, visits, bounces (each a Count),
                 bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
                 flagged (always null: not classified) },
-       daily [{ day, pageviews Count }], breakdowns { dimension: [{ label, value Count }] } }]
+       daily [{ day, pageviews Count }], breakdowns { dimension: [{ label, value Count }] },
+       api { requests Count, error_rate (share of 5xx: number | Small | null), p95_ms (number |
+             Small | null), routes [{ label ('GET /v1/…'), value Count }] } }]
      Count = number | Small.  Small = { small: true, below }: more than zero and fewer than
      `below`. The API never sends the exact number, so there is nothing to hide here.
    sortRows(rows, pick, descending) -> [row]
@@ -179,7 +181,7 @@
         Object.keys(row.breakdowns).forEach(function (dimension) {
           breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension]);
         });
-        return { project: row.project, totals: row.totals, daily: row.daily, breakdowns: breakdowns };
+        return { project: row.project, totals: row.totals, daily: row.daily, breakdowns: breakdowns, api: row.api };
       });
     });
   }

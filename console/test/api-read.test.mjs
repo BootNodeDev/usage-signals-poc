@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import pg from 'pg';
 import { percentileMs } from '../lib/api-read.js';
+import { operatorApi } from '../lib/operator-api.js';
 import { requireEnv } from '../lib/config.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
 
@@ -33,6 +34,33 @@ describe('percentiles from histogram buckets', () => {
 
   it('has no percentile without requests', () => {
     assert.equal(percentileMs(EMPTY, 0.5), null);
+  });
+});
+
+describe('API figures in the operator view', () => {
+  const SMALL = { small: true, below: 10 };
+  const figure = (requests, errors, p95) => ({
+    totals: { requests, statuses: { '2xx': requests - errors, '3xx': 0, '4xx': 0, '5xx': errors }, p50_ms: 1, p95_ms: p95 },
+    routes: [
+      { method: 'GET', route: '/a', requests: requests - 3 },
+      { method: 'GET', route: '/b', requests: 3 },
+    ],
+  });
+
+  it('gives requests, the server error share and p95, and hides small route counts', () => {
+    assert.deepEqual(operatorApi(figure(40, 2, 120)), {
+      requests: 40,
+      error_rate: 0.05,
+      p95_ms: 120,
+      routes: [{ label: 'GET /a', value: 37 }, { label: 'GET /b', value: SMALL }],
+    });
+  });
+
+  it('withholds the share and p95 under 10 requests, and has none without requests', () => {
+    const few = operatorApi(figure(9, 1, 80));
+    assert.deepEqual([few.requests, few.error_rate, few.p95_ms], [SMALL, SMALL, SMALL]);
+    const none = operatorApi({ totals: { requests: 0, statuses: {}, p50_ms: null, p95_ms: null }, routes: [] });
+    assert.deepEqual(none, { requests: 0, error_rate: null, p95_ms: null, routes: [] });
   });
 });
 
@@ -101,6 +129,15 @@ describe('tenant API endpoint', () => {
     assert.equal(body.daily.length, 7);
     assert.equal(body.daily.at(-1).day, today);
     assert.ok(body.daily.at(-1).requests >= 26);
+  });
+
+  it('adds API figures to each project of the operator list', async () => {
+    const response = await fetch(`${GATEWAY}/api/operator/projects?days=7`);
+    assert.equal(response.status, 200);
+    const row = (await response.json()).projects.find((r) => r.project.slug === TENANT.site.slug);
+    const exact = (await readApi(TENANT.site.slug, 7)).body;
+    assert.deepEqual(row.api.requests, exact.totals.requests);
+    assert.ok(row.api.routes.some((r) => r.label === 'GET /test/accounts/{id}' && r.value === 20));
   });
 
   it('answers 400 for an unsupported range and 404 for an unknown project', async () => {
