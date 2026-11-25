@@ -74,9 +74,8 @@ button { font: inherit; color: inherit; }
 .play { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; }
 .play span { display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%; background: #ffffff; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35); }
 .play svg { width: 26px; height: 26px; margin-left: 4px; }
-.video-text { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding-inline: 10px; }
+.video-text { padding-inline: 10px; }
 .video-text b { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
-.video-text span { font-size: 15px; color: var(--muted); }
 
 /* Video dialog */
 .video-dialog { width: min(1100px, 100% - 32px); max-width: none; padding: 0; border: 0; border-radius: 16px; background: #0f1020; overflow: visible; }
@@ -125,8 +124,6 @@ main { padding-bottom: 48px; }
 
 .button { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 999px; font-size: 15px; font-weight: 700; text-decoration: none; }
 .button-ink { background: var(--ink); color: #ffffff; }
-.button-light { background: #ffffff; color: var(--ink); }
-.button-light:hover { background: var(--lit); }
 
 .figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin-top: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
 .figure-label { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
@@ -165,7 +162,11 @@ td.num { font-weight: 800; }
 }
 .visit p { margin: 0; max-width: 62ch; font-size: 17px; color: var(--on-field-muted); }
 .visit b { display: block; margin-bottom: 4px; font-size: 24px; font-weight: 800; letter-spacing: -0.01em; color: var(--on-field); }
-.visit .button { height: 48px; padding: 0 24px; font-size: 16px; }
+.visit .button {
+  height: 48px; padding: 0 24px; font-size: 16px;
+  background: #ffffff; color: var(--ink); box-shadow: 0 6px 16px rgba(10, 8, 30, 0.3);
+}
+.visit .button:hover { background: var(--lit); }
 
 @media (max-width: 760px) {
   .hero { padding-bottom: 0; }
@@ -174,9 +175,8 @@ td.num { font-weight: 800; }
   .video-poster { width: 116px; flex: none; border-radius: 11px; }
   .play span { width: 44px; height: 44px; }
   .play svg { width: 16px; height: 16px; margin-left: 3px; }
-  .video-text { display: grid; padding: 0; }
+  .video-text { padding: 0; }
   .video-text b { font-size: 20px; }
-  .video-text span { font-size: 14px; }
   .picker { margin-top: 24px; color: var(--ink); }
   .roles { flex-wrap: wrap; }
   .role { flex: 1 1 100%; min-width: 0; border-radius: 14px; background: var(--tone); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--rule); }

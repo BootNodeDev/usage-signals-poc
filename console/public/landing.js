@@ -107,7 +107,7 @@
     }).join('') + '</div>' : '';
     var smallDay = row.daily.some(function (entry) { return isSmall(entry.pageviews); });
     return head('<h2>' + escapeHtml(names.shared || project.name) + '</h2>' + picker, escapeHtml(project.domain) + ', last ' + RANGE_DAYS + ' days',
-      '<a class="button button-ink" href="' + consoleUrl(project) + '">View the console</a>') +
+      '<a class="button button-ink" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">View the console</a>') +
       '<div class="figures">' +
         figure('Page views', count(totals.pageviews), 'Every page load the tracker saw') +
         figure('Visitors', count(totals.visitors), 'Each person counts once a day') +
@@ -123,7 +123,7 @@
   function operatorPreview() {
     var rows = D.sortRows(state.rows, function (row) { return row.totals.pageviews; }, true);
     return head('<h2>All projects</h2>', rows.length + ' projects, last ' + RANGE_DAYS + ' days',
-      '<a class="button button-ink" href="/operator/projects">View the console</a>') +
+      '<a class="button button-ink" href="/operator/projects" target="_blank" rel="noopener">View the console</a>') +
       '<div class="table-wrap"><table><thead><tr><th>Project</th><th class="num">Page views</th><th class="num">Visitors</th><th class="num">Visits</th>' +
       '<th class="num">Bounce rate</th><th class="num">Visit duration</th></tr></thead><tbody>' + rows.map(function (row) {
         var t = row.totals;
