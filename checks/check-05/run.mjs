@@ -7,14 +7,17 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  COLLECTOR,
   HERE,
+  buildEdge,
   capture,
   captureLength,
   clearRows,
+  collectorIsBack,
   compose,
   databaseDump,
   driveRealService,
+  edgeName,
+  edgeSelfReport,
   headersOnly,
   post,
   queueFiles,
@@ -58,6 +61,8 @@ import {
   withSwappedClaims,
 } from './lib.mjs';
 import { reviewPhases } from './review.mjs';
+import { deliveryPhases } from './round2-delivery.mjs';
+import { edgePhases } from './round2-edge.mjs';
 import { VECTORS } from './vectors.mjs';
 
 const TENANT_A = randomUUID();
@@ -436,10 +441,15 @@ async function checkFilter() {
   record(
     2,
     'required',
+    // Round two: the stable name with unit ms is no longer dropped at the edge. It reaches
+    // the writer, which refuses it and records the refusal for the tenant.
     'metrics that reach the writer, of 9 sent',
-    `${STABLE} [s], 2 points`,
-    `${names.join(', ')}, ${all.length} points`,
-    sameList(names, [`${STABLE} [s]`]) && all.length === 2 && seen.refused.length === 0,
+    `${STABLE} [s], ${STABLE} [ms], 2 points accepted, 1 refused: unit is not seconds`,
+    `${names.join(', ')}, ${seen.accepted.length} points accepted, ${seen.refused.length} refused: ${seen.refused.map((item) => item.reason).join()}`,
+    sameList(names, [`${STABLE} [s]`, `${STABLE} [ms]`]) &&
+      seen.accepted.length === 2 &&
+      seen.refused.length === 1 &&
+      seen.refused[0].reason === 'unit is not seconds',
   );
 
   const stable = seen.accepted.find((point) => point.attributes['http.route'] === '/mix/stable');
@@ -1099,9 +1109,10 @@ async function sendCounted(service) {
   let accepted = 0;
   for (let i = 0; i < 20; i += 1) {
     const count = 1 + Math.floor(random() * 9);
+    // One export interval per request, a second apart: the writer counts an interval once.
     const answer = await post(
       '/v1/metrics',
-      simpleBody(service, { count, route: '/queued', timeMs: BASE_MS }),
+      simpleBody(service, { count, route: '/queued', timeMs: BASE_MS + i * 1000 }),
       { token: tokenA },
     );
     if (answer.status === 200) accepted += count;
@@ -1148,6 +1159,7 @@ async function queueCase(label, betweenSendAndWriter) {
 async function restartCollector(stopCommand) {
   compose(stopCommand, 'collector');
   compose('start', 'collector');
+  await collectorIsBack();
   await waitFor(
     'the collector after its restart',
     async () =>
@@ -1494,6 +1506,12 @@ const POINTS = {
   7: 'Queue on local disk, with retries',
   8: 'End to end',
   9: 'The writer',
+  // Round two.
+  A: 'A point is counted once, however often it is delivered',
+  B: 'A key is kept as long as a batch can come back',
+  C: 'The pipeline runs on the Builder build',
+  D: 'Every stored path segment is at most 36 printable ASCII characters',
+  E: 'Every refusal path is known by its answer and by what is lost',
 };
 
 function printReport() {
@@ -1553,13 +1571,16 @@ function verdict() {
 
 async function main() {
   console.log(`scratch directory: ${scratch}`);
+  buildEdge();
   await startStack({ keys: [key.jwk] });
   sql(
     `INSERT INTO usage_signals.tenant (id, name, status) VALUES ('${TENANT_A}', 'check-05 A', 'active'), ('${TENANT_B}', 'check-05 B', 'active')`,
   );
   await useConfig('design');
-  const version = compose('exec', '-T', 'collector', '/otelcol-contrib', '--version').trim();
-  console.log(`collector: ${version}; issuer and audience in the tokens: offline, ${AUDIENCE}`);
+  const { version } = edgeSelfReport();
+  console.log(
+    `collector (${edgeName}): ${version}; issuer and audience in the tokens: offline, ${AUDIENCE}`,
+  );
   checkTools();
   const context = { TENANT_A, TENANT_B, tokenA, tokenB, key, BASE_MS, expected: {} };
   const phases = [
@@ -1573,6 +1594,8 @@ async function main() {
     checkEndToEnd,
     checkRealExporter,
     ...reviewPhases(context),
+    ...deliveryPhases(context),
+    ...edgePhases(context),
   ];
   // CHECK_ONLY=name,name runs only those phases; the verdict then covers only them.
   const only = process.env.CHECK_ONLY?.split(',');

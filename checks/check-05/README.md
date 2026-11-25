@@ -11,6 +11,10 @@ test that failed before it, and the document needs the sentences below changed. 
 the edge collector's pipeline is still done by an upstream component of the OpenTelemetry
 Collector, with no custom Go code.
 
+**Round two (2026-11-24) is at the end of this file.** It adds de-duplication to the writer, runs
+everything on a Builder build, and bounds every stored path segment. Where it corrects a
+statement below, the statement carries a note.
+
 Run on 2026-11-19 against the OpenTelemetry Collector contrib distribution 0.165.0, unmodified:
 `otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea`
 (the latest release of `opentelemetry-collector-releases` on that day, published 2026-11-07).
@@ -20,16 +24,20 @@ the contrib image restricted, by configuration, to the nine components that
 `builder-manifest.yaml` lists. That a binary built from that manifest behaves the same is
 deduced, not run.
 
+*Round two: built and run. The manifest as written here built a binary that did not start; see
+C below.*
+
 ## Reproduce
 
 ```sh
 npm ci --ignore-scripts && node run.mjs
 ```
 
-About 100 seconds with the images already pulled. It starts compose project `us-check-05`
-(PostgreSQL on 55105, the collector's OTLP/HTTP on 43185, the writer on 43195, and for one
-case a second collector on 43186 in the role of a tenant's own), runs the test service on a
-free port, prints the vector table, every assertion and the verdict, removes the stack and
+About 160 seconds with the images pulled and the edge image built; the first run builds the
+collector, which took about 4 minutes. It starts compose project `us-check-05-r2` (PostgreSQL,
+the collector, two writers, and for one case a second collector in the role of a tenant's own;
+since round two no host port is fixed, Docker picks them), runs the test service on a free
+port, prints the vector table, every assertion and the verdict, removes the stack and
 exits non-zero if any assertion differs from this README. `CHECK_KEEP_STACK=1` leaves the
 containers up; `CHECK_ONLY=name,name` runs only the named phases. The disk queue, the writer's
 log of everything it received and each collector configuration used are in a `mktemp`
@@ -39,6 +47,8 @@ Files: `collector.yaml` (the edge configuration), `builder-manifest.yaml`, `writ
 `service.cjs` (the tenant side), `vectors.mjs` (the path vectors), `run.mjs` (the first nine
 phases), `review.mjs` (the phases added after the review), `harness.mjs`, `lib.mjs` and
 `proto.mjs` (a small protobuf encoder, so that a request can carry what no SDK would send).
+Round two added `Dockerfile.edge`, `dedup.sql`, `routes.json`, `round2-delivery.mjs`,
+`round2-edge.mjs` and `mutations.mjs`.
 
 ## What the review found and what was done
 
@@ -398,6 +408,10 @@ The second review added these, each reproduced against this configuration:
 So the statement in the architecture document that secret seeds are "always redacted" cannot be
 kept with a fixed rule set. A regular expression recognizes a seed only in its canonical form.
 
+*Round two: of the forms listed in this section, every one longer than 36 characters or with a
+character outside printable ASCII is now replaced, by two rules that know no shape. What still
+survives is stated in D below.*
+
 No longer surviving, with vectors: claimable-balance IDs (72 hex digits), paging tokens,
 signed-payload strkeys, `USDC:G...`, hex runs of 24, 56 and 96 digits, e-mail addresses, JWTs.
 
@@ -439,6 +453,7 @@ table at the top.
 
 ## Not covered, and stated plainly
 
+- *Round two: the next item no longer holds. The writer removes duplicates; see A below.*
 - **Delivery is at least once and this writer does not remove duplicates.** The script shows
   it: one batch of 4 requests sent three times stores 12. The review measured a collector
   killed in the middle of a delivery: 3,750 requests sent, 3,840 stored, 2.4% too many. The
@@ -494,6 +509,309 @@ stores the rest in one transaction per batch, each row under a savepoint and in 
 answers 200 after the commit, 400 for an undecodable body and 503 when storage is unavailable.
 
 Not implemented: tenant status and token revocation, the timestamp window against the time of
-receipt, re-bucketing, point-level deduplication, the per-tenant quota, the series cap and its
+receipt, re-bucketing, the per-tenant quota, the series cap and its
 "(other)" series, TLS and the ingest role. Its port is published on localhost for the
 experiment; the document's writer accepts the local collector only.
+
+## Round two (2026-11-24)
+
+Round one left three limits: no de-duplication, no Builder build, and "always redacted" could
+not be kept. Round two extends the same script. One command runs both rounds:
+
+```sh
+npm ci --ignore-scripts && node run.mjs      # 184 assertions, 165 vectors, exit 0
+CHECK_EDGE=contrib node run.mjs              # contrib image: 183 of 184 and exit 1, because
+                                             # the assertion "is the Builder build" fails by design
+node mutations.mjs                           # the 14 negative controls, about 8 minutes
+```
+
+| | Claim | Verdict |
+| - | - | - |
+| A | A request is counted once, however often it is delivered | Yes for redelivery. One stated condition for overlap: each point has an identity of its own |
+| B | A key is kept as long as a batch can come back | No for the 2 days of the document. Yes for 8 days with a check of the point's age |
+| C | The pipeline runs on the Builder build | Yes, after one line was added to the manifest |
+| D | A path rule that can be guaranteed | Yes: every stored segment is at most 36 printable ASCII characters, enforced at the edge and again in the writer. It changes 9 of 2,708 public route templates. "Always redacted" stays false |
+| E | Every refusal is noticed by the tenant | No. Of 21 paths tested, 3 answer 200, lose the data and are recorded nowhere. 8 answer 200 and are recorded for the setup page, 6 answer an error that is not retried, 2 answer 503, 2 keep the data |
+
+The run needs 1 GB free on the Docker disk and stops at the start with a message when there is
+less; a full disk had made PostgreSQL disappear in the middle of a run.
+
+No new dependency. New images: the Go image that builds the collector, pinned by digest in
+`Dockerfile.edge`. The Builder is installed at v0.165.0 with `go install`.
+
+### A. De-duplication in the writer
+
+The OTLP specification says that a client that got no acknowledgement "will typically choose
+to re-send such data", "which may result in duplicate data on the server side", and calls this
+"a deliberate choice" (https://opentelemetry.io/docs/specs/otlp/, "Duplicate Data"). It names
+no one to remove the duplicates. The data model says receivers should eliminate overlap. The metrics
+data model identifies a delta point by its stream and its StartTimeUnixNano and TimeUnixNano
+(https://opentelemetry.io/docs/specs/otel/metrics/data-model/).
+
+The key is the first 16 bytes of the SHA-256 of: tenant (stamped by the collector), service,
+service instance ID, route, method, status code, StartTimeUnixNano, TimeUnixNano. The time of
+receipt is not in it. In one transaction the writer inserts the keys of a batch with
+`INSERT ... ON CONFLICT DO NOTHING RETURNING` and adds the counts only of the keys returned
+(https://www.postgresql.org/docs/18/sql-insert.html, "ON CONFLICT Clause"). Keys are inserted in
+sorted order before any row is touched, so two batches cannot deadlock. Beside the key the
+writer stores a 32-bit hash of the point's numbers. A point whose key exists with the same
+numbers is a redelivery and is skipped. A point whose key exists with other numbers cannot be a
+redelivery: it is refused and recorded for the tenant.
+
+Inside one request the writer works per key. An exact copy (same key, same numbers) counts
+once. Points with one key and other numbers are added, as the edge's merge adds them, and the
+stored hash stands for the group, so the request delivered again is recognized as a whole.
+
+| Case | Sent | Stored |
+| - | - | - |
+| The writer commits and its answer is lost; the collector delivers again | 7 requests, delivered 2 times | 7 |
+| The collector is killed after the commit and before the answer, then started | 9 requests, delivered 2 times | 9 |
+| The tenant's exporter sends one export 3 times (3 times of receipt) | 5 requests | 5 |
+| 40 batches of 6 points, each sent at the same moment twice to each of two writers | 160 deliveries, 1,220 requests | 1,220, every row exact; 240 points counted, 720 skipped, 160 answers 200 |
+| Two replicas, different instance IDs, same interval, same numbers | 4 + 4 | 8 |
+| Two replicas sharing an instance ID, intervals 1 ms apart | 4 + 6 | 10 |
+| Two replicas sharing an instance ID, same interval to the nanosecond, other numbers | 4 + 6 | 4 or 6; the other is refused and recorded |
+| The same with equal numbers | 4 + 4 | 4; the second is taken for a redelivery, nothing recorded |
+| Two replicas without an instance ID, same interval, other numbers | 4 + 6 | 4 or 6; the other is refused and recorded |
+| Two raw paths that the rules make one route, same interval, in two requests | 3 + 5 | 3 or 5; the other is refused and recorded |
+| The same two paths in one request | 3 + 5 | 8, merged at the edge |
+| One block of 4 requests written twice in one request | 4 + 4 | 4 |
+| One request with two blocks of one identity (4 and 6), then the same request again | 10, then 10 | 10, then 10; no refusal recorded |
+| One point of 4 requests written twice inside one block | 4 + 4 | 8: the edge merges them before the writer |
+| The transaction is broken between the key and the counts, then the batch is sent again | 5 requests | first 503 with 0 keys and 0 requests; then 200 with 1 key and 5 requests |
+
+"4 or 6": the collector's queue has several consumers, so two requests can reach the writer in
+either order.
+
+The condition: two different points must not carry the same identity. They do when two
+processes share a service instance ID, or have none, and close an interval in the same
+nanosecond; and when one process's points, which the edge makes identical, arrive in different
+requests with the same interval. The writer then counts one. It detects the case when the
+numbers differ and records it; with equal numbers it cannot tell it from a redelivery. One
+overlap is not removed: a point written twice inside one block of one request is added by the
+edge's merge, which cannot tell a copy from two paths that the rules made one route. An SDK writes its own clock in nanoseconds, so
+the first case needs equal timestamps from two processes; it was produced here by hand.
+
+Round one's finding "one batch of 4 requests sent 3 times stores 12" is now an assertion that 4
+are stored. Round one's queue test sent 20 exports with one timestamp; they now carry 20
+timestamps, one second apart, because one interval counts once.
+
+Found on the way: a database connection that ended in the middle of a transaction ended the
+writer process. Fixed in `writer.mjs`; the broken-transaction case fails without the fix.
+
+Not tested: a retry by a real SDK (the export was sent three times by the script); a writer
+that crashes between commit and answer (the lost answer and the killed collector cover the
+same state); two edge locations.
+
+Replacement for the Delivery sentence, superseding the round-one correction:
+
+> Delivery from collector to writer is at least once. The writer keeps one key per data point
+> (tenant, service, service instance ID, route, method, status code, start and end of the
+> interval) for 8 days, and writes key and counts in one transaction, so a batch that is
+> delivered again, by the collector or by the tenant's exporter, is counted once. Two
+> processes of one service need different service instance IDs. A point repeated inside one
+> request is not removed when it sits in the same resource block.
+
+### B. How long a key is kept
+
+Time was simulated by moving the writer's clock; the purge and the age check use that clock.
+
+| Keys kept | Check of a point's age | Case | Stored for 11 sent |
+| - | - | - | - |
+| 2 days | none (the document) | counted batch delivered again 4 days later | 22 |
+| 2 days | none | the same through the collector: killed with the batch in its queue, started 4 days later | 22 |
+| 2 days | yes | delivered again 4 days later | 11 |
+| 2 days | yes | first delivered 4 days late | 0 |
+| 8 days | yes | delivered again 1, 7, 8, 9 and 30 days later | 11 each |
+| 8 days | yes | the same through the collector, 7 days | 11 |
+| 8 days | yes | first delivered 7 and 8 days late | 11 each |
+| 8 days | yes | first delivered 9 days late | 0, recorded for the tenant |
+| 8 days | none | delivered again 10 days later | 22 |
+
+With keys for 2 days and a queue that holds 7 days, a batch that comes back after the key has
+expired is counted twice. Refusing old points removes the double count and loses instead every
+batch that waits longer than the keys live, so the lifetime has to cover the queue.
+
+Recommendation: keep keys 8 days and refuse a point older than 8 days. Reason: the queue is
+sized for 7 days and the point may be up to 15 minutes older than its receipt; 8 whole UTC days
+cover both. The purge runs one day behind the age check, so a transaction that starts before
+midnight cannot meet a key deleted after it. With both, no delivery is counted twice at any
+delay. What is lost: a batch first delivered more than 8 days after its interval.
+
+Cost, measured: about 100 to 105 bytes a key, half table and half primary-key index. Three
+measurements: 1,000,000 keys in 100.4 MB and in 99.7 MB (the reviewer's run), and 200,000 keys
+in 19.5 MB (102 bytes a key). The script now measures 200,000 keys, to use about 20 MB of
+disk. A day at the design volume has at most 1,000,000 keys, one per request, and at least as
+many as minute rows (0.7 to 0.9 million): about 70 to 105 MB a day. Ten day-values are on disk
+at once (today, 8 back, one spare): about 0.7 to 1.0 GB. For comparison the document gives the
+minute table about 200 MB a day. Deleting one day of 1,000,000 keys took about 1 s (0.8 and
+1.1 s in two runs); the space returns only after vacuum.
+
+Not tested: daily partitions for the key table, which would make the purge a `DROP` and the
+index smaller; points with a timestamp in the future, whose keys are purged only when they age
+(the document's timestamp window, not built, bounds them).
+
+### C. The Builder build
+
+`Dockerfile.edge` installs the Builder v0.165.0 in a Go 1.27.4 image and runs it on
+`builder-manifest.yaml` (https://opentelemetry.io/docs/collector/extend/ocb/). The image holds
+the binary and nothing else. `run.mjs` builds it and runs every assertion of both rounds
+against it: 184 of 184.
+
+Difference found: the manifest of round one built, and the binary did not start:
+`invalid 'confmap.ResolverSettings' configuration: DefaultScheme not found in providers list`.
+A collector resolves a value without a scheme with the env provider, and the manifest listed
+only the file provider. One line was added (`confmap/provider/envprovider v1.71.0`). So round
+one's sentence that the build would behave the same was wrong for the manifest as it stood.
+
+No other difference: `CHECK_EDGE=contrib node run.mjs` gives the same result for the other 183
+assertions, and exits 1 because of this one. The binary reports 11 modules, the 11 of the manifest (9 components, 2 providers);
+the contrib binary reports 255. The script asserts the first and fails on the second.
+
+Not tested: a reproducible build (two builds were not compared byte for byte); amd64.
+
+### D. A rule that can be guaranteed
+
+Two statements at the end of the path rules, after every rule that writes a placeholder:
+
+```yaml
+- replace_pattern(datapoint.attributes["http.route"], "/[^/]*[^ -~][^/]*/", "/{non_ascii}/")
+- replace_pattern(datapoint.attributes["http.route"], "/[^/]{37,}/", "/{long}/")
+```
+
+Guarantee: **every segment of every stored route is at most 36 printable ASCII characters.** It
+does not depend on what the segment holds.
+
+The writer checks the same bound and refuses a route outside it, with the reason recorded for
+the tenant. So a mistake in the collector's rules stores nothing: with either statement
+removed from `collector.yaml`, the writer refuses the points the edge let through and no route
+outside the bound is stored.
+
+Why 36: `routes.json` holds 2,708 route templates, every path of six public API descriptions
+at pinned commits: GitHub REST API (842), Stripe API (431), Kubernetes API (588), Stellar
+Horizon (46), Slack Web API (174) and DigitalOcean API (627). The file gives each source
+address. Templates with a segment longer than N:
+
+| N | 16 | 20 | 24 | 28 | 30 | 31 | 32 | 33 | 34 | 35 | 36 to 38 | 40 |
+| - | - | - | - | - | - | - | - | - | - | - | - | - |
+| of 2,708 | 942 | 492 | 228 | 83 | 66 | 37 | 34 | 19 | 15 | 12 | 9 | 5 |
+
+At 36 the rule changes 9 of 2,708 templates, 0.33%: 8 of Slack's, whose method names are one
+segment (`admin.conversations.restrictAccess.removeGroup`), and 1 of DigitalOcean's. None of
+the first four APIs is changed. Their segment becomes `{long}`; the requests are still counted.
+38 changes the same 9 and is the largest bound under 256 bits; 36 was kept. Sent through the
+collector: 9 of 2,708 changed by the two rules, 64 lose a trailing slash to a rule of round
+one, all 2,708 stored. Round two's first text said 36 "changes none"; that held for four APIs
+only and is corrected here.
+
+What the bound means for a secret key: 36 characters of a 95-character alphabet hold at most
+236.5 bits, and a secret key is 256 bits. No encoding of a whole key fits in one stored
+segment. Of a seed in its usual form (56 characters) one segment can hold at most 36.
+
+Proof by property: 12,000 random routes (seed 36; nine alphabets including other scripts,
+full-width letters, a zero-width space and percent-encoding; lengths crowded around the bound;
+one segment in five a secret seed cut, re-cased, wrapped or partly percent-encoded), half as
+`http.route` and half as `http.target`. 9,821 had a segment outside the bound when sent. All
+12,000 requests were stored, in 9,390 distinct routes, none with a segment outside the bound.
+Controls: with either statement removed, of a sample of 600 the writer refuses the routes
+outside the bound and stores none of them. Sent to the writer directly, a segment of 37
+characters and one of non-ASCII digits are refused, and a segment of 36 is stored.
+
+Vectors: 165 of 165. 14 vectors of round one changed their expected route, all from a raw
+string to `{long}` or `{non_ascii}`: 27, 42 to 46, 48, 49, 86, 88, 89, 90, 106 and 113. The
+table of round one above shows their old result. 24 vectors are new: a seed without its first
+letter, percent-encoded, with a full-width letter, hyphenated, spaced, dotted, reversed, in
+base64, and cut to 37 and 51 characters are all replaced.
+
+What the rule cannot stop, with a vector each where marked:
+
+- a secret split across two or more segments of 36 characters or fewer: stored whole (vector);
+- a fragment of 36 characters or fewer in one segment (vector);
+- anything in `service.name` (up to 255 bytes, stored as sent) and `http.request.method` (up to
+  32 bytes); `service.instance.id` is queued as sent and stored only inside the key's hash;
+- short identifiers that no rule of round one knows: names, phone numbers, short hex.
+
+Replacement for "S, which is always redacted", superseding the round-one correction:
+
+> S. A secret key in its usual form is redacted as a whole segment, in either case and next to
+> other text, down to 52 of its 56 characters. Beyond that the edge gives one guarantee that
+> does not depend on recognizing anything: no path segment longer than 36 characters, and none
+> with a character outside printable ASCII, is ever stored. A whole secret key therefore cannot
+> be stored in one segment in any encoding. A key that a client splits across several
+> segments, or sends in the service name, is stored.
+
+Not tested: routes with invalid UTF-8; the cost of the two statements per point.
+
+### E. What a tenant sees on each refusal
+
+The collector answers before the writer sees a point, so nothing the writer refuses can reach
+the tenant's exporter. Round two makes the writer count each refusal per tenant, day and reason
+(`usage_signals.api_refusal`), which is what a setup page can show. "Retried" follows the OTLP
+specification: an exporter retries 429, 502, 503 and 504 and no other status.
+
+| Path | Tenant sees | Stored | Recorded for the tenant | Data |
+| - | - | - | - | - |
+| No token | 401 | 0 | no | lost, exporter reports an error |
+| Expired token | 401 | 0 | no | lost, exporter reports an error |
+| Body larger than 1 MiB | 400 | 0 | no | lost, exporter reports an error |
+| Body that is not OTLP | 400 | 0 | no | lost, exporter reports an error |
+| Content type `text/plain` | 415 | 0 | no | lost, exporter reports an error |
+| Address `/v1/metric` | 404 | 0 | no | lost, exporter reports an error |
+| Memory limiter | 503 | 0 | no | retried by the exporter |
+| Disk queue full (queue of 3, writer answering 503, 40 exports) | 200 for 3, 503 for 37 | the 3 | no | retried by the exporter; nothing answered 200 was lost |
+| Writer answers 503 | 200 | 0 while it lasts, 3 of 3 after | no | kept in the queue |
+| Route that is not a string | 200 | 3 of 3 under `(unmatched)` | no | kept |
+| Token without a tenant claim | 200 | 0 | **no** | lost in silence |
+| Token whose tenant claim is not a UUID | 200 | 0 | **no** | lost in silence |
+| Exponential histogram under the stable name | 200 | 0 | **no** | lost in silence |
+| The stable name with unit ms | 200 | 0 | unit is not seconds | lost, recorded |
+| The older name with unit s | 200 | 0 | not the HTTP server duration metric | lost, recorded |
+| Cumulative temporality | 200 | 0 | temporality is not delta | lost, recorded |
+| Bucket bounds other than the 14 advised | 200 | 0 | bucket bounds differ from the layout | lost, recorded |
+| Bucket counts that do not add up | 200 | 0 | bucket counts do not add up to the count | lost, recorded |
+| Status code sent as a string | 200 | 0 | no valid status code | lost, recorded |
+| Interval older than the keys kept | 200 | 0 | older than the de-duplication keys that are kept | lost, recorded |
+| Tenant not enrolled | 200 | 0 | refused by the database (SQLSTATE 23503) | lost, recorded |
+
+21 paths: 6 errors that are not retried, 2 answers 503, 2 that keep the data, 3 silent, 8
+recorded. Two more recorded refusals are tested under A and D: "same identity as a counted
+point, other numbers" and "route with a segment outside the bound".
+
+The two unit paths were silent until this round: the collector's filter dropped them. The
+filter now passes a wrong unit on, and the writer refuses and records it; the older name with
+another unit is renamed at the edge so that it is not rescaled. Two of the silent paths have no
+tenant to record under: the token carries none, or one that is no tenant ID. The collector logs
+neither. Such tokens are an issuer's mistake, not a tenant's. The third, the exponential
+histogram, is dropped by the filter on its type.
+
+An SDK configured for exponential histograms is the likely silent case. Traces, logs and other
+metrics are also answered 200 and discarded, by design.
+
+Not tested: what a real SDK logs for each status (the statuses were read from the wire); a
+refusal counter that survives a redelivered batch exactly (a refused point has no key, so a
+batch delivered twice counts its refusals twice).
+
+### Negative controls
+
+`node mutations.mjs` changes one thing in a copy of this folder and runs the phases that should
+notice. Run after the corrections: the unchanged copy passes, and all 14 mutations were caught.
+
+| Claim | Mutation | Caught by |
+| - | - | - |
+| A | counts added whether or not the key was new | lost answer, killed collector, exporter retry, race and more |
+| A | key without the service instance ID | two replicas with different instance IDs |
+| A | key includes the time of receipt | exporter retry |
+| A | no unique key; the insert asks first whether the key exists | the race of two writers |
+| A | keys written outside the transaction | the broken transaction |
+| A | copies of a point inside one request all counted | the block written twice in one request |
+| B | age check accepts points 30 days older | 5 lifetime cases |
+| B | purge deletes two days early | redelivery after 8 and 9 days |
+| C | contrib image instead of the Builder build | the module list of the binary |
+| D | bound of 40 instead of 36 | vectors and the property test |
+| D | rule for characters outside printable ASCII removed | vectors and the property test |
+| D | writer does not check the bound | the direct test and both rule-removal controls |
+| E | writer does not record refusals | 8 refusal cases |
+| E | body-size cap of 10 MiB | the 2 MiB body |
+
+In the script itself: the two rule-removal controls of D, and the round-one controls, which
+still pass.

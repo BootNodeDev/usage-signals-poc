@@ -19,10 +19,30 @@ import { gzipSync } from 'node:zlib';
 import { BOUNDS_S, histogramMetric, histogramPoint, resourceMetrics } from './lib.mjs';
 
 export const HERE = import.meta.dirname;
-export const COLLECTOR = 'http://127.0.0.1:43185';
-export const scratch = mkdtempSync(path.join(tmpdir(), 'us-check-05-'));
+export const scratch = mkdtempSync(path.join(tmpdir(), 'us-check-05-r2-'));
 export const runTag = Date.now().toString(36);
-const COMPOSE = ['compose', '-p', 'us-check-05', '-f', path.join(HERE, 'compose.yml')];
+const COMPOSE = ['compose', '-p', 'us-check-05-r2', '-f', path.join(HERE, 'compose.yml')];
+
+// The edge collector under test: the Builder's output by default, the unmodified contrib
+// distribution with CHECK_EDGE=contrib.
+const EDGES = {
+  builder: { image: 'us-check-05-r2-edge:0.165.0', binary: '/usage-signals-edge' },
+  contrib: {
+    image:
+      'otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea',
+    binary: '/otelcol-contrib',
+  },
+};
+export const edgeName = process.env.CHECK_EDGE ?? 'builder';
+const EDGE = EDGES[edgeName];
+if (!EDGE) throw new Error('CHECK_EDGE must be builder or contrib');
+
+// Host addresses of the published ports. Docker picks the ports, and picks again whenever a
+// container starts, so these are read again after every start.
+export let COLLECTOR;
+export let WRITER;
+export let WRITER_2;
+export let TENANT_COLLECTOR;
 const CAPTURE = path.join(scratch, 'writer-capture.jsonl');
 const QUEUE = path.join(scratch, 'queue');
 const BASE_CONFIG = readFileSync(path.join(HERE, 'collector.yaml'), 'utf8');
@@ -42,7 +62,7 @@ export function record(point, kind, label, expected, observed, pass) {
 }
 
 export function docker(args, options = {}) {
-  const env = { ...process.env, CHECK_SCRATCH: scratch };
+  const env = { ...process.env, CHECK_SCRATCH: scratch, CHECK_EDGE_IMAGE: EDGE.image };
   const result = spawnSync('docker', args, {
     encoding: 'utf8',
     env,
@@ -54,6 +74,14 @@ export function docker(args, options = {}) {
 }
 
 export const compose = (...args) => docker([...COMPOSE, ...args]);
+
+/** A compose command that runs beside the script; resolves with its exit code. */
+export function composeInBackground(args, input) {
+  const env = { ...process.env, CHECK_SCRATCH: scratch, CHECK_EDGE_IMAGE: EDGE.image };
+  const child = spawn('docker', [...COMPOSE, ...args], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+  child.stdin.end(input ?? '');
+  return once(child, 'exit').then(([code]) => code);
+}
 
 /** Runs SQL in the stack's PostgreSQL and returns the rows of a SELECT as objects. */
 export function sql(statement, { rows = false } = {}) {
@@ -101,13 +129,44 @@ export async function waitFor(what, probe, timeoutMs = 30_000) {
   }
 }
 
-async function collectorAnswers() {
+/** The host address Docker gave a published port, or null while the container is not up. */
+function published(service, port) {
   try {
-    await fetch(`${COLLECTOR}/`, { signal: AbortSignal.timeout(1000) });
+    const address = compose('port', service, String(port)).trim();
+    return address ? `http://${address}` : null;
+  } catch {
+    return null;
+  }
+}
+
+async function answers(base) {
+  if (!base) return false;
+  try {
+    await fetch(`${base}/`, { signal: AbortSignal.timeout(1000) });
     return true;
   } catch {
     return false;
   }
+}
+
+async function collectorAnswers() {
+  COLLECTOR = published('collector', 4318);
+  return answers(COLLECTOR);
+}
+
+/** Waits for a collector that was stopped and started outside useConfig. */
+export const collectorIsBack = () => waitFor('the collector', collectorAnswers);
+
+/** The Builder's image: docker build runs the Builder on builder-manifest.yaml. */
+export function buildEdge() {
+  if (edgeName !== 'builder') return;
+  docker(['build', '-q', '-f', path.join(HERE, 'Dockerfile.edge'), '-t', EDGE.image, HERE]);
+}
+
+/** What the collector binary says about itself: its version and the components built in. */
+export function edgeSelfReport() {
+  const run = (...args) => compose('exec', '-T', 'collector', EDGE.binary, ...args);
+  return { version: run('--version').trim(), components: run('components') };
 }
 
 /** Edits of collector.yaml that make the negative controls. Each one must change the file. */
@@ -131,6 +190,10 @@ const VARIANTS = {
   'no-attribute-rebuild': (text) =>
     text.replace(/^ +- keep_keys\(datapoint\.attributes, \[\]\)\n/m, ''),
   'keep-exemplars': (text) => text.replace(/^ +- set\(datapoint\.exemplars, nil\)\n/m, ''),
+  // Round two.
+  'no-length-cap': (text) => text.replace(/^ +- replace_pattern\(.*"\/\{long\}\/"\)\n/m, ''),
+  'no-ascii-rule': (text) => text.replace(/^ +- replace_pattern\(.*"\/\{non_ascii\}\/"\)\n/m, ''),
+  'tiny-queue': (text) => text.replace('queue_size: 10000', 'queue_size: 3'),
 };
 
 /** Restarts the collector with the design configuration or one of its negative controls. */
@@ -155,37 +218,58 @@ export async function startStack(jwks) {
   writeWriterMode('ok');
   compose('down', '-v', '--remove-orphans');
   compose('up', '-d', '--wait', 'postgres');
-  docker(
-    [
-      ...COMPOSE,
-      'exec',
-      '-T',
-      'postgres',
-      'psql',
-      '-U',
-      'poc',
-      '-d',
-      'poc',
-      '-q',
-      '-v',
-      'ON_ERROR_STOP=1',
-    ],
-    {
-      input: readFileSync(path.join(HERE, '../../console/db/schema.sql'), 'utf8'),
-    },
+  // The image reports healthy while its first start still runs a temporary server and then
+  // restarts, so the first connection can fail. The schema only creates what is missing.
+  const schema =
+    readFileSync(path.join(HERE, '../../console/db/schema.sql'), 'utf8') +
+    readFileSync(path.join(HERE, 'dedup.sql'), 'utf8');
+  // PostgreSQL stops when the Docker disk fills, which shows as an unrelated failure later.
+  const freeKb = Number(
+    compose('exec', '-T', 'postgres', 'df', '-Pk', '/var/lib/postgresql').trim().split('\n').pop().split(/\s+/)[3],
   );
-  compose('up', '-d', 'writer');
-  await waitFor('the writer', writerAnswers);
+  if (!(freeKb > 1024 * 1024))
+    throw new Error(
+      `the Docker disk has ${Math.round(freeKb / 1024)} MB free; this check needs 1 GB. Free some space and run again.`,
+    );
+  await waitFor('PostgreSQL to take the schema', () => {
+    try {
+      sql(schema);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  writeFileSync(path.join(scratch, 'writer-2-capture.jsonl'), '');
+  chmodSync(path.join(scratch, 'writer-2-capture.jsonl'), 0o666);
+  compose('up', '-d', 'writer', 'writer-2');
+  await waitFor('the writers', writersAnswer);
+}
+
+async function writersAnswer() {
+  WRITER = published('writer', 43195);
+  WRITER_2 = published('writer-2', 43195);
+  return (await answers(WRITER)) && (await answers(WRITER_2));
 }
 
 async function writerAnswers() {
-  try {
-    await fetch('http://127.0.0.1:43195/', { signal: AbortSignal.timeout(1000) });
-    return true;
-  } catch {
-    return false;
-  }
+  WRITER = published('writer', 43195);
+  return answers(WRITER);
 }
+
+/** Sets the writer's experiment controls (see writer.mjs) and returns all of them. */
+export async function writerSettings(change = {}, base = WRITER) {
+  const response = await fetch(`${base}/experiment`, {
+    method: 'POST',
+    body: JSON.stringify(change),
+  });
+  return response.json();
+}
+
+export const purgeKeys = async () =>
+  (await fetch(`${WRITER}/experiment/purge`, { method: 'POST' })).json();
+
+export const clearKeys = () =>
+  sql('TRUNCATE usage_signals.api_point_key, usage_signals.api_refusal');
 
 export async function startWriter() {
   compose('start', 'writer');
@@ -206,14 +290,14 @@ function writeWriterMode(mode) {
 export async function setWriterMode(mode) {
   writeWriterMode(mode);
   await waitFor(`the writer to enter mode ${mode}`, async () => {
-    const response = await fetch('http://127.0.0.1:43195/mode').catch(() => null);
+    const response = await fetch(`${WRITER}/mode`).catch(() => null);
     return response?.ok && (await response.json()).mode === mode;
   });
 }
 
-/** Every entry the writer logged from the given line on. */
-export function capture(fromLine = 0) {
-  const text = readFileSync(CAPTURE, 'utf8');
+/** Every entry a writer logged from the given line on. */
+export function capture(fromLine = 0, file = CAPTURE) {
+  const text = readFileSync(file, 'utf8');
   // The writer may be in the middle of a line; only complete lines are read.
   const lines = text
     .slice(0, text.lastIndexOf('\n') + 1)
@@ -223,6 +307,7 @@ export function capture(fromLine = 0) {
 }
 
 export const captureLength = () => capture().length;
+export const captureOfWriter2 = () => capture(0, path.join(scratch, 'writer-2-capture.jsonl'));
 
 /** Points the writer stored and points it refused for one service, from a capture position. */
 export function writerSaw(service, fromLine = 0) {
@@ -233,6 +318,8 @@ export function writerSaw(service, fromLine = 0) {
     refused: entries.flatMap((entry) => entry.refused.filter(ofService)),
     // Zero-count points: valid, and nothing to store.
     empty: entries.flatMap((entry) => (entry.empty ?? []).filter(ofService)),
+    // Points whose key was already counted: redeliveries.
+    duplicates: entries.flatMap((entry) => (entry.duplicates ?? []).filter(ofService)),
   };
 }
 
@@ -282,11 +369,12 @@ export async function post(
  */
 export function headersOnly(authorization, waitMs = 1500) {
   return new Promise((resolve, reject) => {
-    const socket = net.connect(43185, '127.0.0.1');
+    const { port, host } = new URL(COLLECTOR);
+    const socket = net.connect(Number(port), '127.0.0.1');
     let received = '';
     const lines = [
       'POST /v1/metrics HTTP/1.1',
-      'Host: 127.0.0.1:43185',
+      `Host: ${host}`,
       'Content-Type: application/json',
       'Content-Length: 500000',
     ];
@@ -341,8 +429,6 @@ export async function settle(token) {
   await sleep(500);
 }
 
-export const WRITER = 'http://127.0.0.1:43195';
-export const TENANT_COLLECTOR = 'http://127.0.0.1:43186';
 
 /**
  * Starts a second collector in the role of a tenant's own Collector: it converts cumulative
@@ -378,13 +464,9 @@ service:
 `;
   writeFileSync(path.join(scratch, 'tenant-collector.yaml'), config);
   compose('up', '-d', '--no-deps', 'tenant-collector');
-  await waitFor('the tenant collector', async () => {
-    try {
-      await fetch(`${TENANT_COLLECTOR}/`, { signal: AbortSignal.timeout(1000) });
-      return true;
-    } catch {
-      return false;
-    }
+  await waitFor('the tenant collector', () => {
+    TENANT_COLLECTOR = published('tenant-collector', 4318);
+    return answers(TENANT_COLLECTOR);
   });
 }
 

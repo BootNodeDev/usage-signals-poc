@@ -1,8 +1,8 @@
 # OpenTelemetry Collector Builder manifest for the edge collector of check 05.
 # It lists exactly the components collector.yaml uses, at the versions the contrib distribution
-# 0.165.0 pins. It was NOT built in this experiment (no Go toolchain was installed): the run
-# used the unmodified contrib image, which contains these same modules among many others.
-# run.mjs fails when this list and collector.yaml disagree.
+# 0.165.0 pins. Dockerfile.edge builds it, and run.mjs runs the check against that build.
+# run.mjs fails when this list and collector.yaml disagree, and when the binary reports other
+# components than these.
 dist:
   name: usage-signals-edge
   description: Usage Signals edge collector, upstream components only
@@ -26,5 +26,9 @@ exporters:
   - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.165.0
   - gomod: go.opentelemetry.io/collector/exporter/nopexporter v0.165.0
 
+# A collector resolves a configuration value without a scheme with the env provider, and does
+# not start when that provider is missing, so it is listed although collector.yaml reads no
+# environment variable.
 providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.71.0
   - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.71.0

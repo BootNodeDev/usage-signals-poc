@@ -774,9 +774,6 @@ async function silentAndRepeated(context) {
   }
   const repeated = simpleBody(`repeated-${runTag}`, { count: 4, timeMs: BASE_MS });
   for (let i = 0; i < 3; i += 1) await post('/v1/metrics', repeated, { token: tokenA });
-  await waitFor('the repeated batch', () => requestsOf(`repeated-${runTag}`) >= 12, 10_000).catch(
-    () => {},
-  );
   await settle(tokenA);
   for (const item of outcomes) {
     const rows = storedRows(item.service).length;
@@ -790,13 +787,14 @@ async function silentAndRepeated(context) {
     );
   }
   const stored = requestsOf(`repeated-${runTag}`);
+  // Round one recorded 12 here as a finding. Round two added the point-level key.
   record(
     9,
-    'finding',
-    'no deduplication: one batch of 4 requests sent 3 times',
-    '12 requests stored',
+    'required',
+    'one batch of 4 requests sent 3 times is counted once',
+    '4 requests stored',
     `${stored} requests stored`,
-    stored === 12,
+    stored === 4,
   );
 }
 

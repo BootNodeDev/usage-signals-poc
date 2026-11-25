@@ -7,8 +7,13 @@
 //   partialSuccess, or 400 when the body cannot be decoded, and the collector drops it;
 // - storage that is unavailable now is answered 503, and the collector keeps the batch.
 //
-// Not implemented: quota, series cap, deduplication, re-bucketing, the timestamp window,
-// tenant status and token revocation. See README.md.
+// Delivery to this writer is at least once, so every point is counted under a key made of
+// its identity: the key and the counts are written in one transaction, and a point whose key
+// exists is a redelivery and adds nothing.
+//
+// Not implemented: quota, series cap, re-bucketing, the timestamp window against the time of
+// receipt, tenant status and token revocation. See README.md.
+import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -16,7 +21,7 @@ import pg from 'pg';
 
 const PORT = Number(process.env.WRITER_PORT);
 const SCRATCH = process.env.WRITER_SCRATCH;
-const CAPTURE = path.join(SCRATCH, 'writer-capture.jsonl');
+const CAPTURE = path.join(SCRATCH, process.env.WRITER_CAPTURE ?? 'writer-capture.jsonl');
 // run.mjs writes "503" here to make the writer answer as it would with PostgreSQL unavailable.
 const MODE_FILE = path.join(SCRATCH, 'writer-mode');
 
@@ -30,7 +35,22 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 // The primary key is a B-tree entry, which has a size limit; these keep a row well below it.
 const MAX_BYTES = { service: 255, route: 1024, method: 32 };
+// The bound the collector's last two path rules give every segment. The writer checks it
+// again, so that a mistake at the edge stores nothing.
+const SEGMENT = /^[ -~]{0,36}$/;
 const MAX_COUNT = BigInt(Number.MAX_SAFE_INTEGER);
+const DAY_MS = 86_400_000;
+// The last instant a PostgreSQL date and a JavaScript Date both hold comfortably.
+const MAX_TIME_MS = Date.UTC(9999, 11, 31);
+
+// Keys are kept for KEY_DAYS whole UTC days behind today, and a point older than that is
+// refused: its key may be gone, so it could not be told from a redelivery. The collector's
+// disk queue is sized for 7 days, hence 8. The other three values exist for the experiment:
+// run.mjs moves the clock, switches the age check off to show the design as first written,
+// and makes an acknowledgement fail after the commit.
+const settings = { keyDays: 8, refuseOlderThanKeys: true, clockOffsetDays: 0, ackFault: 'none' };
+const today = () => Math.floor(Date.now() / DAY_MS) + settings.clockOffsetDays;
+const dateOf = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
 
 // SQLSTATE classes that say "not now": connection, resources, operator intervention,
 // transaction rollback (deadlock, serialization) and system errors. Any other error on a
@@ -49,6 +69,30 @@ const UPSERT = `
       SELECT pair.old + pair.new
       FROM unnest(m.bucket_counts, EXCLUDED.bucket_counts) WITH ORDINALITY AS pair(old, new, n)
       ORDER BY pair.n)`;
+
+// Unknown keys are inserted and returned; a key that exists, or that another transaction is
+// inserting and then commits, is left alone and not returned. The caller passes the keys
+// sorted, and every writer sorts alike, so two batches cannot wait for each other.
+const INSERT_KEYS = `
+  INSERT INTO usage_signals.api_point_key (point_day, key, numbers)
+  SELECT k.day, k.key, k.numbers
+  FROM unnest($1::date[], $2::uuid[], $3::integer[]) WITH ORDINALITY AS k(day, key, numbers, n)
+  ORDER BY k.n
+  ON CONFLICT (point_day, key) DO NOTHING
+  RETURNING key`;
+
+const KNOWN_NUMBERS = `
+  SELECT key, numbers FROM usage_signals.api_point_key
+  WHERE (point_day, key) IN (SELECT * FROM unnest($1::date[], $2::uuid[]))`;
+
+const FORGET_KEYS = `
+  DELETE FROM usage_signals.api_point_key
+  WHERE (point_day, key) IN (SELECT * FROM unnest($1::date[], $2::uuid[]))`;
+
+const COUNT_REFUSAL = `
+  INSERT INTO usage_signals.api_refusal AS r (tenant_id, day, reason, points)
+  VALUES ($1, $2, $3, $4)
+  ON CONFLICT (tenant_id, day, reason) DO UPDATE SET points = r.points + EXCLUDED.points`;
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
 // An idle connection that breaks when PostgreSQL stops must not end the process.
@@ -140,15 +184,54 @@ function pointRefusal(point, attributes, duplicated, numbers) {
   if (duplicated.length > 0) return `attribute sent more than once: ${duplicated[0]}`;
   const status = attributes['http.response.status_code'];
   if (!Number.isInteger(status) || status < 100 || status > 599) return 'no valid status code';
-  if (unsigned(point.timeUnixNano) === null || point.timeUnixNano === undefined) {
-    return 'no valid timestamp';
-  }
+  const time = point.timeUnixNano === undefined ? null : unsigned(point.timeUnixNano);
+  if (time === null || time / 1_000_000n > BigInt(MAX_TIME_MS)) return 'no valid timestamp';
+  if (unsigned(point.startTimeUnixNano) === null) return 'no valid start timestamp';
   return (
     nameRefusal('route', attributes['http.route']) ??
+    segmentRefusal(attributes['http.route']) ??
     nameRefusal('method', attributes['http.request.method']) ??
     numbers.reason ??
-    null
+    ageRefusal(time)
   );
+}
+
+const segmentRefusal = (route) =>
+  route.split('/').every((segment) => SEGMENT.test(segment))
+    ? null
+    : 'route with a segment outside the bound';
+
+const dayOf = (timeUnixNano) => Number(BigInt(timeUnixNano) / 1_000_000n / BigInt(DAY_MS));
+
+/** A point older than the keys that are kept cannot be told from a redelivery. */
+function ageRefusal(timeUnixNano) {
+  if (!settings.refuseOlderThanKeys) return null;
+  return dayOf(timeUnixNano) < today() - settings.keyDays
+    ? 'older than the de-duplication keys that are kept'
+    : null;
+}
+
+const hashOf = (value) => createHash('sha256').update(JSON.stringify(value)).digest();
+
+/**
+ * The key of a point: what identifies it in the metrics data model (the stream, which is the
+ * resource, the metric and the attributes, with StartTimeUnixNano and TimeUnixNano). The time
+ * of receipt is not part of it, so a retry by the tenant's SDK has the same key.
+ */
+function identify(point) {
+  const hex = hashOf([
+    point.resource['tenant.id'].toLowerCase(),
+    point.resource['service.name'] ?? '(unknown)',
+    point.resource['service.instance.id'] ?? '',
+    point.attributes['http.route'],
+    point.attributes['http.request.method'],
+    point.attributes['http.response.status_code'],
+    String(point.startTimeUnixNano ?? '0'),
+    String(point.timeUnixNano),
+  ]).toString('hex');
+  const key = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  const numbers = hashOf([point.count, point.sum, point.min, point.max, point.bucketCounts]);
+  return { key, day: dateOf(dayOf(point.timeUnixNano)), numbers: numbers.readInt32BE(0) };
 }
 
 /**
@@ -186,6 +269,7 @@ function readPoint(point, base, result) {
   const seen = {
     ...base,
     attributes,
+    startTimeUnixNano: point.startTimeUnixNano,
     timeUnixNano: point.timeUnixNano,
     count: numbers.count ?? point.count,
     sum: point.sum,
@@ -197,7 +281,7 @@ function readPoint(point, base, result) {
   const reason = pointRefusal(point, attributes, duplicated, numbers);
   if (reason) result.refused.push({ ...seen, reason });
   else if (numbers.count === 0) result.empty.push(seen);
-  else result.accepted.push(seen);
+  else result.accepted.push({ ...seen, ...identify(seen) });
 }
 
 function rowOf(point) {
@@ -222,38 +306,142 @@ const isTemporary = (error) =>
   error.code.length !== 5 ||
   TEMPORARY_CLASSES.includes(error.code.slice(0, 2));
 
+const columnsOf = (points) => [points.map((point) => point.day), points.map((point) => point.key)];
+
 /**
- * Stores the points in one transaction and returns those PostgreSQL refused for good, such as
- * a tenant that is not enrolled. Throws when storage is unavailable.
+ * One entry per key of a request. Exact copies inside the request count once. Points of one
+ * request that share a key with other numbers are kept together and added, as the edge's
+ * merge adds them; the entry's numbers then stand for the whole group.
  */
-async function store(points) {
+function groupByKey(points) {
+  const groups = new Map();
+  const copies = [];
+  for (const point of points) {
+    const group = groups.get(point.key) ?? { key: point.key, day: point.day, members: [] };
+    groups.set(point.key, group);
+    if (group.members.some((member) => member.numbers === point.numbers)) copies.push(point);
+    else group.members.push(point);
+  }
+  for (const group of groups.values()) {
+    const all = group.members.map((member) => member.numbers).sort((a, b) => a - b);
+    group.numbers = all.length === 1 ? all[0] : hashOf(all).readInt32BE(0);
+  }
+  const sorted = [...groups.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+  return { groups: sorted, copies };
+}
+
+/**
+ * Inserts the keys of the points and splits them: points to count, redeliveries and copies,
+ * and points that carry the identity of a counted point with other numbers, which no
+ * redelivery does.
+ */
+async function claim(client, points) {
+  const { groups, copies } = groupByKey(points);
+  if (groups.length === 0) return { fresh: [], duplicates: [], collisions: [] };
+  const inserted = await client.query(INSERT_KEYS, [
+    ...columnsOf(groups),
+    groups.map((group) => group.numbers),
+  ]);
+  const freshKeys = new Set(inserted.rows.map((row) => row.key));
+  const membersOf = (list) => list.flatMap((group) => group.members);
+  const fresh = membersOf(groups.filter((group) => freshKeys.has(group.key)));
+  const seenBefore = groups.filter((group) => !freshKeys.has(group.key));
+  if (seenBefore.length === 0) return { fresh, duplicates: copies, collisions: [] };
+  const known = await client.query(KNOWN_NUMBERS, columnsOf(seenBefore));
+  const numbersOf = new Map(known.rows.map((row) => [row.key, row.numbers]));
+  const same = (group) => numbersOf.get(group.key) === group.numbers;
+  const reason = 'same identity as a counted point, other numbers';
+  return {
+    fresh,
+    duplicates: [...copies, ...membersOf(seenBefore.filter(same))],
+    collisions: membersOf(seenBefore.filter((group) => !same(group))).map((point) => ({
+      ...point,
+      reason,
+    })),
+  };
+}
+
+/** Adds the points to their rows and returns the points PostgreSQL refused for good. */
+async function addCounts(client, points) {
   // Rows are written in key order: two batches that touch the same rows in different orders
   // deadlock in PostgreSQL.
   const ordered = [...points].sort((a, b) =>
     keyOf(a) < keyOf(b) ? -1 : keyOf(a) > keyOf(b) ? 1 : 0,
   );
   const refused = [];
+  for (const point of ordered) {
+    await client.query('SAVEPOINT one_point');
+    try {
+      await client.query(UPSERT, rowOf(point));
+    } catch (error) {
+      if (isTemporary(error)) throw error;
+      await client.query('ROLLBACK TO SAVEPOINT one_point');
+      refused.push(point);
+      point.reason = `refused by the database (SQLSTATE ${error.code})`;
+    }
+  }
+  // A point that was not counted must not leave a key behind.
+  const counted = new Set(points.filter((point) => !refused.includes(point)).map((p) => p.key));
+  const orphans = refused.filter((point) => !counted.has(point.key));
+  if (orphans.length > 0) await client.query(FORGET_KEYS, columnsOf(orphans));
+  return refused;
+}
+
+/** One row per tenant and reason, for the tenant's setup page. */
+async function countRefusals(client, refused) {
+  const totals = new Map();
+  for (const item of refused) {
+    const tenant = item.resource?.['tenant.id'];
+    if (typeof tenant !== 'string' || !UUID.test(tenant)) continue;
+    // The text after a colon names a tenant-chosen key; the reason is stored without it.
+    const group = `${tenant.toLowerCase()}|${item.reason.split(':')[0]}`;
+    totals.set(group, (totals.get(group) ?? 0) + 1);
+  }
+  for (const group of [...totals.keys()].sort()) {
+    const [tenant, reason] = group.split('|');
+    await client.query(COUNT_REFUSAL, [tenant, dateOf(today()), reason, totals.get(group)]);
+  }
+}
+
+/**
+ * Writes keys, counts and refusals in one transaction. Throws when storage is unavailable.
+ * Locks are taken in one order by every writer: keys, then rows, then refusal counters.
+ */
+async function store(points, refusedBefore) {
   const client = await pool.connect();
+  // A connection that ends while in use reports it as an event too, and an event without a
+  // listener ends the process.
+  let broken = false;
+  const noteBroken = () => {
+    broken = true;
+  };
+  client.on('error', noteBroken);
   try {
     await client.query('BEGIN');
-    for (const point of ordered) {
-      await client.query('SAVEPOINT one_point');
-      try {
-        await client.query(UPSERT, rowOf(point));
-      } catch (error) {
-        if (isTemporary(error)) throw error;
-        await client.query('ROLLBACK TO SAVEPOINT one_point');
-        refused.push({ ...point, reason: `refused by the database (SQLSTATE ${error.code})` });
-      }
-    }
+    const { fresh, duplicates, collisions } = await claim(client, points);
+    const refusedByDatabase = await addCounts(client, fresh);
+    const refused = [...refusedBefore, ...collisions, ...refusedByDatabase];
+    await countRefusals(client, refused);
     await client.query('COMMIT');
-    return refused;
+    const accepted = fresh.filter((point) => !refusedByDatabase.includes(point));
+    return { accepted, duplicates, refused };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
-    client.release();
+    client.off('error', noteBroken);
+    client.release(broken);
   }
+}
+
+/** Deletes keys older than the points the writer still accepts, with one day to spare. */
+async function purgeKeys() {
+  const cutoff = dateOf(today() - settings.keyDays - 1);
+  const result = await pool.query(
+    'DELETE FROM usage_signals.api_point_key WHERE point_day < $1',
+    [cutoff],
+  );
+  return { cutoff, deleted: result.rowCount };
 }
 
 function capture(entry) {
@@ -267,41 +455,60 @@ function answer(response, status, body) {
 
 const currentMode = () => (existsSync(MODE_FILE) ? readFileSync(MODE_FILE, 'utf8').trim() : 'ok');
 
+async function readBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/** The experiment's controls. The document's writer has none of them. */
+async function experiment(request, response) {
+  if (request.url === '/experiment/purge') return answer(response, 200, await purgeKeys());
+  if (request.method === 'POST') Object.assign(settings, JSON.parse(await readBody(request)));
+  return answer(response, 200, settings);
+}
+
 async function handle(request, response) {
   // Lets run.mjs wait until a change of the mode file is visible inside the container.
   if (request.method === 'GET' && request.url === '/mode') {
     return answer(response, 200, { mode: currentMode() });
   }
+  if (request.url.startsWith('/experiment')) return experiment(request, response);
   if (request.method !== 'POST' || request.url !== '/v1/metrics') {
     capture({ outcome: 'unexpected-request', method: request.method, url: request.url });
     return answer(response, 404, {});
   }
-  const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
+  const body = await readBody(request);
   if (currentMode() === '503') {
     capture({ outcome: 'answered-503' });
     return answer(response, 503, { message: 'storage unavailable (forced by the experiment)' });
   }
   let parsed;
   try {
-    parsed = readRequest(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    parsed = readRequest(JSON.parse(body));
   } catch (error) {
     capture({ outcome: 'undecodable', error: String(error) });
     return answer(response, 400, { message: 'undecodable body' });
   }
-  let refusedByDatabase;
+  let stored;
   try {
-    refusedByDatabase = await store(parsed.accepted);
+    stored = await store(parsed.accepted, parsed.refused);
   } catch (error) {
     capture({ outcome: 'storage-error', error: String(error), code: error.code });
     return answer(response, 503, { message: 'storage unavailable' });
   }
-  const refused = [...parsed.refused, ...refusedByDatabase];
-  const accepted = parsed.accepted.filter(
-    (point) => !refusedByDatabase.some((item) => keyOf(item) === keyOf(point)),
-  );
+  const { refused } = stored;
   // Written after the commit, so a captured accepted point is a stored point.
-  capture({ outcome: 'stored', accepted, empty: parsed.empty, refused });
+  capture({ outcome: 'stored', ...stored, empty: parsed.empty });
+  if (settings.ackFault === 'lose-once') {
+    // The commit happened and the collector never learns of it.
+    settings.ackFault = 'none';
+    return response.destroy();
+  }
+  if (settings.ackFault === 'hold') {
+    // The commit happened and the answer waits: the collector can be killed meanwhile.
+    await new Promise((resolve) => setTimeout(resolve, 60_000));
+  }
   const partialSuccess =
     refused.length > 0
       ? { rejectedDataPoints: String(refused.length), errorMessage: refused[0].reason }

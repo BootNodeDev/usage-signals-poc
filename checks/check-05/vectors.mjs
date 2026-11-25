@@ -2,6 +2,9 @@
 // the architecture document mentions was not available. Vectors 72 onwards come from the
 // independent review of this check. The expected route is stated here by hand and never
 // computed from the rules.
+// Round two (2026-11-24) added two rules that bound every segment (printable ASCII, at most 36
+// characters). 14 vectors of round one changed their expected route with them, each to
+// {long} or {non_ascii}; the vectors from "round two" on in the list are new.
 // kind: "rewrite" an identifier must be replaced, "keep" the path must stay as it is,
 // "limit" a case the rules get wrong or cannot express, with the behaviour they have today;
 // a limit whose expected route still holds the identifier is a raw identifier that survives.
@@ -27,6 +30,13 @@ const notBase32 = `${G.slice(0, 20)}1${G.slice(21)}`; // "1" is not in the base-
 const badSecondChar = `GZ${G.slice(2)}`; // an account's second character is A to D
 const unknownType = `Q${G.slice(1)}`; // 56 capital letters, but no strkey starts with Q
 const badChecksum = `${G.slice(0, 55)}${G.endsWith('A') ? 'B' : 'A'}`;
+// Round two.
+const WORD_36 = 'report_payment_attempt_informational';
+const RAW_SEED = Buffer.from(Array.from({ length: 32 }, (_, i) => (i * 37 + 11) & 0xff));
+const RAW_SEED_BASE64 = RAW_SEED.toString('base64url');
+const RAW_SEED_HEX = RAW_SEED.toString('hex');
+const percentEncoded = (text) =>
+  [...text].map((c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`).join('');
 const manyIds = `/${'seg/123/'.repeat(100)}`;
 
 const ROWS = [
@@ -72,10 +82,10 @@ const ROWS = [
     '63 hex digits: any hex run of 24 or more is taken as a hash',
   ],
   [
-    'keep',
+    'rewrite',
     `/blobs/${SHA256.slice(0, 63)}g`,
-    `/blobs/${SHA256.slice(0, 63)}g`,
-    '64 characters, one not hex',
+    '/blobs/{long}',
+    '64 characters, one not hex: no known shape, over 36 characters',
   ],
   ['rewrite', `/accounts/${G}`, '/accounts/{account}', 'G-address'],
   ['rewrite', `/accounts/${G}/payments`, '/accounts/{account}/payments', 'G-address inside a path'],
@@ -112,34 +122,34 @@ const ROWS = [
   ],
   ['rewrite', `/x/${strkey('W', 10)}`, '/x/{strkey}', 'muxed contract strkey, 69 characters'],
   [
-    'keep',
+    'rewrite',
     `/accounts/${unknownType}`,
-    `/accounts/${unknownType}`,
-    '56 capital letters and digits starting with Q: no such strkey type',
+    '/accounts/{long}',
+    '56 capital letters and digits starting with Q: no such strkey type: no known shape, over 36 characters',
   ],
   [
-    'keep',
+    'rewrite',
     `/accounts/${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(3).slice(0, 56)}`,
-    `/accounts/${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(3).slice(0, 56)}`,
-    'a word of 56 capital letters',
+    '/accounts/{long}',
+    'a word of 56 capital letters: no known shape, over 36 characters',
   ],
   [
-    'keep',
+    'rewrite',
     `/accounts/${notBase32}`,
-    `/accounts/${notBase32}`,
-    'G-shape with a character outside the base-32 alphabet',
+    '/accounts/{long}',
+    'G-shape with a character outside the base-32 alphabet: no known shape, over 36 characters',
   ],
   [
-    'keep',
+    'rewrite',
     `/accounts/${badSecondChar}`,
-    `/accounts/${badSecondChar}`,
-    'G-shape with an impossible second character',
+    '/accounts/{long}',
+    'G-shape with an impossible second character: no known shape, over 36 characters',
   ],
   [
-    'keep',
+    'rewrite',
     `/accounts/${G.slice(0, 55)}`,
-    `/accounts/${G.slice(0, 55)}`,
-    'G-address one character short',
+    '/accounts/{long}',
+    'G-address one character short: no known shape, over 36 characters',
   ],
   [
     'limit',
@@ -148,16 +158,16 @@ const ROWS = [
     '57 characters: no strkey, but it holds a seed-like run and is redacted (the result depends on the letters)',
   ],
   [
-    'keep',
+    'rewrite',
     `/accounts/${G.toLowerCase()}`,
-    `/accounts/${G.toLowerCase()}`,
-    'lower-case G-shape: strkeys are upper case',
+    '/accounts/{long}',
+    'lower-case G-shape: strkeys are upper case: no known shape, over 36 characters',
   ],
   [
-    'keep',
+    'rewrite',
     `/accounts/${M.slice(0, 68)}`,
-    `/accounts/${M.slice(0, 68)}`,
-    'M-address one character short',
+    '/accounts/{long}',
+    'M-address one character short: no known shape, over 36 characters',
   ],
   ['keep', '/GET/CONFIG', '/GET/CONFIG', 'short capital words starting with G and C'],
   ['rewrite', '/users/', '/users', 'trailing slash'],
@@ -221,11 +231,11 @@ const ROWS = [
   ['limit', '/users/1e5', '/users/1e5', 'exponent notation survives'],
   ['limit', '/users/%31%32%33', '/users/%31%32%33', 'percent-encoded number survives'],
   ['limit', '/users/123%20', '/users/123%20', 'number with a percent-encoded space survives'],
-  ['limit', '/users/\u0661\u0662\u0663', '/users/\u0661\u0662\u0663', 'non-ASCII digits survive'],
+  ['rewrite', '/users/\u0661\u0662\u0663', '/users/{non_ascii}', 'non-ASCII digits'],
   ['rewrite', `/orders/${UUID.replaceAll('-', '')}`, '/orders/{hash}', 'UUID without dashes'],
-  ['limit', `/orders/{${UUID}}`, `/orders/{${UUID}}`, 'UUID in braces survives'],
-  ['limit', `/orders/urn:uuid:${UUID}`, `/orders/urn:uuid:${UUID}`, 'UUID as a URN survives'],
-  ['limit', `/orders/${UUID}.pdf`, `/orders/${UUID}.pdf`, 'UUID with an extension survives'],
+  ['rewrite', `/orders/{${UUID}}`, '/orders/{long}', 'UUID in braces: 38 characters'],
+  ['rewrite', `/orders/urn:uuid:${UUID}`, '/orders/{long}', 'UUID as a URN: 45 characters'],
+  ['rewrite', `/orders/${UUID}.pdf`, '/orders/{long}', 'UUID with an extension: 40 characters'],
   ['rewrite', `/tx/${MIXED_CASE_HASH}`, '/tx/{hash}', 'mixed-case hash'],
   ['rewrite', `/tx/0X${SHA256}`, '/tx/{hash}', 'hash with 0X'],
   ['rewrite', `/tx/${SHA256.slice(0, 56)}`, '/tx/{hash}', '56 hex digits'],
@@ -252,10 +262,10 @@ const ROWS = [
   ['rewrite', `/k/${S}.txt`, '/k/{redacted}', 'secret seed with an extension'],
   ['rewrite', `/k?seed=${S}`, '/k', 'secret seed in the query string'],
   [
-    'limit',
+    'rewrite',
     `/k/${S.slice(0, 40)}`,
-    `/k/${S.slice(0, 40)}`,
-    'the first 40 characters of a secret seed survive',
+    '/k/{long}',
+    'the first 40 characters of a secret seed: no known shape, over 36 characters',
   ],
   ['rewrite', `/x/${P}`, '/x/{strkey}', `signed-payload strkey, ${P.length} characters`],
   ['rewrite', `/assets/USDC:${G}`, '/assets/USDC:{account}', 'asset code and issuer'],
@@ -269,10 +279,10 @@ const ROWS = [
   ],
   ['rewrite', `/accounts/id=${M}`, '/accounts/id={muxed_account}', 'M-address after other text'],
   [
-    'limit',
+    'rewrite',
     `/accounts/%47${G.slice(1)}`,
-    `/accounts/%47${G.slice(1)}`,
-    'G-address with a percent-encoded first letter survives',
+    '/accounts/{long}',
+    'G-address with a percent-encoded first letter: no known shape, over 36 characters',
   ],
   [
     'limit',
@@ -327,6 +337,41 @@ const ROWS = [
   ['rewrite', '/files/a//b', '/files/a/b', 'doubled slash inside a path'],
   ['keep', '/GATEWAY/CONFIG', '/GATEWAY/CONFIG', 'capital words'],
   ['rewrite', '/api/v1/', '/api/v1', 'version and trailing slash'],
+  // Round two: the bound on every segment, and what it leaves.
+  ['keep', `/v1/${WORD_36}`, `/v1/${WORD_36}`, 'a segment of 36 characters, the longest in four of the six API descriptions'],
+  ['rewrite', `/v1/${WORD_36}s`, '/v1/{long}', 'a word of 37 characters'],
+  ['limit', `/k/${S.slice(0, 36)}`, `/k/${S.slice(0, 36)}`, 'the first 36 characters of a secret seed survive'],
+  ['rewrite', `/k/${S.slice(0, 37)}`, '/k/{long}', 'the first 37 characters of a secret seed'],
+  ['rewrite', `/k/${S.slice(0, 51)}`, '/k/{long}', 'the first 51 characters of a secret seed'],
+  ['rewrite', `/k/${S.slice(1)}`, '/k/{long}', 'a secret seed without its first letter'],
+  ['rewrite', `/k/${S.slice(2)}`, '/k/{long}', 'a secret seed without its first two letters'],
+  ['rewrite', `/k/%53${S.slice(1)}`, '/k/{long}', 'a secret seed with a percent-encoded first letter'],
+  ['rewrite', `/k/${percentEncoded(S)}`, '/k/{long}', 'a secret seed percent-encoded throughout'],
+  ['rewrite', `/k/\uff33${S.slice(1)}`, '/k/{non_ascii}', 'a secret seed with a full-width first letter'],
+  ['rewrite', `/k/${S.slice(0, 28)}\u200b${S.slice(28)}`, '/k/{non_ascii}', 'a secret seed broken by a zero-width space'],
+  ['rewrite', `/k/${S.match(/.{4}/g).join('-')}`, '/k/{long}', 'a secret seed hyphenated in groups of four'],
+  ['rewrite', `/k/${S.slice(0, 28)} ${S.slice(28)}`, '/k/{long}', 'a secret seed broken by a space'],
+  ['rewrite', `/k/${S.slice(0, 28)}.${S.slice(28)}`, '/k/{long}', 'a secret seed broken by a dot'],
+  ['rewrite', `/k/${[...S].reverse().join('')}`, '/k/{long}', 'a secret seed reversed'],
+  ['rewrite', `/k/${Buffer.from(S).toString('base64url')}`, '/k/{long}', 'a secret seed in base64'],
+  ['rewrite', `/k/${RAW_SEED_BASE64}`, '/k/{long}', 'the 32 bytes of a secret key in base64, 43 characters'],
+  ['rewrite', `/k/${RAW_SEED_HEX}`, '/k/{hash}', 'the 32 bytes of a secret key in hex'],
+  [
+    'limit',
+    `/k/${S.slice(0, 28)}/${S.slice(28)}`,
+    `/k/${S.slice(0, 28)}/${S.slice(28)}`,
+    'a secret seed split across two segments is stored whole',
+  ],
+  [
+    'limit',
+    `/k/${RAW_SEED_BASE64.slice(0, 22)}/${RAW_SEED_BASE64.slice(22)}`,
+    `/k/${RAW_SEED_BASE64.slice(0, 22)}/${RAW_SEED_BASE64.slice(22)}`,
+    'a base64 secret key split across two segments is stored whole',
+  ],
+  ['rewrite', `/offers/USDC:${G},EURC:${G2}`, '/offers/{long}', 'two assets with issuers in one segment'],
+  ['rewrite', `/x/id=${strkey('T', 8)}`, '/x/{long}', 'pre-authorized transaction strkey after other text'],
+  ['rewrite', `/tx/id-${SHA256}`, '/tx/{long}', 'hash with a prefix'],
+  ['rewrite', `/auth/token=${JWT}`, '/auth/{long}', 'JWT after other text'],
 ];
 
 export const VECTORS = ROWS.map(([kind, raw, expected, why]) => ({ kind, raw, expected, why }));

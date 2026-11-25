@@ -1,0 +1,16 @@
+# The edge collector of check 05, built with the OpenTelemetry Collector Builder from
+# builder-manifest.yaml. Nothing of ours is compiled: the Builder generates the main package
+# from the manifest. https://opentelemetry.io/docs/collector/extend/ocb/
+FROM golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
+ENV CGO_ENABLED=0
+RUN go install go.opentelemetry.io/collector/cmd/builder@v0.165.0
+WORKDIR /src
+COPY builder-manifest.yaml .
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    builder --config=builder-manifest.yaml
+
+# The binary alone, as the user ID the contrib image uses.
+FROM scratch
+COPY --from=build /src/_build/usage-signals-edge /usage-signals-edge
+USER 10001:10001
+ENTRYPOINT ["/usage-signals-edge"]

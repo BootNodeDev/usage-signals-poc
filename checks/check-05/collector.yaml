@@ -49,22 +49,23 @@ processors:
     metric_statements:
       - set(resource.attributes["usage_signals.received_at_unix_nano"], UnixNano(Now()))
 
-  # Any condition that holds drops the metric.
+  # Any condition that holds drops the metric. A wrong unit is not dropped here (round two):
+  # it goes on to the writer, which refuses it and records the refusal for the tenant.
   filter/http_server_only:
     error_mode: propagate
     metric_conditions:
       - resource.attributes["tenant.id"] == nil
       - metric.type != METRIC_DATA_TYPE_HISTOGRAM
       - metric.name != "http.server.request.duration" and metric.name != "http.server.duration"
-      - metric.name == "http.server.request.duration" and metric.unit != "s"
-      - metric.name == "http.server.duration" and metric.unit != "ms"
 
-  # The older convention: milliseconds and the old attribute names.
+  # The older convention: milliseconds and the old attribute names. The older name with
+  # another unit is renamed first, so that it is not rescaled and the writer refuses it.
   transform/legacy:
     error_mode: propagate
     metric_statements:
       - context: metric
         statements:
+          - set(metric.name, "http.server.duration, unit not ms") where metric.name == "http.server.duration" and metric.unit != "ms"
           - scale_metric(0.001, "s") where metric.name == "http.server.duration"
           - set(metric.name, "http.server.request.duration") where metric.name == "http.server.duration"
       - context: datapoint
@@ -157,6 +158,12 @@ processors:
       # Anything that still looks like a secret seed, in either case, anywhere in a segment,
       # down to 52 of its 56 characters: the whole segment is redacted.
       - replace_pattern(datapoint.attributes["http.route"], "/[^/]*(?i:S[A-D][A-Z2-7]{50,})[^/]*/", "/{redacted}/")
+      # Round two: two rules that know no identifier shape, placed last so that they also
+      # bound what the rules above wrote. A segment that holds a character outside printable
+      # ASCII is replaced, then a segment longer than 36 characters. After them every segment
+      # of every route is at most 36 printable ASCII characters, whatever was sent.
+      - replace_pattern(datapoint.attributes["http.route"], "/[^/]*[^ -~][^/]*/", "/{non_ascii}/")
+      - replace_pattern(datapoint.attributes["http.route"], "/[^/]{37,}/", "/{long}/")
       # Undo the doubling, then drop trailing slashes except on the root.
       - replace_pattern(datapoint.attributes["http.route"], "/{2,}", "/")
       - replace_pattern(datapoint.attributes["http.route"], "(.)/$$", "$$1")
