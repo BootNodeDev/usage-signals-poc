@@ -157,11 +157,14 @@
       var count = config.labels.length;
       var slot = (box.right - box.left) / count;
       var barWidth = Math.max(2, Math.min(22, Math.floor(slot * 0.64)));
-      /* A null value is unknown, not zero, so its day has no total. */
-      var totals = config.labels.map(function (_, i) {
-        return config.series.reduce(function (acc, s) { return acc === null || s.values[i] === null ? null : acc + s.values[i]; }, 0);
+      /* A null value is unknown, not zero: it is not drawn, and its day has no total. */
+      var drawnHeights = config.labels.map(function (_, i) {
+        return config.series.reduce(function (acc, s) { return acc + (s.values[i] || 0); }, 0);
       });
-      var fixedMax = config.max || Math.max.apply(null, totals);
+      var totals = config.labels.map(function (_, i) {
+        return config.series.some(function (s) { return s.values[i] === null; }) ? null : drawnHeights[i];
+      });
+      var fixedMax = config.max || Math.max.apply(null, drawnHeights);
       var center = function (i) { return box.left + slot * (i + 0.5); };
       var y = axes(svg, box, ticks(fixedMax, 4), config.labels, config.tickFormat || config.format, center);
       var fills = config.series.map(function (s) { return s.hatch ? hatch(svg, s.color) : null; });
