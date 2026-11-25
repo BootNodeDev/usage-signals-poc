@@ -62,3 +62,12 @@ CREATE TABLE IF NOT EXISTS usage_signals.api_metric_minute (
                           AND array_position(bucket_counts, NULL) IS NULL),
   PRIMARY KEY (tenant_id, minute, service, route, method, status_code)
 );
+
+-- Hours of sample traffic already sent to Umami for a demo site (lib/sample-traffic.js), so a
+-- cron run fills only the hours that are still missing.
+CREATE TABLE IF NOT EXISTS usage_signals.sample_hour (
+  site_id     uuid        NOT NULL REFERENCES usage_signals.site(id),
+  hour        timestamptz NOT NULL CHECK (date_trunc('hour', hour) = hour),
+  page_views  integer     NOT NULL CHECK (page_views >= 0),
+  PRIMARY KEY (site_id, hour)
+);
