@@ -1,5 +1,6 @@
 // Decides what the seed creates from the environment it runs in: the local fixtures on a
-// developer machine, the demo tenants on the deployment's own hosts in a Vercel production build.
+// developer machine, the demo tenants on the deployment's own hosts in a Vercel production build,
+// and only the schema in a preview build.
 import { RESERVED_SLUGS, isSlug } from '../lib/slug.js';
 import { TENANTS } from './fixtures.mjs';
 
@@ -47,7 +48,7 @@ export function missingInputs(env) {
   const required = {
     local: SEED_INPUTS,
     production: ['DEMO_SITE_HOSTS', ...SEED_INPUTS],
-    preview: [],
+    preview: ['DATABASE_URL'],
   }[profileName(env)];
   return required.filter((name) => !env[name]);
 }
@@ -99,11 +100,18 @@ export function assertSlugs(tenants) {
   }
 }
 
-/** Returns `{ name, tenants }`: the tenants to seed. Preview builds seed nothing. */
+/**
+ * Returns `{ name, tenants, databaseVariable }`: the tenants to seed, and the variable that holds
+ * the database the schema goes to. Preview builds seed no tenant and get no unpooled URL on Vercel.
+ */
 export function selectProfile(env) {
   const name = profileName(env);
   const tenants = { local: TENANTS, production: [], preview: [] }[name];
-  const profile = { name, tenants: name === 'production' ? productionTenants(env) : tenants };
+  const profile = {
+    name,
+    tenants: name === 'production' ? productionTenants(env) : tenants,
+    databaseVariable: name === 'preview' ? 'DATABASE_URL' : 'DATABASE_URL_UNPOOLED',
+  };
   assertSlugs(profile.tenants);
   return profile;
 }

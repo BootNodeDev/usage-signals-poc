@@ -76,10 +76,13 @@ describe('selectProfile', () => {
     }
   });
 
-  it('seeds nothing in a Vercel preview build', () => {
+  it('seeds no tenant in a Vercel preview build and takes the database from DATABASE_URL', () => {
     const profile = selectProfile({ ...PRODUCTION_ENV, VERCEL_ENV: 'preview', DEMO_SITE_HOSTS: undefined });
     assert.equal(profile.name, 'preview');
     assert.deepEqual(profile.tenants, []);
+    assert.equal(profile.databaseVariable, 'DATABASE_URL');
+    assert.equal(selectProfile(LOCAL_ENV).databaseVariable, 'DATABASE_URL_UNPOOLED');
+    assert.equal(selectProfile(PRODUCTION_ENV).databaseVariable, 'DATABASE_URL_UNPOOLED');
   });
 });
 
@@ -168,7 +171,8 @@ describe('missingInputs', () => {
     });
   }
 
-  it('asks a preview build for nothing', () => {
-    assert.deepEqual(missingInputs({ VERCEL: '1', VERCEL_ENV: 'preview' }), []);
+  it('asks a preview build for DATABASE_URL only', () => {
+    assert.deepEqual(missingInputs({ VERCEL: '1', VERCEL_ENV: 'preview' }), ['DATABASE_URL']);
+    assert.deepEqual(missingInputs({ VERCEL: '1', VERCEL_ENV: 'preview', DATABASE_URL: 'postgresql://neon' }), []);
   });
 });
