@@ -6,6 +6,9 @@
 //
 // Exit code 0 when the locations agree, 1 when they do not. The website is one kept for the
 // probe, so that its events never appear in a tenant's figures.
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 const DAY_MS = 86_400_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -147,7 +150,10 @@ async function commandLine([kind, websiteId, urlA, urlB, ...days]) {
   return result.ok ? 0 : 1;
 }
 
-if (import.meta.main) {
+// `import.meta.main` is missing on older Node releases, where the probe would run nothing and
+// exit 0.
+const invokedPath = process.argv[1] ? realpathSync(process.argv[1]) : '';
+if (invokedPath === fileURLToPath(import.meta.url)) {
   process.exitCode = await commandLine(process.argv.slice(2)).catch((error) => {
     console.error(`probe did not complete: ${error.message}`);
     return 2;
