@@ -102,7 +102,7 @@ in `docker-compose.yml` on that date.
 
 48. **CSV downloads are written in the browser from the figures the page already shows** (issue https://github.com/BootNodeDev/usage-signals-poc/issues/9). `App.downloadCsv` in `console/public/app.js` builds the file and saves it through a `Blob` URL and a link with `download`. Source: https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/a#download. The tenant web page saves the daily rows behind its chart (`Day`, `Page views`, `Visitors`); the operator compare view saves one row per compared project, with `<10` for a small count and `Too few visits` for a withheld rate, as on screen. Rates are rounded as the page rounds them. Rejected: CSV endpoints on the API, which read Umami a second time and could answer with figures newer than the ones on screen.
     - **Format:** RFC 4180 (https://www.rfc-editor.org/rfc/rfc4180): CRLF line ends, every text cell in double quotes, numbers bare. A byte order mark comes first so Excel reads the file as UTF-8.
-    - **Formula injection:** a text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, because project names are typed by tenants and the operator opens the file. Source: https://owasp.org/www-community/attacks/CSV_Injection.
+    - **Formula injection:** a text cell that starts with `=`, `+`, `-`, `@` or any white space gets a leading `'` (OWASP names the tab and the carriage return; a leading space would hide a sign behind it), because project names are typed by tenants and the operator opens the file. Source: https://owasp.org/www-community/attacks/CSV_Injection.
 
 ## Known limits
 - Nothing is access-controlled; see decision 38.

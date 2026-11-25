@@ -177,21 +177,20 @@
     }).join('') + '</tbody></table>';
   }
 
-  /* Numbers stay bare; text is quoted, and text a spreadsheet would run as a formula gets a leading quote. */
   function csvCell(value) {
     if (typeof value === 'number') return String(value);
     var text = value === null || value === undefined ? '' : String(value);
-    return '"' + (/^[=+\-@\t\r]/.test(text) ? "'" : '') + text.replace(/"/g, '""') + '"';
+    var formula = /^[\s=+\-@]/.test(text); /* spreadsheets run such text as a formula (OWASP, CSV injection) */
+    return '"' + (formula ? "'" : '') + text.replace(/"/g, '""') + '"';
   }
 
-  /* Saves the rows as a CSV file. The byte order mark makes Excel read the file as UTF-8. */
   function downloadCsv(name, headers, rows) {
     var text = [headers].concat(rows).map(function (row) { return row.map(csvCell).join(',') + '\r\n'; }).join('');
     var link = document.createElement('a');
-    link.href = URL.createObjectURL(new Blob(['\uFEFF' + text], { type: 'text/csv;charset=utf-8' }));
+    link.href = URL.createObjectURL(new Blob(['\uFEFF' + text], { type: 'text/csv;charset=utf-8' })); /* the byte order mark makes Excel read UTF-8 */
     link.download = name;
     link.click();
-    setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
+    setTimeout(function () { URL.revokeObjectURL(link.href); }, 40000); /* some browsers start the download after click() returns; FileSaver.js waits 40 s */
   }
 
   /* Chart or table: the same rows, so every value is reachable without hover. */

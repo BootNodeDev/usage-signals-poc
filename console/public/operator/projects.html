@@ -204,7 +204,6 @@
       return state.compared.map(find).filter(function (r) { return r && hasData(r); });
     }
 
-    /* The compare table as it reads on screen: "<10" for a small count, "Too few visits" for a withheld rate. */
     function downloadCompare() {
       var csvCount = function (value) { return isSmall(value) ? '<' + value.below : value; };
       var csvRate = function (value, scale, digits) {
