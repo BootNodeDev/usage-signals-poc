@@ -48,6 +48,11 @@
 <main class="wrap">
   <div class="picker">
     <p class="picker-label" id="picker-label">See Pulse as</p>
+    <select class="role-select" id="role-select" aria-labelledby="picker-label">
+      <option value="tenant">A project team</option>
+      <option value="operator">The SCF operator</option>
+      <option value="public">The public</option>
+    </select>
     <div class="roles" role="tablist" aria-labelledby="picker-label">
       <button class="role" type="button" role="tab" id="role-tenant" data-role="tenant" aria-controls="preview" aria-selected="true"><b>A project team</b><span>One site, in full detail</span></button>
       <button class="role" type="button" role="tab" id="role-operator" data-role="operator" aria-controls="preview" aria-selected="false" tabindex="-1"><b>The SCF operator</b><span>Every project, side by side</span></button>

@@ -167,8 +167,13 @@
       tabs[i].tabIndex = tabs[i] === tab ? 0 : -1;
     }
     state.role = tab.dataset.role;
+    byId('role-select').value = state.role;
     if (state.rows.length) render();
   }
+
+  byId('role-select').addEventListener('change', function (event) {
+    selectRole(byId('role-' + event.target.value));
+  });
 
   document.querySelector('.roles').addEventListener('click', function (event) {
     var tab = event.target.closest('.role');
