@@ -126,7 +126,20 @@ main { padding-bottom: 48px; }
 .button-ink { background: var(--ink); color: #ffffff; }
 
 .figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin-top: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
-.figure-label { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+.figures > div { position: relative; }
+.figure-label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+.info {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--tone); color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1; cursor: help;
+}
+.info:hover, .info:focus-visible { background: var(--ink); color: #ffffff; }
+.info::after {
+  content: attr(data-tip); position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 2;
+  width: max-content; max-width: min(240px, 100%); padding: 8px 10px; border-radius: 8px;
+  background: var(--ink); color: #ffffff; font-size: 13px; font-weight: 600; line-height: 1.35; text-align: left;
+  opacity: 0; visibility: hidden; transition: opacity 120ms ease-out, visibility 120ms;
+}
+.info:hover::after, .info:focus-visible::after { opacity: 1; visibility: visible; }
 .figure-value { margin: 2px 0 0; font-size: 36px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
 .figure-note { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 

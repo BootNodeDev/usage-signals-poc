@@ -79,7 +79,8 @@
   }
 
   function figure(label, value, note) {
-    return '<div><p class="figure-label">' + label + '</p><p class="figure-value">' + value + '</p><p class="figure-note">' + note + '</p></div>';
+    return '<div><p class="figure-label">' + label + '<button class="info" type="button" aria-label="' + label + ': ' + note + '" data-tip="' + note +
+      '">i</button></p><p class="figure-value">' + value + '</p></div>';
   }
 
   function ranked(list) {
@@ -106,7 +107,7 @@
         (other === row) + '">' + escapeHtml(names.labels[index]) + '</button>';
     }).join('') + '</div>' : '';
     var smallDay = row.daily.some(function (entry) { return isSmall(entry.pageviews); });
-    return head('<h2>' + escapeHtml(names.shared || project.name) + '</h2>' + picker, escapeHtml(project.domain) + ', last ' + RANGE_DAYS + ' days',
+    return head('<h2>' + escapeHtml(names.shared || project.name) + '</h2>' + picker, 'Last ' + RANGE_DAYS + ' days',
       '<a class="button button-ink" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">View the console</a>') +
       '<div class="figures">' +
         figure('Page views', count(totals.pageviews), 'Every page load the tracker saw') +
@@ -135,8 +136,7 @@
 
   function publicPreview() {
     var rows = D.sortRows(state.rows, function (row) { return row.totals.visitors; }, true);
-    return head('<h2>Totals per project</h2>', 'What anyone can see, last ' + RANGE_DAYS + ' days. A count from 1 to ' + (below() - 1) +
-      ' shows as &lt;' + below() + '.') +
+    return head('<h2>Totals per project</h2>', 'What anyone can see, last ' + RANGE_DAYS + ' days') +
       '<div class="table-wrap"><table><thead><tr><th class="rank">#</th><th>Project</th><th class="num">Visitors</th><th class="num">Page views</th></tr></thead><tbody>' +
       rows.map(function (row, index) {
         return '<tr><td class="rank">' + (index + 1) + '</td><td class="name"><b>' + escapeHtml(row.project.name) + '</b><span>' + escapeHtml(row.project.domain) + '</span></td>' +
