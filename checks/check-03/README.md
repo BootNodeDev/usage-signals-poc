@@ -11,6 +11,28 @@ the per-visitor value travels as `salt`. The design works only when Umami runs w
 Run on 2026-11-19 against the images pinned in `compose.yml` (the same as
 `console/docker-compose.yml`).
 
+## Summary of both rounds
+
+Yes, on one machine with two gateway processes and two Umami instances on one database. 22 of 22
+cases match, and the experiment catches 11 of 11 negative controls.
+
+- A probe now detects when round one's conditions do not hold. It sends one synthetic visitor
+  through each side and compares the results. On both Umami instances, `APP_SECRET`,
+  `ENABLE_CLIENT_SALT`, `SALT_ROTATION` and the time zone must match. On both gateways, the daily
+  salt, the placeholder address and the forwarder User-Agent must match.
+- The probe must run at every deploy and at least daily, because a daylight-saving difference
+  shows only one period ahead. It must also enter through the same front as visitors.
+- One IPv6 address written in several notations now counts once. The gateway normalises
+  bracketed addresses, a port and a zone. It refuses non-addresses and IPv4 with leading zeros.
+- On a day when the two locations use different salts, ten visitors of whom three use both
+  locations count as 13. The disagreement is detectable, but the flag the design describes does
+  not exist yet.
+- A different time zone splits every visitor on every day, not only at the month boundary as
+  round one said.
+
+Not established without two real locations: clock skew, a network partition, DNS, and a visitor
+reaching one location over IPv6 and the other over IPv4.
+
 ## Reproduce
 
 ```sh

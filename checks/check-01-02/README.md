@@ -5,6 +5,44 @@ Run on 2026-11-19 against Umami 3.5.0 and PostgreSQL 18, the images pinned in `c
 Round two, run on 2026-11-24, is the last section of this file. It corrects one statement of
 round one (visits and the clock hour) and closes three of the gaps listed under "Not covered".
 
+## Summary of both rounds
+
+**Forwarding through Umami's batch route with gateway-supplied country, browser, OS, device,
+timestamp and salt gives the same seven metrics as direct ingestion.**
+
+Yes, with three conditions. 29 of 29 facts hold, and the experiment catches 14 of 14 negative
+controls.
+
+- Round one found that Umami split a visit crossing a clock hour in two. The split goes away when
+  the forwarder carries the cache token Umami returns. Forwarded and direct ingestion then give
+  the same metrics and the same visit groups. Condition one: the spool record needs one new field,
+  the same for every event of a page load. That changes what the tracker sends.
+- Condition two: the forwarder keeps its page-load memory across a restart. The experiment
+  persists it to a file and restarts the forwarder mid-run.
+- Condition three: the visit does not cross 00:00 UTC. There the daily salt changes, and one
+  visit counts as direct 2 visitors and 3 visits against forwarded 4 and 4. This follows from the
+  design's daily salt.
+- `probe.mjs` now checks the deployment conditions of round one by reading back from Umami. They
+  are `ENABLE_CLIENT_SALT=1`, a forwarder User-Agent that Umami's bot check accepts, Umami's own
+  labels, a valid non-private placeholder address, and one batch per country. The probe caught
+  all seven violating deployments, including the silent drop. It reports only the first violation
+  when one hides the others.
+- Nothing prevents duplicates, because Umami has no idempotency key and stores a resent event
+  again. The experiment removes them. It finds the surplus by counting forwarded against stored
+  events. It then deletes the affected sessions through Umami's API and replays them from the
+  spool, and the result equals the clean run. This needs PostgreSQL, the spool still holding those
+  records, and the list of resent batches.
+
+**The country reaches Umami by header (placeholder address in the proxy header, no ip in the
+payload, one batch per country), so that no part of the IP is written to disk.**
+
+Yes, for the experiment's gateway model, its forwarder and Umami. The experiment looked for eight
+addresses in 47 written forms and found none. It searched the spool files, the gateway log, the
+forwarder's requests and a database dump. It also searched the raw database files and the
+container logs, with every SQL statement logged. The reviewer searched 60 further forms and found
+none. Round one could not check the gateway side because there was no spool; round two adds a
+minimal one. Nobody scanned the gateway of the deployed prototype, which has no spool.
+
 ## Verdicts
 
 | Check | Verdict |

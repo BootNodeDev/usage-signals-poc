@@ -27,6 +27,27 @@ deduced, not run.
 *Round two: built and run. The manifest as written here built a binary that did not start; see
 C below.*
 
+## Summary of both rounds
+
+Yes, with stated limits. On a collector built with the Collector Builder, 184 of 184 assertions
+and 165 of 165 vectors pass. The experiment catches 14 of 14 mutations.
+
+- The Builder manifest of round one produced a binary that did not start. One line fixes it. On
+  the contrib image the same run gives 183 of 184 and exits 1, by design.
+- The writer now removes duplicates. It keys each point on its own identity: tenant, service,
+  instance, attributes, start and end time. It writes the key in the same transaction as the
+  counts. The result is exact under a collector redelivery, an exporter retry, and two writers
+  receiving the same batch at the same moment. It does not remove one point written twice inside
+  one block of one request, which the edge merges before the writer sees it.
+- A key kept for the document's 2 days is not enough. The disk queue holds 7 days, and the writer
+  counts a redelivery 4 days later twice. Keeping the key 8 days and refusing older points holds.
+- The document cannot keep the sentence that a Stellar secret key "is always redacted". The edge
+  and the writer both limit every stored path segment to 36 printable ASCII characters. On 2,708
+  route templates of six public APIs, the limit changes 9, or 0.33%. It cannot stop a secret split
+  across segments, or one of 36 characters or fewer.
+- Of 21 refusal paths, 3 answer 200 and record nothing. They are a token without a tenant claim, a
+  tenant claim that is not a UUID, and an exponential histogram.
+
 ## Reproduce
 
 ```sh
