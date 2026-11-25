@@ -156,6 +156,7 @@
     byId('visit-name').textContent = project.name;
     byId('visit-link').textContent = 'Open ' + project.name;
     byId('visit-link').href = siteUrl(project);
+    byId('visit-text-link').href = siteUrl(project);
     byId('visit').hidden = false;
   }
 
