@@ -1,4 +1,4 @@
-/* The single query seam of the Usage Signals consoles. Pages call the functions on
+/* The single query seam of the Pulse consoles. Pages call the functions on
    window.LData and never fetch anything themselves. Everything here comes from our own API:
    there is no sample data in this file.
 
@@ -50,7 +50,7 @@
 (function () {
   'use strict';
 
-  var PRODUCT_NAME = 'Usage Signals';
+  var PRODUCT_NAME = 'Pulse';
   var BROWSER_NAMES = {
     ios: 'Safari (iOS)', crios: 'Chrome (iOS)', fxios: 'Firefox (iOS)', 'edge-chromium': 'Edge',
     'chromium-webview': 'Android WebView', 'ios-webview': 'iOS WebView', samsung: 'Samsung Internet'

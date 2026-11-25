@@ -1,4 +1,4 @@
-/* Shared shell, formatters and small components for the Usage Signals consoles. */
+/* Shared shell, formatters and small components for the Pulse consoles. */
 (function () {
   'use strict';
 
@@ -48,13 +48,14 @@
       'stroke-linecap="square" aria-hidden="true">' + icons[name] + '</svg>';
   }
 
-  /* The brand mark: four tally strokes crossed by a fifth. Strokes beyond `count` are left out. */
-  function tally(count, size) {
-    var strokes = [10, 18, 26, 34].slice(0, Math.min(count, 4)).map(function (x) { return 'M' + x + ' 12v24'; }).join('');
-    return '<svg class="tally" width="' + size + '" height="' + size + '" viewBox="0 0 48 48" aria-hidden="true">' +
-      '<g fill="none" stroke-width="5" stroke-linecap="square"><path d="' + strokes + '" stroke="currentColor"/>' +
-      (count >= 5 ? '<path d="M6 34L42 10" style="stroke:var(--gold)"/>' : '') + '</g></svg>';
-  }
+  /* The heartbeat mark of favicon.svg; the gradient id must not clash with the pages' own SVG ids. */
+  var MARK = '<svg class="mark" width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">' +
+    '<defs><linearGradient id="brand-mark-field" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#5b2134"/>' +
+    '<stop offset=".5" stop-color="#33345e"/><stop offset="1" stop-color="#064a8c"/></linearGradient></defs>' +
+    '<rect width="64" height="64" rx="15" fill="url(#brand-mark-field)"/><g fill="#fff" fill-opacity=".5">' +
+    '<rect x="7.5" y="30" width="7" height="8" rx="1.4"/><rect x="18" y="26" width="7" height="12" rx="1.4"/>' +
+    '<rect x="39" y="38" width="7" height="14" rx="1.4"/><rect x="49.5" y="29" width="7" height="9" rx="1.4"/></g>' +
+    '<rect x="28.5" y="10" width="7" height="28" rx="1.4" fill="#e9ecf1"/></svg>';
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (c) {
@@ -323,13 +324,13 @@
         statePill(tenant.state) + '</div>'
       : '<div class="scope-name">No project</div>';
     var nav = tenant ? TENANT_NAV.map(function (item) { return navLink(base + '/' + item[0], item[0], item[1], active); }).join('') : '';
-    return '<a class="brand" href="' + (tenant ? base + '/web' : '#') + '">' + tally(5, 26) + '<span>' + escapeHtml(META.product_name) + '</span></a>' +
+    return '<a class="brand" href="' + (tenant ? base + '/web' : '#') + '">' + MARK + '<span>' + escapeHtml(META.product_name) + '</span></a>' +
       '<div class="scope">' + scope + '</div><nav class="nav" aria-label="Main">' + nav + '</nav>' +
       '<div class="sidebar-foot"><div class="account"><b>No sign-in</b>This prototype has no accounts: the address names the project.</div></div>';
   }
 
   function operatorShell(active) {
-    return '<a class="brand" href="/operator/projects">' + tally(5, 26) + '<span>' + escapeHtml(META.product_name) + '</span></a>' +
+    return '<a class="brand" href="/operator/projects">' + MARK + '<span>' + escapeHtml(META.product_name) + '</span></a>' +
       '<div class="scope"><div class="scope-name">Stellar Community Fund</div><div class="scope-meta"><span>Operator console, all projects</span></div></div>' +
       '<nav class="nav" aria-label="Main">' + OPERATOR_NAV.map(function (item) { return navLink(item[0], item[1], item[2], active); }).join('') + '</nav>' +
       '<div class="sidebar-foot"><div class="account"><b>No sign-in</b>This prototype has no accounts: anyone with this address sees it.</div></div>';
@@ -348,7 +349,7 @@
   window.App = {
     tenant: tenant, NOT_IN_PROTOTYPE: NOT_IN_PROTOTYPE, store: store,
     fmt: fmt, delta: delta, escapeHtml: escapeHtml, lowerFirst: lowerFirst, icon: icon,
-    statePill: statePill, projectName: projectName, empty: empty, emptyState: emptyState, dash: dash, tally: tally,
+    statePill: statePill, projectName: projectName, empty: empty, emptyState: emptyState, dash: dash,
     qualityBar: qualityBar, barRows: barRows, barList: barList, dataTable: dataTable, viewToggle: viewToggle,
     info: info, tabs: tabs, rangeControl: rangeControl, stamp: stamp, plotHeight: plotHeight
   };

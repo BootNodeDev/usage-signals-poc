@@ -1,4 +1,4 @@
-# Usage Signals proof of concept
+# Pulse proof of concept
 
 A gateway in front of an unmodified Umami 3.5.0: the demo site loads a pinned tracker, the
 tracker posts to `/api/e`, the gateway checks the Origin, refuses forged identity fields,

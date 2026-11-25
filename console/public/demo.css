@@ -1,24 +1,30 @@
-/* Sample tenant sites of the prototype (/demo/ on each demo host). The brand system of the
-   console: flat colour, square corners, no shadows, no motion. Each site sets one accent on
-   <body data-accent>; the text colour on the accent is the one that keeps contrast above 4.5:1
-   (ground on violet 5.76, ink on gold 7.03, ground on ink 16.5, ink on ink tint 13.2; the fields
-   under the heading carry ink: 10.3 on violet tint, 12.4 on gold tint). */
-:root {
-  color-scheme: light;
-  --ground: #fafafd;
-  --tone: #eef0f8;
-  --ink: #161a2e;
-  --muted: #4d5370;
-  --gold: #d99a1e;
-  --violet: #5b4cdb;
-  --violet-tint: #c9c3f5;
-  --gold-tint: #f1d9a4;
-  --ink-tint: #dde1f2;
-  --rule: #d9dceb;
-  --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
-  --text: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+/* Sample tenant sites of the prototype (/demo/ on each demo host), in the Pulse brand. */
+@font-face {
+  font-family: "Nunito Sans";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("/fonts/nunito-sans-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+:root {
+  color-scheme: light;
+  --ground: #ffffff;
+  --tone: #f4f4f8;
+  --ink: #201d3a;
+  --muted: #5f5c7a;
+  --gold: #d99a1e;
+  --violet: #474d8c;
+  --violet-tint: #b9bcdb;
+  --gold-tint: #f1d9a4;
+  --ink-tint: #e9e8f2;
+  --rule: #e1e0eb;
+  --display: "Nunito Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --text: var(--display);
+}
+
+/* Text on each accent and field keeps contrast above 4.5:1: ground on violet 7.75, ink on gold 6.62, ground on ink 16.2, ink on ink tint 13.3, ink on violet tint 8.69, ink on gold tint 11.7. */
 [data-accent="violet"] { --accent: var(--violet); --on-accent: var(--ground); --field: var(--violet-tint); }
 [data-accent="gold"] { --accent: var(--gold); --on-accent: var(--ink); --field: var(--gold-tint); }
 [data-accent="ink"] { --accent: var(--ink); --on-accent: var(--ground); --field: var(--ink-tint); }
@@ -40,25 +46,27 @@ a { color: inherit; }
 
 .top { background: var(--accent); color: var(--on-accent); }
 .top .wrap { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 16px; padding-bottom: 16px; }
-.site-name { font: 700 20px/24px var(--display); letter-spacing: -0.02em; text-decoration: none; }
+.site-name { font: 800 20px/24px var(--display); letter-spacing: -0.02em; text-decoration: none; }
 .top nav { display: flex; gap: 24px; flex-wrap: wrap; font-size: 14px; line-height: 24px; }
 .top nav a { text-decoration: none; padding-bottom: 2px; border-bottom: 2px solid transparent; }
 .top nav a[aria-current="page"] { border-bottom-color: currentColor; }
 
 .hero { background: var(--field); }
 .hero .wrap { padding-top: 64px; padding-bottom: 64px; }
-.hero h1 { font: 700 40px/44px var(--display); letter-spacing: -0.03em; max-width: 18ch; }
+.hero h1 { font: 800 40px/44px var(--display); letter-spacing: -0.03em; max-width: 18ch; }
 .hero p { margin-top: 16px; max-width: 56ch; font-size: 20px; line-height: 28px; }
-/* The tally stroke, the one motif of the brand: five strokes in the accent of the site. */
-.strokes { display: flex; gap: 8px; margin-bottom: 24px; }
-.strokes span { width: 5px; height: 32px; background: var(--ink); }
-.strokes span:last-child { background: var(--accent); outline: 1px solid var(--ink); }
+/* The heartbeat bars of the Pulse mark, the tall one in the accent of the site. */
+.strokes { display: flex; align-items: flex-end; gap: 6px; height: 40px; margin-bottom: 24px; }
+.strokes span { width: 8px; height: 12px; border-radius: 2px; background: var(--ink); opacity: 0.45; }
+.strokes span:nth-child(2) { height: 18px; }
+.strokes span:nth-child(3) { height: 40px; background: var(--accent); outline: 1px solid var(--ink); opacity: 1; }
+.strokes span:nth-child(4) { height: 22px; }
 
 .sections .wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; padding-top: 48px; padding-bottom: 64px; }
 .sections h2 { font: 600 20px/24px var(--display); letter-spacing: -0.01em; }
 .sections p { margin-top: 8px; color: var(--muted); max-width: 48ch; }
 .links { grid-column: 1 / -1; display: flex; gap: 12px; flex-wrap: wrap; }
-.button { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; background: var(--accent); color: var(--on-accent); font-weight: 600; text-decoration: none; }
+.button { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; text-decoration: none; }
 .button-quiet { background: none; color: var(--ink); border: 1px solid var(--ink); }
 
 footer { border-top: 1px solid var(--rule); }

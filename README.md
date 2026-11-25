@@ -1,6 +1,6 @@
-# Usage Signals proof of concept
+# Pulse proof of concept
 
-A working prototype of the tenant and operator experience of Usage Signals, a shared web and
+A working prototype of the tenant and operator experience of Pulse, a shared web and
 API analytics service for projects built on Stellar. It exists to try the riskiest assumptions
 and to record a demo. It is not the product.
 
