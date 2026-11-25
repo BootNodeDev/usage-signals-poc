@@ -16,6 +16,7 @@ npm test        # in a second terminal, against the running stack
 
 | What | Where |
 |------|-------|
+| Start page: role picker and a preview of each console | http://localhost:4300/ |
 | Tenant console of a project | http://localhost:4300/aurora-wallet/web (also `/requests`, `/setup`) |
 | Operator console | http://localhost:4300/operator/projects |
 | Demo site of "Aurora Wallet" | http://localhost:4301/demo/ |
@@ -34,6 +35,7 @@ prototype. See decision 38 in `../DECISIONS.md`.
 |------|---------|
 | `api/index.js` | The single Vercel function; routes by path |
 | `lib/` | Gateway, tenant and operator read endpoints, demo site, database and Umami clients |
+| `public/index.html`, `landing.css`, `landing.js` | The Pulse start page; it reads `/api/operator/projects` through `data.js` |
 | `public/tenant/`, `public/operator/` | The pages of the two consoles |
 | `public/app.js`, `charts.js`, `data.js`, `styles.css` | Shared by the pages; `data.js` is their only data source |
 | `db/schema.sql` | Our tables (schema `usage_signals`); applied by the seed |

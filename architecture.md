@@ -1,0 +1,130 @@
+# Architecture Overview
+
+## Tech Stack
+
+| Category | Technology | Notes |
+|----------|-----------|-------|
+| Framework | None | One Vercel function and static files |
+| Language | JavaScript, ES modules | Node code in `console/lib/`, `scripts/`, `test/`; plain browser scripts in `console/public/` |
+| Data fetching | `fetch` in the browser through `window.LData` (`public/data.js`) | The server reads Umami's statistics API (`lib/web-read.js`) and PostgreSQL (`lib/db.js`) |
+| Database | PostgreSQL 18, `pg` 8.23.1 | Neon on Vercel. Umami's tables in `public`, ours in `usage_signals` |
+| Analytics engine | Umami 3.5.0, unmodified | Git submodule `umami/`, its own Vercel project, closed with Vercel Authentication |
+| UI primitives | Hand-written HTML and inline SVG charts | `public/charts.js` for the consoles, `public/landing.js` for the start page |
+| Styling | Plain CSS | `styles.css` (consoles), `landing.css` (start page), `demo.css` (demo sites) |
+| Testing | `node:test` | Runs against the local Docker stack |
+| Runtime | Vercel Node.js functions | `engines.node` is `>=24`, which Vercel runs as 26.x |
+
+## Project Structure
+
+```
+console/                  Vercel project 1: gateway, read API, start page, consoles, demo sites
+  api/index.js            The single function; routes /api/* and /demo/* by path
+  lib/                    Gateway, tenant and operator endpoints, Umami and database clients, demo site
+  public/                 Static files
+    index.html            Start page (Pulse), with landing.css and landing.js
+    tenant/, operator/    Console pages, served at /<slug>/web|requests|setup and /operator/*
+    data.js               The only data source of every page (window.LData)
+    app.js, charts.js     Console shell, formatters and charts
+    s/                    Pinned Umami tracker and its manifest (generated)
+    fonts/                Nunito Sans for the start page (OFL)
+  db/schema.sql           Our tables, schema usage_signals; applied by the seed
+  scripts/                seed.mjs (the Vercel build command), seed-profile.mjs, fixtures.mjs, pin-tracker.mjs
+  test/                   node:test suites, run against the local stack
+  dev.mjs                 Local stand-in for Vercel: static files, /api/*, demo sites on a second port
+  docker-compose.yml      PostgreSQL 18 and Umami 3.5.0, plus an Umami without its geo database for tests
+umami/                    Umami v3.5.0, unmodified git submodule; Vercel project 2
+checks/                   Six architecture experiments, each with its own run.mjs
+DECISIONS.md              Every technical choice, its source and the alternative rejected
+```
+
+## Key Abstractions
+
+- **Gateway** (`lib/gateway.js`, `handleEvent`): the only public write path for web events. It takes the visitor's address and user agent from the connection, never from the body. It refuses events from an Origin that is not a registered domain of an active tenant, and events that carry `ip`, `userAgent`, `timestamp`, `id`, `salt`, `browser`, `os` or `device`. It truncates the address (IPv4 to /24, IPv6 to /48) and forwards the event to Umami.
+- **Read endpoints**: `lib/tenant-api.js` answers for one site, named by the slug in the path. `lib/operator-api.js` answers for every site at once and replaces small counts with a marker. Both get their figures from `readFigures()` in `lib/web-read.js`.
+- **Data seam** (`public/data.js`, `window.LData`): the only thing pages read. `currentProjectSlug()` is the one place that decides which project a tenant page shows.
+- **Seed profiles** (`scripts/seed-profile.mjs`): local runs seed the fixtures in `scripts/fixtures.mjs`; production builds seed Demo site A, B and C from `DEMO_SITE_HOSTS`; preview builds seed nothing.
+- **Demo sites** (`lib/demo-site.js`): `/demo/` pages rendered for the host they are asked on, each tagged with that host's website id.
+
+### Data Access Layer
+
+- The browser talks only to our API, never to Umami.
+- `lib/db.js` holds every query on our tables (`listSites`, `findSiteBySlug`, `findActiveSiteByDomain`, ...) through one `pg` pool registered with `attachDatabasePool`.
+- `lib/umami.js` forwards events to Umami's `/api/send`. `lib/umami-admin.js` logs in with the admin account for the seed, the tests and the read endpoints.
+- `umamiAccessHeaders()` in `lib/config.js` adds `x-vercel-protection-bypass` to every call to Umami, which is closed with Vercel Authentication.
+
+## Routes
+
+| Route | Module | Description |
+|-------|--------|-------------|
+| `/` | `public/index.html`, `landing.js` | Start page: role picker and a preview of each console |
+| `/<slug>/web`, `/<slug>/requests`, `/<slug>/setup` | `public/tenant/*.html` | Tenant console of one project |
+| `/operator/projects`, `/operator/access` | `public/operator/*.html` | Operator console |
+| `/demo/`, `/demo/<page>` | `lib/demo-site.js` | Demo site of the host the request came to |
+| `POST /api/e` | `lib/gateway.js` | Tracker events |
+| `GET /api/tenant/<slug>/project` | `lib/tenant-api.js` | The project, its website id and the pinned tracker |
+| `GET /api/tenant/<slug>/web?days=7\|30\|90` | `lib/tenant-api.js` | Web figures of one site |
+| `GET /api/operator/projects?days=7\|30\|90` | `lib/operator-api.js` | Figures of every site, small counts masked |
+| `/s/<version>/...` | `public/s/` | Pinned tracker, served with immutable caching |
+
+## Data Flow
+
+Write path:
+
+1. A demo page loads the pinned tracker from `/s/` with its SRI hash.
+2. The tracker posts each event to `/api/e`.
+3. The gateway checks the Origin, refuses forged fields and truncates the address.
+4. The gateway forwards the event to Umami's `/api/send`, with the truncated address in `cf-connecting-ip` and the country in `cf-ipcountry`.
+5. Umami stores the event in its own tables (schema `public`).
+
+Read path:
+
+1. A page calls `LData`, which fetches `/api/tenant/...` or `/api/operator/projects`.
+2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account.
+3. The operator endpoint replaces counts from 1 to 9 with `{ small: true, below: 10 }`.
+4. Answers are cached by the CDN for 10 seconds (`Cache-Control: public, max-age=0, s-maxage=10`).
+
+## Environment Variables
+
+All server-side; there are no public variables. `console/local.env` holds the local values.
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Pooled PostgreSQL URL for the function. Set by the Neon integration on Vercel |
+| `DATABASE_URL_UNPOOLED` | Direct PostgreSQL URL for the seed's schema changes |
+| `UMAMI_URL` | Base URL of the Umami deployment |
+| `UMAMI_BYPASS_SECRET` | Protection Bypass for Automation secret of the Umami Vercel project |
+| `UMAMI_ADMIN_USER` | Umami account for the seed, the tests and the read endpoints. Defaults to `admin` |
+| `UMAMI_ADMIN_PASSWORD` | Password of that account |
+| `DEMO_SITE_HOSTS` | Production builds only: hosts of Demo site A, B and C, comma-separated, in that order |
+| `UMAMI_NOGEO_URL` | Tests only: the Umami without its geo database |
+| `GATEWAY_PORT`, `DEMO_PORT`, `GATEWAY_URL`, `DEMO_URL` | Local server and tests only |
+
+## Scripts
+
+Run in `console/`.
+
+| Command | Purpose |
+|---------|---------|
+| `npm run up` | Starts PostgreSQL and Umami in Docker, seeds, then serves on port 4300 (demo sites on 4301) |
+| `npm test` | Runs `test/*.test.mjs` against the running stack |
+| `npm run build` | The seed, `scripts/seed.mjs`; also the Vercel build command |
+| `npm run pin-tracker` | Regenerates the pinned tracker, its manifest and `lib/tracker.generated.js` |
+
+---
+
+## Domain-Specific Sections (Examples)
+
+### Number / Precision Handling
+
+- **Small counts:** the operator endpoint never sends a count from 1 to 9. It sends `{ small: true, below: 10 }`, and the pages show `<10`. Zero stays zero; 10 and above are exact.
+- **Rates:** a bounce rate or visit duration over fewer than 10 visits is not sent; the pages show "Too few visits".
+- **Charts:** days with a small count are not drawn.
+- **Visitors:** the sum of each day's distinct visitors (`sumOfDaily` in `lib/web-read.js`), not distinct visitors over the whole range.
+
+### Auth / Session Management
+
+There is none. The address names the project and nothing checks it: anyone who knows a slug can read that project's figures, and anyone can open the operator console (decision 38 in `DECISIONS.md`). `currentProjectSlug()` in `public/data.js` and `projectOf()` in `lib/tenant-api.js` are the two places a session would plug in.
+
+### Error Handling Patterns
+
+The gateway fails closed. It answers 202 when Umami accepts the event, 400 when the event or Umami's answer says it is malformed, 403 for a refused Origin, 413 for a body over 16 KiB, and 503 when the database or Umami cannot be reached. The read endpoints answer 503 with a message the page shows as is.
