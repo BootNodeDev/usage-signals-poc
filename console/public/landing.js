@@ -62,15 +62,16 @@
     return state.rows.filter(function (row) { return row.project.slug === state.slug; })[0] || state.rows[0];
   }
 
-  /* "Demo site A", "Demo site B" become "A", "B": the words every name shares are dropped. */
-  function shortNames(rows) {
+  /* "Demo site A", "Demo site B" split into the shared words "Demo site" and the tabs "A", "B". */
+  function splitNames(rows) {
     var names = rows.map(function (row) { return row.project.name; });
     var shared = names.reduce(function (prefix, name) {
       while (name.indexOf(prefix) !== 0) prefix = prefix.slice(0, -1);
       return prefix;
     });
     var cut = names.length > 1 ? shared.lastIndexOf(' ') + 1 : 0;
-    return names.map(function (name) { return name.slice(cut) || name; });
+    var labels = names.map(function (name) { return name.slice(cut) || name; });
+    return { shared: names[0].slice(0, cut).trim(), labels: labels };
   }
 
   function head(title, note, action) {
@@ -99,13 +100,13 @@
     var row = current();
     var project = row.project;
     var totals = row.totals;
-    var labels = shortNames(state.rows);
+    var names = splitNames(state.rows);
     var picker = state.rows.length > 1 ? '<div class="switch" role="group" aria-label="Project">' + state.rows.map(function (other, index) {
       return '<button type="button" data-slug="' + escapeHtml(other.project.slug) + '" aria-label="' + escapeHtml(other.project.name) + '" aria-pressed="' +
-        (other === row) + '">' + escapeHtml(labels[index]) + '</button>';
+        (other === row) + '">' + escapeHtml(names.labels[index]) + '</button>';
     }).join('') + '</div>' : '';
     var smallDay = row.daily.some(function (entry) { return isSmall(entry.pageviews); });
-    return head('<h2>' + escapeHtml(project.name) + '</h2>' + picker, escapeHtml(project.domain) + ', last ' + RANGE_DAYS + ' days',
+    return head('<h2>' + escapeHtml(names.shared || project.name) + '</h2>' + picker, escapeHtml(project.domain) + ', last ' + RANGE_DAYS + ' days',
       '<a class="button button-ink" href="' + consoleUrl(project) + '">Open the console for ' + escapeHtml(project.name) + '</a>') +
       '<div class="figures">' +
         figure('Page views', count(totals.pageviews), 'Every page load the tracker saw') +
