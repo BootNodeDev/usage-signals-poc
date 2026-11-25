@@ -39,24 +39,24 @@
   }
   function day(iso) { return Number(iso.slice(8)) + ' ' + MONTHS[Number(iso.slice(5, 7)) - 1]; }
 
-  function bars(values, options) {
+  function bars(values) {
     var width = 1000;
-    var height = options.height;
+    var height = 200;
     var max = Math.max.apply(null, values.concat(1)) * 1.08;
     var step = width / values.length;
-    var gap = step * options.gap;
+    var gap = step * 0.26;
     var last = values.length - 1;
     var rects = values.map(function (value, index) {
       var h = (value / max) * height;
       return '<rect x="' + (index * step + gap / 2).toFixed(2) + '" y="' + (height - h).toFixed(2) + '" width="' + (step - gap).toFixed(2) +
-        '" height="' + h.toFixed(2) + '" fill="' + (index === last ? options.today : options.fill) + '"/>';
+        '" height="' + h.toFixed(2) + '"' + (index === last ? ' class="today"' : '') + '/>';
     }).join('');
     return '<svg viewBox="0 0 ' + width + ' ' + (height + 1) + '" preserveAspectRatio="none" width="100%" height="100%" aria-hidden="true">' + rects +
-      '<line x1="0" x2="' + width + '" y1="' + height + '" y2="' + height + '" stroke="' + options.baseline + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
+      '<line x1="0" x2="' + width + '" y1="' + height + '" y2="' + height + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
   }
 
   function consoleUrl(project) { return '/' + encodeURIComponent(project.slug) + '/web'; }
-  function siteUrl(project) { return location.protocol + '//' + project.domain + '/demo/'; }
+  function siteUrl(project) { return '//' + project.domain + '/demo/'; }
 
   /* Only an active project serves its demo site, so only active ones are offered while any exist. */
   function tenantRows() {
@@ -118,7 +118,7 @@
         figure('Visit duration', rate(totals.avg_visit_seconds, duration), 'Average') +
         figure('Bounce rate', rate(totals.bounce_rate, pct), 'Visits with one page view') +
       '</div><div class="split"><div><h3 class="block-title">Page views per day</h3><div class="chart">' +
-        bars(row.daily.map(function (entry) { return drawn(entry.pageviews); }), { height: 200, gap: 0.26, fill: '#474d8c', today: '#b9bcdb', baseline: '#cfcde0' }) +
+        bars(row.daily.map(function (entry) { return drawn(entry.pageviews); })) +
         '</div><div class="axis">' + axis(row.daily) + '</div>' +
         (smallDay ? '<p class="figure-note">Days with fewer than ' + below() + ' page views are not shown.</p>' : '') +
       '</div><div><h3 class="block-title">Where visitors came from</h3>' + ranked(row.breakdowns.referrers.slice(0, 5)) + '</div></div>';

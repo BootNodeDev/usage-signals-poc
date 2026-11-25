@@ -94,7 +94,7 @@ describe('other paths', () => {
   it('builds the start page links to each site, its console and the operator view from the operator endpoint', async () => {
     const script = (await get('/landing.js')).text;
     assert.ok(script.includes("'/' + encodeURIComponent(project.slug) + '/web'"), 'no link to a project console');
-    assert.ok(script.includes("location.protocol + '//' + project.domain + '/demo/'"), 'no link to a sample site');
+    assert.ok(script.includes("'//' + project.domain + '/demo/'"), 'no link to a sample site');
     assert.ok(script.includes('href="/operator/projects"'), 'no link to the operator view');
     const { projects } = await (await fetch(`${GATEWAY}/api/operator/projects?days=30`)).json();
     for (const tenant of TENANTS.filter((candidate) => candidate.status !== 'removed')) {

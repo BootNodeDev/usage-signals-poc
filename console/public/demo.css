@@ -5,7 +5,6 @@
   font-weight: 400 900;
   font-display: swap;
   src: url("/fonts/nunito-sans-latin.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 :root {
@@ -20,8 +19,7 @@
   --gold-tint: #f1d9a4;
   --ink-tint: #e9e8f2;
   --rule: #e1e0eb;
-  --display: "Nunito Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --text: var(--display);
+  --text: "Nunito Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif;
 }
 
 [data-accent="violet"] { --accent: var(--violet); --on-accent: var(--ground); --field: var(--violet-tint); }
@@ -45,14 +43,14 @@ a { color: inherit; }
 
 .top { background: var(--accent); color: var(--on-accent); }
 .top .wrap { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 16px; padding-bottom: 16px; }
-.site-name { font: 800 20px/24px var(--display); letter-spacing: -0.02em; text-decoration: none; }
+.site-name { font: 800 20px/24px var(--text); letter-spacing: -0.02em; text-decoration: none; }
 .top nav { display: flex; gap: 24px; flex-wrap: wrap; font-size: 14px; line-height: 24px; }
 .top nav a { text-decoration: none; padding-bottom: 2px; border-bottom: 2px solid transparent; }
 .top nav a[aria-current="page"] { border-bottom-color: currentColor; }
 
 .hero { background: var(--field); }
 .hero .wrap { padding-top: 64px; padding-bottom: 64px; }
-.hero h1 { font: 800 40px/44px var(--display); letter-spacing: -0.03em; max-width: 18ch; }
+.hero h1 { font: 800 40px/44px var(--text); letter-spacing: -0.03em; max-width: 18ch; }
 .hero p { margin-top: 16px; max-width: 56ch; font-size: 20px; line-height: 28px; }
 /* Heartbeat bars */
 .strokes { display: flex; align-items: flex-end; gap: 6px; height: 40px; margin-bottom: 24px; }
@@ -62,7 +60,7 @@ a { color: inherit; }
 .strokes span:nth-child(4) { height: 22px; }
 
 .sections .wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; padding-top: 48px; padding-bottom: 64px; }
-.sections h2 { font: 600 20px/24px var(--display); letter-spacing: -0.01em; }
+.sections h2 { font: 600 20px/24px var(--text); letter-spacing: -0.01em; }
 .sections p { margin-top: 8px; color: var(--muted); max-width: 48ch; }
 .links { grid-column: 1 / -1; display: flex; gap: 12px; flex-wrap: wrap; }
 .button { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; text-decoration: none; }
