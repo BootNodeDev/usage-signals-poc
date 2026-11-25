@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { MAX_AGENTS_PER_ADDRESS, RULES, flagTag, rulesOf } from '../lib/flags.js';
+import { FLAG_TAG_PATTERN, MAX_AGENTS_PER_ADDRESS, RULES, flagTag, rulesOf } from '../lib/flags.js';
 import { FETCH_METADATA } from '../scripts/fixtures.mjs';
 
 const BROWSER = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
@@ -42,5 +42,15 @@ describe('flag rules', () => {
     assert.equal(tag, 'bot+no-sec-fetch+many-agents');
     assert.deepEqual(rulesOf(tag), RULES);
     assert.ok(tag.length <= 50);
+  });
+
+  it('reads as flagged only a tag made of rule codes', () => {
+    const flagged = new RegExp(FLAG_TAG_PATTERN, 'i');
+    for (const tag of ['bot', 'many-agents', 'no-sec-fetch+many-agents', 'bot+no-sec-fetch+many-agents']) {
+      assert.ok(flagged.test(tag), tag);
+    }
+    for (const tag of ['', 'sample', 'bot+sample', 'sample+bot', 'bot+', 'botnet', 'bot,no-sec-fetch']) {
+      assert.ok(!flagged.test(tag), tag);
+    }
   });
 });

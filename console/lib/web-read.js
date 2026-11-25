@@ -1,6 +1,6 @@
 // Web figures for one site, read from Umami's statistics API with the admin account. The
 // browser never talks to Umami: the tenant and operator endpoints call this module.
-import { RULES, rulesOf } from './flags.js';
+import { FLAG_TAG_PATTERN, RULES, rulesOf } from './flags.js';
 import { umamiGet } from './umami-admin.js';
 
 const RANGES = [7, 30, 90];
@@ -8,9 +8,9 @@ const DAY_MS = 86_400_000;
 // Short shared cache: several viewers cost one read, and a new page view shows within seconds.
 const CACHE_CONTROL = 'public, max-age=0, s-maxage=10';
 const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'device', browsers: 'browser' };
-// Umami's "not set" operator builds no SQL on PostgreSQL, so "matches no character" stands in.
-const COUNTED = `tag=${encodeURIComponent('nre..')}`;
-export const FLAGGED = `tag=${encodeURIComponent('re..')}`;
+// Regex operators, because Umami's "set" and "not set" build no SQL on PostgreSQL.
+const COUNTED = `tag=${encodeURIComponent(`nre.${FLAG_TAG_PATTERN}`)}`;
+export const FLAGGED = `tag=${encodeURIComponent(`re.${FLAG_TAG_PATTERN}`)}`;
 export const BY_TAG = `fields=${encodeURIComponent('["tag"]')}`;
 
 export function json(status, body, headers = {}) {

@@ -12,6 +12,15 @@ const FETCH_METADATA_HEADERS = ['sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-d
 
 // Joined with "+", because Umami splits an equality filter value on commas.
 const SEPARATOR = '+';
+const ANY_RULE = `(${RULES.join('|')})`;
+
+/**
+ * A regular expression, as text for Umami's tag filter, that matches a tag made only of rule
+ * codes. Any other tag, such as the demo sites' `sample`, is not a flag.
+ * @example
+ *   FLAG_TAG_PATTERN // '^(bot|no-sec-fetch|many-agents)(\\+(bot|no-sec-fetch|many-agents))*$'
+ */
+export const FLAG_TAG_PATTERN = `^${ANY_RULE}(\\${SEPARATOR}${ANY_RULE})*$`;
 
 /**
  * Returns the tag for an event: the codes of the rules it matched, or undefined when none did.

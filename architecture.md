@@ -84,7 +84,7 @@ Write path:
 Read path:
 
 1. A page calls `LData`, which fetches `/api/tenant/...` or `/api/operator/projects`.
-2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account: counted figures with the filter `tag=nre..` (no tag), flagged page views per day with `tag=re..`, and flagged page views by rule from `/breakdown?fields=["tag"]`.
+2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account: counted figures with `tag=nre.<FLAG_TAG_PATTERN>` (no tag, or a tag that is not made of rule codes), flagged page views per day with `tag=re.<FLAG_TAG_PATTERN>`, and flagged page views by rule from `/breakdown?fields=["tag"]`.
 3. The operator endpoint replaces counts from 1 to 9 with `{ small: true, below: 10 }`.
 4. Answers are cached by the CDN for 10 seconds (`Cache-Control: public, max-age=0, s-maxage=10`).
 

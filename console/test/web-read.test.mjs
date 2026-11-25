@@ -60,9 +60,7 @@ async function sendThroughGateway(visitor, url, referrer = '') {
   assert.equal(response.status, 202);
 }
 
-// The gateway refuses timestamps, so the event of the previous day is written the only way
-// one can be: straight into Umami, which accepts a timestamp from anyone who reaches it.
-async function sendYesterdayToUmami(visitor, url) {
+async function sendStraightToUmami(visitor, url, fields) {
   const response = await fetch(`${UMAMI}/api/send`, {
     method: 'POST',
     headers: {
@@ -77,7 +75,7 @@ async function sendYesterdayToUmami(visitor, url) {
         hostname: 'localhost',
         url,
         userAgent: visitor.userAgent,
-        timestamp: Math.floor(Date.now() / 1000) - 86_400,
+        ...fields,
       },
     }),
   });
@@ -131,7 +129,7 @@ describe('GET /api/tenant/web', () => {
     await sendThroughGateway(CHROME, '/pricing', '/');
     await sendThroughGateway(FIREFOX, '/');
     await sendThroughGateway(SCRIPT, '/');
-    await sendYesterdayToUmami(CHROME, '/yesterday');
+    await sendStraightToUmami(CHROME, '/yesterday', { timestamp: Math.floor(Date.now() / 1000) - 86_400 });
     later = await figures();
   });
 
@@ -183,6 +181,15 @@ describe('GET /api/tenant/web', () => {
     assert.equal(change('browsers', 'chrome'), chromeSessions);
     assert.equal(change('browsers', 'firefox'), 1);
     assert.equal(change('devices', 'desktop'), chromeSessions + 1);
+  });
+
+  it('counts an event whose tag is not made of rule codes, such as the demo sample', async () => {
+    const before = await figures();
+    await sendStraightToUmami(FIREFOX, '/sample', { tag: 'sample' });
+    const after = await figures();
+    assert.equal(after.totals.pageviews, before.totals.pageviews + 1);
+    assert.equal(after.totals.flagged, before.totals.flagged);
+    assert.deepEqual(after.flagged_by_rule, before.flagged_by_rule);
   });
 
   it('names the project and says through when the figures run', () => {
