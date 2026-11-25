@@ -53,6 +53,14 @@
             <div class="bars" id="breakdown" role="tabpanel"></div>
           </section>
         </div>
+
+        <div class="cols">
+          <section class="block" aria-labelledby="rules-title">
+            <div class="block-head"><h2 id="rules-title"></h2></div>
+            <div class="bars" id="rules"></div>
+            <p class="caption">Flagged page views are stored and shown apart, never dropped. One page view can match more than one rule. This prototype has three rules, and its limit of 10 User-Agents is a placeholder.</p>
+          </section>
+        </div>
       </div>
       <div id="empty" hidden></div>
 
@@ -67,7 +75,6 @@
   'use strict';
   var D = window.LData;
   var byId = function (id) { return document.getElementById(id); };
-  var NOT_CLASSIFIED = 'Not classified in this prototype';
 
   function message(title, text, action) {
     byId('content').hidden = true;
@@ -92,7 +99,14 @@
     var fmt = App.fmt;
     var project = App.tenant;
     var state = { range: 30, tab: App.store.get('web-tab') || 'referrers' };
-    var series = [{ name: 'Page views, as counted', color: 'var(--data-filtered)' }];
+    var series = [
+      { name: 'Counted', color: 'var(--data-filtered)' },
+      { name: 'Flagged', color: 'var(--data-flagged)', hatch: true }
+    ];
+    var RULES_HELP =
+      '<p><b>Known bot</b>: the User-Agent names a crawler, a script or a headless browser.</p>' +
+      '<p><b>No browser fetch headers</b>: the request lacks the Sec-Fetch headers that current browsers send.</p>' +
+      '<p><b>Many User-Agents on one network</b>: the address, with its last part removed, showed more than 10 User-Agents today (UTC).</p>';
     var dimensions = {
       referrers: 'Visitors in the period by referring host',
       countries: 'Visitors in the period by country',
@@ -109,14 +123,15 @@
     function renderHeadline(t, prior, range) {
       byId('headline').innerHTML =
         '<div class="figure hero"><div class="figure-label">' +
-        App.info('pageviews', 'Page views', '<p>Every page view the tracker reported, as counted. Known bots are excluded before counting.</p>' +
-          '<p>This prototype does not classify traffic yet, so there is no flagged or filtered figure: nothing has been checked, and nothing has been removed.</p>') + '</div>' +
+        App.info('pageviews', 'Page views', '<p>Every page view the tracker reported, minus the flagged ones. Raw is both together.</p>' +
+          '<p>A page view is flagged when it matches a rule. It is stored and shown apart, never dropped.</p>') + '</div>' +
         '<div class="figure-row"><div class="figure-value">' + fmt.int(t.pageviews) + '</div>' +
         '<div class="figure-note">' + App.delta(t.pageviews, prior && prior.pageviews, { range: range, good: 'up' }) + '</div></div>' +
-        '<div class="flagline"><span><b>' + NOT_CLASSIFIED + '</b> <span class="muted">· flagged traffic will show here</span></span></div></div>' +
+        '<div class="flagline">' + App.qualityBar(t.pageviews, t.flagged) +
+        '<span><b>' + fmt.int(t.flagged) + ' flagged</b> <span class="muted">of ' + fmt.int(t.pageviews + t.flagged) + ' raw</span></span></div></div>' +
 
         figure(App.info('visitors', 'Visitors (sum of daily)', '<p>A visitor is counted once per day and never linked across days, so a multi-day figure is the sum of daily visitors.</p>'),
-          fmt.int(t.visitors), NOT_CLASSIFIED) +
+          fmt.int(t.visitors), 'Flagged traffic left out') +
         figure(App.info('duration', 'Visit duration', '<p>A visit is one visitor\'s activity within one clock hour.</p><p>Average over <b>' + fmt.int(t.visits) + '</b> visits.</p>'),
           fmt.duration(t.avg_visit_seconds), App.delta(t.avg_visit_seconds, prior && prior.avg_visit_seconds, { range: range, good: 'up' })) +
         figure(App.info('bounce', 'Bounce rate', '<p>A bounce is a visit with one page view and no custom event.</p><p><b>' + fmt.int(t.bounces) + '</b> of <b>' + fmt.int(t.visits) + '</b> visits.</p>'),
@@ -151,18 +166,20 @@
       byId('empty').hidden = true;
 
       renderHeadline(t, result.prior, range);
-      byId('legend').innerHTML = Charts.legend(series) + '<span class="muted">No flagged band yet</span>';
+      byId('legend').innerHTML = Charts.legend(series);
       series[0].values = rows.map(function (r) { return r.pageviews; });
+      series[1].values = rows.map(function (r) { return r.flagged; });
       Charts.columns(byId('chart'), {
-        label: 'Page views per day, as counted, last ' + range + ' days',
+        label: 'Page views per day, counted and flagged, last ' + range + ' days',
         labels: rows.map(function (r) { return fmt.day(r.day); }),
-        series: series, height: App.plotHeight(500, 260, 460), format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
+        series: series, height: App.plotHeight(500, 260, 460), format: fmt.int, tickFormat: fmt.tick, totalName: 'Raw',
         annotations: [], emptyText: 'No page views in this period.'
       });
-      App.dataTable(byId('table'), ['Day', 'Page views', 'Visitors', 'Flagged'], rows.slice().reverse().map(function (r) {
-        return [fmt.date(r.day), fmt.int(r.pageviews), fmt.int(r.visitors), 'Not classified'];
+      App.dataTable(byId('table'), ['Day', 'Page views', 'Flagged', 'Raw', 'Visitors'], rows.slice().reverse().map(function (r) {
+        return [fmt.date(r.day), fmt.int(r.pageviews), fmt.int(r.flagged), fmt.int(r.pageviews + r.flagged), fmt.int(r.visitors)];
       }));
       renderBreakdown();
+      App.barList(byId('rules'), result.byRule, { flag: true, total: t.flagged });
     }
 
     function render(range) {
@@ -179,6 +196,7 @@
     }
 
     if (!project) { projectMissing(message); return; }
+    byId('rules-title').innerHTML = App.info('rules', 'Flagged page views by rule', RULES_HELP);
     if (!dimensions[state.tab]) state.tab = 'referrers';
     Array.prototype.forEach.call(byId('tabs').children, function (tab) {
       tab.setAttribute('aria-selected', String(tab.dataset.tab === state.tab));

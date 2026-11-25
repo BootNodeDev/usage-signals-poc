@@ -78,7 +78,6 @@
     var fmt = App.fmt;
     var esc = App.escapeHtml;
     var MAX_COMPARED = 3;
-    var NOT_CLASSIFIED = 'Not classified in this prototype';
     var STATE_FILTERS = [['', 'All states'], ['pending_verification', 'Pending verification'], ['pending_approval', 'Pending approval'],
       ['active', 'Active'], ['unverified', 'Unverified'], ['suspended', 'Suspended']];
     var BREAKDOWNS = {
@@ -101,7 +100,7 @@
     var opener = null;
 
     function find(id) { return all.filter(function (r) { return r.project.id === id; })[0] || null; }
-    function hasData(r) { return r.totals.pageviews !== 0; }
+    function hasData(r) { return r.totals.pageviews !== 0 || r.totals.flagged !== 0; }
     function isSmall(value) { return Boolean(value && value.small); }
     /* A count as text: exact, or "<10" when the API only says it is small. */
     function count(value) {
@@ -116,9 +115,20 @@
     }
     /* For drawing only: a small count has no height, and the chart says so. */
     function drawn(value) { return isSmall(value) ? 0 : value; }
-    function hasSmallDay(r) { return r.daily.some(function (d) { return isSmall(d.pageviews); }); }
+    function hasSmallDay(r) { return r.daily.some(function (d) { return isSmall(d.pageviews) || isSmall(d.flagged); }); }
     function chartNote(r) {
       return hasSmallDay(r) ? '<p class="caption">Days with fewer than ' + D.meta().small_counts.below + ' page views are not drawn.</p>' : '';
+    }
+    function dailySeries(r) {
+      return [
+        { name: 'Counted', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return drawn(d.pageviews); }) },
+        { name: 'Flagged', color: 'var(--data-flagged)', hatch: true, values: r.daily.map(function (d) { return drawn(d.flagged); }) }
+      ];
+    }
+    /* The flagged share of raw page views needs both exact counts; otherwise only the flagged count is shown. */
+    function flaggedShare(t) {
+      if (isSmall(t.pageviews) || isSmall(t.flagged) || !(t.pageviews + t.flagged)) return count(t.flagged);
+      return '<span class="cell-trust">' + App.qualityBar(t.pageviews, t.flagged) + '<span>' + fmt.pct(t.flagged / (t.pageviews + t.flagged)) + '</span></span>';
     }
 
     function visible() {
@@ -163,7 +173,7 @@
           '<td>' + App.statePill(p.state) + '</td>' +
           '<td class="num"><span class="cell-trend">' + Charts.spark(r.daily.map(function (d) { return drawn(d.pageviews); }), 'Page views per day, last ' + state.range + ' days') +
           count(t.pageviews) + '</span></td>' +
-          '<td><span class="muted">Not classified</span></td>' +
+          '<td>' + flaggedShare(t) + '</td>' +
           '<td class="num">' + count(t.visitors) + '</td><td class="num">' + count(t.visits) + '</td>' +
           '<td class="num">' + rate(t.bounce_rate, fmt.pct) + '</td><td class="num">' + rate(t.avg_visit_seconds, fmt.duration) + '</td></tr>';
       }).join('');
@@ -171,7 +181,7 @@
       byId('projects').innerHTML = head + '<tbody>' + body + '</tbody>';
       var below = D.meta().small_counts.below;
       byId('caption').textContent = list.length + ' of ' + all.length + ' projects · Aggregates only. Counts of 1 to ' + (below - 1) +
-        ' show as <' + below + ' and rates need ' + below + ' visits, a placeholder threshold. Flagged traffic is not classified yet.';
+        ' show as <' + below + ' and rates need ' + below + ' visits, a placeholder threshold. Three flag rules in this prototype.';
     }
 
     function renderTray() {
@@ -225,7 +235,7 @@
         }).join('') +
         '<div class="compare-group">Web <span class="source">Observed by the tracker</span></div>' +
         cells('Page views', function (r) { return '<b>' + count(r.totals.pageviews) + '</b>'; }, function (r) { return r.totals.pageviews; }, true) +
-        cells('Flagged share', function () { return '<span class="muted">' + NOT_CLASSIFIED + '</span>'; }) +
+        cells('Flagged share', function (r) { return flaggedShare(r.totals); }) +
         cells('Visitors (sum of daily)', function (r) { return count(r.totals.visitors); }, function (r) { return r.totals.visitors; }) +
         cells('Visits', function (r) { return count(r.totals.visits); }, function (r) { return r.totals.visits; }) +
         cells('Bounce rate', function (r) { return rate(r.totals.bounce_rate, fmt.pct); }) +
@@ -240,13 +250,12 @@
       App.tabs(byId('compare-tabs'), function (tab) { state.compareTab = tab; renderCompareBreakdown(picked); });
       renderCompareBreakdown(picked);
       var max = Math.max.apply(null, picked.map(function (r) {
-        return Math.max.apply(null, r.daily.map(function (d) { return drawn(d.pageviews); }).concat([0]));
+        return Math.max.apply(null, r.daily.map(function (d) { return drawn(d.pageviews) + drawn(d.flagged); }).concat([0]));
       }));
       picked.forEach(function (r, i) {
         Charts.columns(byId('multiple-' + i), {
-          label: r.project.name + ': page views per day', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 180, max: max,
-          format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
-          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return drawn(d.pageviews); }) }]
+          label: r.project.name + ': page views per day, counted and flagged', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 180, max: max,
+          format: fmt.int, tickFormat: fmt.tick, totalName: 'Raw', series: dailySeries(r)
         });
       });
     }
@@ -274,9 +283,9 @@
       opener = from || document.querySelector('tr[data-id="' + id + '"] .row-open');
       state.open = id;
       var web = hasData(r)
-        ? '<div class="drawer-hero"><b>' + count(t.pageviews) + '</b><span class="muted">page views</span></div>' +
+        ? '<div class="drawer-hero"><b>' + count(t.pageviews) + '</b><span class="muted">page views, ' + count(t.flagged) + ' flagged</span></div>' +
           '<div class="chart" id="drawer-chart" style="margin-top:16px"></div>' + chartNote(r) + '</section>' +
-          '<section class="drawer-section"><h3>Flagged page views by rule</h3><p class="muted">' + NOT_CLASSIFIED + '. No traffic has been checked, so there is no flagged share and no rule to show.</p></section>' +
+          '<section class="drawer-section"><h3>Flagged page views by rule</h3>' + kv(r.byRule.map(function (rule) { return [esc(rule.label), count(rule.value)]; })) + '</section>' +
           '<section class="drawer-section">' + kv([
             ['Visitors (sum of daily)', count(t.visitors)], ['Visits', count(t.visits)],
             ['Bounce rate', rate(t.bounce_rate, fmt.pct)], ['Visit duration', rate(t.avg_visit_seconds, fmt.duration)]
@@ -298,9 +307,8 @@
       byId('drawer-close').addEventListener('click', function () { drawer.close(); });
       if (hasData(r)) {
         Charts.columns(byId('drawer-chart'), {
-          label: p.name + ': page views per day', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 200,
-          format: fmt.int, tickFormat: fmt.tick, totalName: 'Page views',
-          series: [{ name: 'Page views', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return drawn(d.pageviews); }) }]
+          label: p.name + ': page views per day, counted and flagged', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 200,
+          format: fmt.int, tickFormat: fmt.tick, totalName: 'Raw', series: dailySeries(r)
         });
         var paintBreakdown = function () { byId('drawer-breakdown').innerHTML = valueRows(r.breakdowns[state.drawerTab]); };
         App.tabs(byId('drawer-tabs'), function (tab) { state.drawerTab = tab; paintBreakdown(); });

@@ -145,7 +145,7 @@
 
   function barRows(rows, options) {
     options = options || {};
-    var total = rows.reduce(function (a, r) { return a + r.value; }, 0);
+    var total = options.total || rows.reduce(function (a, r) { return a + r.value; }, 0);
     var max = Math.max.apply(null, rows.map(function (r) { return r.value; }));
     return rows.slice(0, options.limit || rows.length).map(function (r) {
       var width = max ? r.value / max * 100 : 0;

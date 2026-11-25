@@ -113,7 +113,7 @@
     return head('<h2>' + TENANT_HEADING + '</h2>' + picker, 'Last ' + RANGE_DAYS + ' days',
       '<a class="button button-ink" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">View the console</a>') +
       '<div class="figures">' +
-        figure('Page views', count(totals.pageviews), 'Every page load the tracker saw') +
+        figure('Page views', count(totals.pageviews), 'Flagged traffic left out') +
         figure('Visitors', count(totals.visitors), 'Each person counts once a day') +
         figure('Visit duration', rate(totals.avg_visit_seconds, duration), 'Average') +
         figure('Bounce rate', rate(totals.bounce_rate, pct), 'Visits with one page view') +

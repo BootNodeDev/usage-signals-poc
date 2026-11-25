@@ -25,12 +25,16 @@
    ------------------
    loadWeb(rangeDays) -> Promise. Reads the range for the current project and keeps it.
      Rejects with an Error whose message can be shown.
-   web(rangeDays) -> { rows [WebDay], totals WebTotals | null, prior WebTotals | null }
-     Answers from the last loadWeb() of that range; totals is null when there is no page view.
-     WebDay = { day, pageviews, visitors }
-     WebTotals = { pageviews, visitors (sum of daily; null in prior), visits, bounces,
-                   bounce_rate, avg_visit_seconds }
-     Traffic is not classified in this prototype, so there is no flagged or filtered figure.
+   web(rangeDays) -> { rows [WebDay], totals WebTotals | null, prior WebTotals | null,
+                       byRule [RuleCount] }
+     Answers from the last loadWeb() of that range; totals is null when there is no page view,
+     counted or flagged.
+     Every figure is counted: flagged page views are left out of it. Raw = pageviews + flagged.
+     WebDay = { day, pageviews, visitors, flagged }
+     WebTotals = { pageviews, flagged (undefined in prior), visitors (sum of daily; null in
+                   prior), visits, bounces, bounce_rate, avg_visit_seconds }
+     RuleCount = { rule ('bot' | 'no-sec-fetch' | 'many-agents'), label, value }: flagged page
+       views that matched the rule. An event that matched two rules counts under both.
    breakdown(dimension) -> [{ label, value }]   (distinct visitors in the period; [] when none)
      dimension = 'referrers' | 'countries' | 'devices' | 'browsers'
 
@@ -40,8 +44,9 @@
    operatorRows() -> [{ project { id, slug, name, domain, state },
        totals { pageviews, visitors, visits, bounces (each a Count),
                 bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
-                flagged (always null: not classified) },
-       daily [{ day, pageviews Count }], breakdowns { dimension: [{ label, value Count }] } }]
+                flagged Count },
+       byRule [RuleCount with a Count value],
+       daily [{ day, pageviews Count, flagged Count }], breakdowns { dimension: [{ label, value Count }] } }]
      Count = number | Small.  Small = { small: true, below }: more than zero and fewer than
      `below`. The API never sends the exact number, so there is nothing to hide here.
    sortRows(rows, pick, descending) -> [row]
@@ -54,6 +59,9 @@
   var BROWSER_NAMES = {
     ios: 'Safari (iOS)', crios: 'Chrome (iOS)', fxios: 'Firefox (iOS)', 'edge-chromium': 'Edge',
     'chromium-webview': 'Android WebView', 'ios-webview': 'iOS WebView', samsung: 'Samsung Internet'
+  };
+  var RULE_NAMES = {
+    bot: 'Known bot', 'no-sec-fetch': 'No browser fetch headers', 'many-agents': 'Many User-Agents on one network'
   };
 
   var known = { project: null, tracker: null, smallCounts: null, state: 'ok', error: null, through: null };
@@ -111,9 +119,9 @@
   }
 
   function totalsOf(t) {
-    if (!t || !t.pageviews) return null;
+    if (!t || !(t.pageviews || t.flagged)) return null;
     return {
-      pageviews: t.pageviews, visitors: t.visitors, visits: t.visits, bounces: t.bounces,
+      pageviews: t.pageviews, flagged: t.flagged, visitors: t.visitors, visits: t.visits, bounces: t.bounces,
       bounce_rate: t.visits ? t.bounces / t.visits : 0,
       avg_visit_seconds: t.visits ? t.total_seconds / t.visits : 0
     };
@@ -127,10 +135,14 @@
     });
   }
 
+  function byRule(counts) {
+    return Object.keys(RULE_NAMES).map(function (rule) { return { rule: rule, label: RULE_NAMES[rule], value: counts[rule] }; });
+  }
+
   function web(rangeDays) {
     var body = webByRange[rangeDays];
-    if (!body) return { rows: [], totals: null, prior: null };
-    return { rows: body.daily, totals: totalsOf(body.totals), prior: totalsOf(body.prior) };
+    if (!body) return { rows: [], totals: null, prior: null, byRule: [] };
+    return { rows: body.daily, totals: totalsOf(body.totals), prior: totalsOf(body.prior), byRule: byRule(body.flagged_by_rule) };
   }
 
   function label(dimension, value) {
@@ -154,7 +166,7 @@
         Object.keys(row.breakdowns).forEach(function (dimension) {
           breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension]);
         });
-        return { project: row.project, totals: row.totals, daily: row.daily, breakdowns: breakdowns };
+        return { project: row.project, totals: row.totals, byRule: byRule(row.flagged_by_rule), daily: row.daily, breakdowns: breakdowns };
       });
     });
   }
