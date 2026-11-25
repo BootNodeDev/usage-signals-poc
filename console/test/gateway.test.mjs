@@ -14,7 +14,8 @@ import { truncateAddress } from '../lib/client-address.js';
 import { requireEnv } from '../lib/config.js';
 import { MAX_AGENTS_PER_ADDRESS } from '../lib/flags.js';
 import { umamiLogin, umamiRequest } from '../lib/umami-admin.js';
-import { TENANTS } from '../scripts/fixtures.mjs';
+import { BY_TAG, FLAGGED } from '../lib/web-read.js';
+import { FETCH_METADATA, TENANTS } from '../scripts/fixtures.mjs';
 
 const POC_ROOT = path.resolve(import.meta.dirname, '..');
 if (!process.env.GATEWAY_URL) process.loadEnvFile(path.join(POC_ROOT, 'local.env'));
@@ -23,7 +24,6 @@ const GATEWAY = requireEnv('GATEWAY_URL');
 const DEMO = requireEnv('DEMO_URL');
 const [SITE_A, SITE_B, SITE_SUSPENDED, SITE_PUBLIC_HOST] = TENANTS.map((tenant) => tenant.site);
 const BREAKDOWNS = ['referrer', 'country', 'browser', 'os', 'device'];
-const FETCH_METADATA = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
 const FORGEABLE_FIELDS = {
   ip: '9.9.9.9',
   userAgent: 'Forged/1.0',
@@ -94,13 +94,13 @@ function trackerBody(site, url, referrer = '') {
   };
 }
 
-function sendEvent({ gateway = GATEWAY, site, visitor, origin, body, fetchMetadata = true }) {
+function sendEvent({ gateway = GATEWAY, site, visitor, origin, body }) {
   const headers = {
     'content-type': 'application/json',
     'user-agent': visitor.userAgent,
     'x-forwarded-for': visitor.address,
     'x-vercel-ip-country': visitor.country,
-    ...(fetchMetadata && FETCH_METADATA),
+    ...(visitor.fetchMetadata !== false && FETCH_METADATA),
   };
   const sentOrigin = origin === undefined ? `http://${site.domain}` : origin;
   if (sentOrigin !== null) headers.origin = sentOrigin;
@@ -434,7 +434,7 @@ describe('gateway', () => {
     }
     const sent = [
       { visitor: { ...CHROME_DESKTOP, userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' } },
-      { visitor: SAFARI_MOBILE, fetchMetadata: false },
+      { visitor: { ...SAFARI_MOBILE, fetchMetadata: false } },
       ...ROTATED_AGENTS.map((userAgent) => ({ visitor: { ...rotating, userAgent } })),
     ];
     for (const event of sent) {
@@ -442,8 +442,7 @@ describe('gateway', () => {
       assert.equal(response.status, 202);
     }
     const range = `startAt=${windowStart}&endAt=${Date.now() + 60_000}`;
-    const flagged = `fields=${encodeURIComponent('["tag"]')}&tag=${encodeURIComponent('re..')}`;
-    const rows = await umamiJson(`/api/websites/${SITE_A.umamiWebsiteId}/breakdown?${range}&${flagged}`);
+    const rows = await umamiJson(`/api/websites/${SITE_A.umamiWebsiteId}/breakdown?${range}&${BY_TAG}&${FLAGGED}`);
     assert.deepEqual(Object.fromEntries(rows.map((row) => [row.tag, Number(row.views)])), {
       bot: 1,
       'no-sec-fetch': 1,

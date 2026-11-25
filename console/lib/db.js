@@ -49,9 +49,10 @@ function sha256(text) {
 
 /**
  * Records that the truncated address showed this User-Agent today (UTC) and returns how many
- * distinct User-Agents it has shown today, this one included. Only hashes reach the database.
+ * distinct User-Agents it has shown today, this one included, counting no higher than `upTo`.
+ * Once an address reaches `upTo`, no more rows are kept for it that day. Only hashes are stored.
  */
-export async function countAgentsToday(address, userAgent) {
+export async function countAgentsToday(address, userAgent, upTo) {
   // The final SELECT reads the table as it was before the INSERT, so the new row is added apart.
   const { rows } = await getPool().query(
     `WITH today AS (SELECT (now() AT TIME ZONE 'UTC')::date AS day),
@@ -63,16 +64,20 @@ export async function countAgentsToday(address, userAgent) {
            WHERE day < (SELECT day FROM today)
            LIMIT 500 FOR UPDATE SKIP LOCKED)
      ),
+     seen AS (
+       SELECT count(*)::int AS agents
+         FROM (SELECT 1 FROM usage_signals.agent_sighting
+                WHERE day = (SELECT day FROM today) AND address_hash = $1
+                LIMIT $3) capped
+     ),
      added AS (
        INSERT INTO usage_signals.agent_sighting (day, address_hash, agent_hash)
-       SELECT day, $1, $2 FROM today
+       SELECT day, $1, $2 FROM today WHERE (SELECT agents FROM seen) < $3
        ON CONFLICT DO NOTHING
        RETURNING 1
      )
-     SELECT count(*)::int + (SELECT count(*)::int FROM added) AS agents
-       FROM usage_signals.agent_sighting
-      WHERE day = (SELECT day FROM today) AND address_hash = $1`,
-    [sha256(address), sha256(userAgent)],
+     SELECT (SELECT agents FROM seen) + (SELECT count(*)::int FROM added) AS agents`,
+    [sha256(address), sha256(userAgent), upTo],
   );
   return rows[0].agents;
 }

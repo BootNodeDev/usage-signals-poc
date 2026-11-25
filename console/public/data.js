@@ -19,7 +19,8 @@
    status() -> { state ('ok' | 'not_found' | 'error'), error | null, through | null }
      through = ISO time of the last figures read.
    meta() -> { product_name, tracker { version, path, integrity } | null,
-               small_counts { below } | null }   (set by loadOperator)
+               small_counts { below } | null   (set by loadOperator),
+               max_agents_per_address | null   (set by loadWeb) }
 
    Tenant web figures
    ------------------
@@ -33,8 +34,8 @@
      WebDay = { day, pageviews, visitors, flagged }
      WebTotals = { pageviews, flagged (undefined in prior), visitors (sum of daily; null in
                    prior), visits, bounces, bounce_rate, avg_visit_seconds }
-     RuleCount = { rule ('bot' | 'no-sec-fetch' | 'many-agents'), label, value }: flagged page
-       views that matched the rule. An event that matched two rules counts under both.
+     RuleCount = { label, value }: flagged page views that matched the rule, in the server's
+       order. An event that matched two rules counts under both.
    breakdown(dimension) -> [{ label, value }]   (distinct visitors in the period; [] when none)
      dimension = 'referrers' | 'countries' | 'devices' | 'browsers'
 
@@ -64,7 +65,7 @@
     bot: 'Known bot', 'no-sec-fetch': 'No browser fetch headers', 'many-agents': 'Many User-Agents on one network'
   };
 
-  var known = { project: null, tracker: null, smallCounts: null, state: 'ok', error: null, through: null };
+  var known = { project: null, tracker: null, smallCounts: null, maxAgents: null, state: 'ok', error: null, through: null };
   var webByRange = {};
   var latestWeb = null;
   var operator = [];
@@ -132,11 +133,12 @@
       webByRange[rangeDays] = body;
       latestWeb = body;
       known.through = body.through;
+      known.maxAgents = body.max_agents_per_address;
     });
   }
 
   function byRule(counts) {
-    return Object.keys(RULE_NAMES).map(function (rule) { return { rule: rule, label: RULE_NAMES[rule], value: counts[rule] }; });
+    return Object.keys(counts).map(function (rule) { return { label: RULE_NAMES[rule] || rule, value: counts[rule] }; });
   }
 
   function web(rangeDays) {
@@ -194,7 +196,9 @@
     currentProjectSlug: currentProjectSlug,
     project: function () { return known.project; },
     status: function () { return { state: known.state, error: known.error, through: known.through }; },
-    meta: function () { return { product_name: PRODUCT_NAME, tracker: known.tracker, small_counts: known.smallCounts }; },
+    meta: function () {
+      return { product_name: PRODUCT_NAME, tracker: known.tracker, small_counts: known.smallCounts, max_agents_per_address: known.maxAgents };
+    },
     loadWeb: loadWeb,
     web: web,
     breakdown: function (dimension) { return labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]); },

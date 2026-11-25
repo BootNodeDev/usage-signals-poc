@@ -9,7 +9,7 @@ import { truncateAddress } from '../lib/client-address.js';
 import { requireEnv } from '../lib/config.js';
 import { operatorRow, smallCount } from '../lib/operator-api.js';
 import { dailyRows, flaggedByRule, sumOfDaily } from '../lib/web-read.js';
-import { TENANTS } from '../scripts/fixtures.mjs';
+import { FETCH_METADATA, TENANTS } from '../scripts/fixtures.mjs';
 
 const CONSOLE_ROOT = path.resolve(import.meta.dirname, '..');
 const GATEWAY = requireEnv('GATEWAY_URL');
@@ -17,7 +17,6 @@ const UMAMI = requireEnv('UMAMI_URL');
 const SITE = TENANTS[1].site;
 const RUN = `${Date.now() % 100_000}.${Math.floor(Math.random() * 1_000)}`;
 const RUN_NETWORK = 1 + Math.floor(Math.random() * 254);
-const FETCH_METADATA = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
 const CHROME = {
   address: `8.34.${RUN_NETWORK}.8`,
   country: 'US',

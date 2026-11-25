@@ -10,8 +10,8 @@ const CACHE_CONTROL = 'public, max-age=0, s-maxage=10';
 const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'device', browsers: 'browser' };
 // Umami's "not set" operator builds no SQL on PostgreSQL, so "matches no character" stands in.
 const COUNTED = `tag=${encodeURIComponent('nre..')}`;
-const FLAGGED = `tag=${encodeURIComponent('re..')}`;
-const BY_TAG = `fields=${encodeURIComponent('["tag"]')}`;
+export const FLAGGED = `tag=${encodeURIComponent('re..')}`;
+export const BY_TAG = `fields=${encodeURIComponent('["tag"]')}`;
 
 export function json(status, body, headers = {}) {
   return Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } });
@@ -37,9 +37,9 @@ export function unavailable(error) {
 }
 
 /** A visitor is counted once per day, so a multi-day figure is the sum of the daily figures. */
-export function sumOfDaily(rows) {
+export function sumOfDaily(rows, column = 'visitors') {
   let total = 0;
-  for (const row of rows) total += row.visitors;
+  for (const row of rows) total += row[column];
   return total;
 }
 
@@ -119,7 +119,7 @@ export async function readFigures(site, dayCount) {
   return {
     days: dayCount,
     through: new Date(now).toISOString(),
-    totals: { ...totalsOf(stats, sumOfDaily(daily)), flagged: daily.reduce((sum, row) => sum + row.flagged, 0) },
+    totals: { ...totalsOf(stats, sumOfDaily(daily)), flagged: sumOfDaily(daily, 'flagged') },
     flagged_by_rule: flaggedByRule(byTag),
     // Umami's comparison period; its visitor figure is not a sum of daily and is left out.
     prior: stats.comparison ? totalsOf(stats.comparison, null) : null,

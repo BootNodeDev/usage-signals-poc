@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { describe, it } from 'node:test';
 import { MAX_AGENTS_PER_ADDRESS, RULES, flagTag, rulesOf } from '../lib/flags.js';
+import { FETCH_METADATA } from '../scripts/fixtures.mjs';
 
 const BROWSER = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
-const FETCH_METADATA = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
 
 function headersWithout(name) {
   const headers = new Headers(FETCH_METADATA);
@@ -44,11 +42,5 @@ describe('flag rules', () => {
     assert.equal(tag, 'bot+no-sec-fetch+many-agents');
     assert.deepEqual(rulesOf(tag), RULES);
     assert.ok(tag.length <= 50);
-  });
-
-  it('is described on the tenant page with the threshold the gateway uses', async () => {
-    const page = await readFile(path.join(import.meta.dirname, '..', 'public', 'tenant', 'web.html'), 'utf8');
-    assert.ok(page.includes(`more than ${MAX_AGENTS_PER_ADDRESS} User-Agents`));
-    assert.ok(page.includes(`limit of ${MAX_AGENTS_PER_ADDRESS} User-Agents`));
   });
 });

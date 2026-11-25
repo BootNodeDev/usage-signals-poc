@@ -58,7 +58,7 @@
           <section class="block" aria-labelledby="rules-title">
             <div class="block-head"><h2 id="rules-title"></h2></div>
             <div class="bars" id="rules"></div>
-            <p class="caption">Flagged page views are stored and shown apart, never dropped. One page view can match more than one rule. This prototype has three rules, and its limit of 10 User-Agents is a placeholder.</p>
+            <p class="caption" id="rules-note"></p>
           </section>
         </div>
       </div>
@@ -103,10 +103,6 @@
       { name: 'Counted', color: 'var(--data-filtered)' },
       { name: 'Flagged', color: 'var(--data-flagged)', hatch: true }
     ];
-    var RULES_HELP =
-      '<p><b>Known bot</b>: the User-Agent names a crawler, a script or a headless browser.</p>' +
-      '<p><b>No browser fetch headers</b>: the request lacks the Sec-Fetch headers that current browsers send.</p>' +
-      '<p><b>Many User-Agents on one network</b>: the address, with its last part removed, showed more than 10 User-Agents today (UTC).</p>';
     var dimensions = {
       referrers: 'Visitors in the period by referring host',
       countries: 'Visitors in the period by country',
@@ -141,6 +137,17 @@
     function renderBreakdown() {
       byId('breakdown-caption').textContent = dimensions[state.tab];
       App.barList(byId('breakdown'), D.breakdown(state.tab));
+    }
+
+    function renderRules(byRule, flagged) {
+      var limit = D.meta().max_agents_per_address;
+      byId('rules-title').innerHTML = App.info('rules', 'Flagged page views by rule',
+        '<p><b>Known bot</b>: the User-Agent names a crawler, a script or a headless browser.</p>' +
+        '<p><b>No browser fetch headers</b>: the request lacks the Sec-Fetch headers that current browsers send.</p>' +
+        '<p><b>Many User-Agents on one network</b>: the address, with its last part removed, showed more than ' + limit + ' User-Agents today (UTC).</p>');
+      byId('rules-note').textContent = 'Flagged page views are stored and shown apart, never dropped. One page view can match more than one rule. ' +
+        'This prototype has three rules, and its limit of ' + limit + ' User-Agents is a placeholder.';
+      App.barList(byId('rules'), byRule, { flag: true, total: flagged });
     }
 
     function renderEmpty(range) {
@@ -179,7 +186,7 @@
         return [fmt.date(r.day), fmt.int(r.pageviews), fmt.int(r.flagged), fmt.int(r.pageviews + r.flagged), fmt.int(r.visitors)];
       }));
       renderBreakdown();
-      App.barList(byId('rules'), result.byRule, { flag: true, total: t.flagged });
+      renderRules(result.byRule, t.flagged);
     }
 
     function render(range) {
@@ -196,7 +203,6 @@
     }
 
     if (!project) { projectMissing(message); return; }
-    byId('rules-title').innerHTML = App.info('rules', 'Flagged page views by rule', RULES_HELP);
     if (!dimensions[state.tab]) state.tab = 'referrers';
     Array.prototype.forEach.call(byId('tabs').children, function (tab) {
       tab.setAttribute('aria-selected', String(tab.dataset.tab === state.tab));
