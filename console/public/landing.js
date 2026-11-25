@@ -62,16 +62,10 @@
     return state.rows.filter(function (row) { return row.project.slug === state.slug; })[0] || state.rows[0];
   }
 
-  /* "Demo site A", "Demo site B" split into the shared words "Demo site" and the tabs "A", "B". */
-  function splitNames(rows) {
-    var names = rows.map(function (row) { return row.project.name; });
-    var shared = names.reduce(function (prefix, name) {
-      while (name.indexOf(prefix) !== 0) prefix = prefix.slice(0, -1);
-      return prefix;
-    });
-    var cut = names.length > 1 ? shared.lastIndexOf(' ') + 1 : 0;
-    var labels = names.map(function (name) { return name.slice(cut) || name; });
-    return { shared: names[0].slice(0, cut).trim(), labels: labels };
+  var TENANT_HEADING = 'Demo site';
+
+  function optionLabel(name) {
+    return name.indexOf(TENANT_HEADING + ' ') === 0 ? name.slice(TENANT_HEADING.length + 1) : name;
   }
 
   function head(title, note, action) {
@@ -101,13 +95,14 @@
     var row = current();
     var project = row.project;
     var totals = row.totals;
-    var names = splitNames(state.rows);
-    var picker = state.rows.length > 1 ? '<div class="switch" role="group" aria-label="Project">' + state.rows.map(function (other, index) {
-      return '<button type="button" data-slug="' + escapeHtml(other.project.slug) + '" aria-label="' + escapeHtml(other.project.name) + '" aria-pressed="' +
-        (other === row) + '">' + escapeHtml(names.labels[index]) + '</button>';
-    }).join('') + '</div>' : '';
+    var picker = state.rows.length > 1 ? '<div class="project-menu"><button class="project-button" id="project-button" type="button" ' +
+      'aria-expanded="false" aria-controls="project-list" aria-label="Project: ' + escapeHtml(project.name) + '">' + escapeHtml(optionLabel(project.name)) +
+      '</button><ul class="project-list" id="project-list" hidden>' + state.rows.map(function (other) {
+        return '<li><button type="button" data-slug="' + escapeHtml(other.project.slug) + '" aria-label="' + escapeHtml(other.project.name) + '"' +
+          (other === row ? ' aria-current="true"' : '') + '>' + escapeHtml(optionLabel(other.project.name)) + '</button></li>';
+      }).join('') + '</ul></div>' : '';
     var smallDay = row.daily.some(function (entry) { return isSmall(entry.pageviews); });
-    return head('<h2>' + escapeHtml(names.shared || project.name) + '</h2>' + picker, 'Last ' + RANGE_DAYS + ' days',
+    return head('<h2>' + TENANT_HEADING + '</h2>' + picker, 'Last ' + RANGE_DAYS + ' days',
       '<a class="button button-ink" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">View the console</a>') +
       '<div class="figures">' +
         figure('Page views', count(totals.pageviews), 'Every page load the tracker saw') +
@@ -188,12 +183,33 @@
     selectRole(next);
   });
 
-  byId('preview').addEventListener('click', function (event) {
-    var button = event.target.closest('[data-slug]');
+  function toggleProjects(open) {
+    var button = byId('project-button');
     if (!button) return;
-    state.slug = button.dataset.slug;
+    button.setAttribute('aria-expanded', String(open));
+    byId('project-list').hidden = !open;
+  }
+
+  byId('preview').addEventListener('click', function (event) {
+    if (event.target.closest('#project-button')) {
+      toggleProjects(byId('project-list').hidden);
+      return;
+    }
+    var choice = event.target.closest('[data-slug]');
+    if (!choice) return;
+    state.slug = choice.dataset.slug;
     render();
-    byId('preview').querySelector('[data-slug="' + state.slug + '"]').focus();
+    byId('project-button').focus();
+  });
+
+  document.addEventListener('click', function (event) {
+    if (!event.target.closest('.project-menu')) toggleProjects(false);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || !byId('project-list') || byId('project-list').hidden) return;
+    toggleProjects(false);
+    byId('project-button').focus();
   });
 
   var dialog = byId('video-dialog');

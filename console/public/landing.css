@@ -25,6 +25,7 @@
   --bar: #474d8c;
   --bar-today: #b9bcdb;
   --text: "Nunito Sans", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23201d3a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; }
@@ -138,9 +139,24 @@ main { padding-bottom: 56px; }
 .spinner { width: 36px; height: 36px; border: 3px solid var(--rule); border-top-color: var(--bar); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.switch { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--ground); box-shadow: inset 0 0 0 1px var(--rule); }
-.switch button { padding: 6px 14px; border: 0; border-radius: 999px; background: transparent; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; }
-.switch button[aria-pressed="true"] { background: #ffffff; color: var(--ink); box-shadow: 0 0 0 1px var(--rule); }
+.project-menu { position: relative; max-width: 100%; }
+.project-button {
+  min-width: 140px; max-width: 100%; height: 40px; padding: 0 40px 0 16px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--ground) var(--chevron) no-repeat right 14px center / 14px; box-shadow: inset 0 0 0 1px var(--rule);
+  font-size: 15px; font-weight: 700; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.project-button:hover, .project-button[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--muted); }
+.project-list {
+  position: absolute; z-index: 3; top: calc(100% + 6px); left: 0; min-width: 100%; width: max-content; max-width: min(320px, 100vw - 48px);
+  max-height: 320px; overflow-y: auto; margin: 0; padding: 6px; list-style: none;
+  border-radius: 14px; background: var(--sheet); box-shadow: 0 0 0 1px var(--rule), 0 18px 40px rgba(14, 10, 40, 0.16);
+}
+.project-list button {
+  display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font-size: 15px; font-weight: 700; text-align: left; color: var(--muted);
+}
+.project-list button:hover { background: var(--ground); color: var(--ink); }
+.project-list button[aria-current="true"] { background: var(--tone); color: var(--ink); }
 
 .button { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 999px; font-size: 15px; font-weight: 700; text-decoration: none; }
 .button-ink { background: var(--ink); color: #ffffff; }
@@ -224,7 +240,7 @@ td.num { font-weight: 800; }
   .role-select {
     display: block; width: 100%; height: 52px; padding: 0 48px 0 16px;
     border: 2px solid var(--ink); border-radius: 14px; appearance: none; cursor: pointer;
-    background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23201d3a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 16px center / 16px;
+    background: #ffffff var(--chevron) no-repeat right 16px center / 16px;
     font: 800 18px/1 var(--text); color: var(--ink);
   }
   .preview { margin-top: 12px; padding: 22px 18px; border-radius: 16px; }
