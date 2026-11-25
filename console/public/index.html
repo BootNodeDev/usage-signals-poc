@@ -3,74 +3,54 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Usage Signals prototype</title>
-<meta name="description" content="Working prototype of Usage Signals, a shared web and API analytics service for projects built on Stellar.">
+<title>Pulse</title>
+<meta name="description" content="Working prototype of Pulse, web and API analytics for Stellar ecosystem projects.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/demo.css">
-<style>
-  .sections ul { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  .sections li a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
-</style>
-<script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-</script>
-<script defer src="/_vercel/insights/script.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700;6..12,800;6..12,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/landing.css">
 </head>
-<body data-accent="violet">
-<header class="top">
-  <div class="wrap">
-    <span class="site-name">Usage Signals</span>
-    <nav aria-label="Source">
-      <a href="https://github.com/BootNodeDev/usage-signals-poc">Source on GitHub</a>
-    </nav>
+<body>
+<header class="hero">
+  <div class="wrap hero-top">
+    <img class="logo" src="/bootnode.svg" alt="BootNode" width="131" height="52">
+    <a class="source" href="https://github.com/BootNodeDev/usage-signals-poc" aria-label="Source on GitHub">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    </a>
   </div>
+  <div class="wrap hero-body">
+    <h1 class="wordmark">Pulse</h1>
+    <p class="tagline">Web and API analytics for Stellar ecosystem projects.</p>
+    <a class="video" href="https://vimeo.com/1248550588">
+      <span class="video-poster">
+        <img src="/demo-video.jpg" alt="" width="880" height="495">
+        <span class="play"><span><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 1.8v14.4L15.6 9z" fill="#201d3a"/></svg></span></span>
+      </span>
+      <span class="video-text"><b>Watch the demo</b><span>1 min 24 s on Vimeo</span></span>
+    </a>
+    <div class="picker">
+      <p class="picker-label" id="picker-label">See Pulse as</p>
+      <div class="roles" role="tablist" aria-labelledby="picker-label">
+        <button class="role" type="button" role="tab" id="role-tenant" data-role="tenant" aria-controls="preview" aria-selected="true"><b>A project team</b><span>One site, in full detail</span></button>
+        <button class="role" type="button" role="tab" id="role-operator" data-role="operator" aria-controls="preview" aria-selected="false" tabindex="-1"><b>The SCF operator</b><span>Every project, side by side</span></button>
+        <button class="role" type="button" role="tab" id="role-public" data-role="public" aria-controls="preview" aria-selected="false" tabindex="-1"><b>The public</b><span>Totals per project</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="wrap"><div class="hero-bars" id="hero-bars" aria-hidden="true"></div></div>
 </header>
-<main>
-  <div class="hero">
-    <div class="wrap">
-      <div class="strokes" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
-      <h1>A working prototype you can try</h1>
-      <p>Usage Signals is a shared web and API analytics service for projects built on Stellar. Open a sample site, browse a few pages, then see the visit in that project's console and in the operator view.</p>
-    </div>
-  </div>
-  <div class="sections">
-    <div class="wrap">
-      <section>
-        <h2>1. Visit a sample site</h2>
-        <p>Three sample sites carry the tracker. Each page view goes through our gateway before it reaches Umami.</p>
-        <ul>
-          <li><a href="https://usage-signals-poc-demo-site-a.vercel.app/demo/">Demo site A</a></li>
-          <li><a href="https://usage-signals-poc-demo-site-b.vercel.app/demo/">Demo site B</a></li>
-          <li><a href="https://usage-signals-poc-demo-site-c.vercel.app/demo/">Demo site C</a></li>
-        </ul>
-      </section>
-      <section>
-        <h2>2. See it as the project</h2>
-        <p>What a project sees for its own site: page views, visitors, referrers, visit duration, bounce rate, countries, devices and browsers.</p>
-        <ul>
-          <li><a href="/demo-site-a/web">Console of Demo site A</a></li>
-          <li><a href="/demo-site-b/web">Console of Demo site B</a></li>
-          <li><a href="/demo-site-c/web">Console of Demo site C</a></li>
-        </ul>
-      </section>
-      <section>
-        <h2>3. See it as the operator</h2>
-        <p>What SCF sees across projects: comparable totals, with small counts shown as fewer than 10.</p>
-        <ul>
-          <li><a href="/operator/projects">Operator view of all projects</a></li>
-        </ul>
-      </section>
-      <section>
-        <h2>What this prototype is</h2>
-        <p>The web path runs end to end. There is no sign-in: the address picks the project. Most of the figures come from generated sample traffic, loaded so the views have something to show. API analytics was tested as a local experiment and is not in this deployment; the repository lists every check and its result.</p>
-      </section>
-    </div>
-  </div>
+
+<main class="wrap">
+  <section class="preview" id="preview" role="tabpanel" aria-labelledby="role-tenant">
+    <p class="status">Reading the figures.</p>
+  </section>
+  <section class="visit" id="visit" aria-label="Count your own visit" hidden>
+    <p><b>Count your own visit.</b> Open <span id="visit-name"></span>, read a page, then refresh this view. Your page view is in the total.</p>
+    <a class="button button-line" id="visit-link" href="/"></a>
+  </section>
 </main>
-<footer>
-  <div class="wrap">Prototype for the SCF RFP "Web and API Analytics for Stellar Ecosystem Projects". Apache-2.0.</div>
-</footer>
+
+<script src="/data.js"></script>
+<script src="/landing.js"></script>
 </body>
 </html>

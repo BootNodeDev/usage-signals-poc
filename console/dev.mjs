@@ -11,8 +11,10 @@ const TENANT_SCREEN = /^\/[^/]+\/(web|requests|setup)$/;
 const CONTENT_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
+  '.jpg': 'image/jpeg',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
 };
 // Mirrors the "headers" rule in vercel.json.

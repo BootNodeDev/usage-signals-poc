@@ -82,14 +82,26 @@ describe('operator console', () => {
 });
 
 describe('other paths', () => {
-  it('shows the start page at /, linking the sample sites, each project console and the operator view', async () => {
+  it('shows the start page at /, linking the video and the source, with no third-party analytics', async () => {
     const root = await get('/');
     assert.equal(root.status, 200);
-    for (const slug of ['demo-site-a', 'demo-site-b', 'demo-site-c']) {
-      assert.ok(root.text.includes(`href="/${slug}/web"`), `no link to the console of ${slug}`);
-      assert.match(root.text, new RegExp(`href="https://[^"]*${slug}[^"]*/demo/"`), `no link to the site ${slug}`);
+    assert.ok(root.text.includes('href="https://vimeo.com/1248550588"'), 'no link to the video');
+    assert.ok(root.text.includes('href="https://github.com/BootNodeDev/usage-signals-poc"'), 'no link to the source');
+    assert.ok(root.text.includes('<script src="/data.js"></script>\n<script src="/landing.js"></script>'));
+    assert.ok(!root.text.includes('/_vercel/insights'));
+  });
+
+  it('builds the start page links to each site, its console and the operator view from the operator endpoint', async () => {
+    const script = (await get('/landing.js')).text;
+    assert.ok(script.includes("'/' + encodeURIComponent(project.slug) + '/web'"), 'no link to a project console');
+    assert.ok(script.includes("'https://' + project.domain + '/demo/'"), 'no link to a sample site');
+    assert.ok(script.includes('href="/operator/projects"'), 'no link to the operator view');
+    const { projects } = await (await fetch(`${GATEWAY}/api/operator/projects?days=30`)).json();
+    for (const tenant of TENANTS.filter((candidate) => candidate.status !== 'removed')) {
+      const row = projects.find((candidate) => candidate.project.id === tenant.site.id);
+      assert.equal(row.project.slug, tenant.site.slug);
+      assert.equal(row.project.domain, tenant.site.domain);
     }
-    assert.ok(root.text.includes('href="/operator/projects"'));
   });
 
   it('answers 404 for unknown paths, old screen names and paths outside public', async () => {
@@ -101,7 +113,7 @@ describe('other paths', () => {
   it('keeps /api, /demo and the shared files ahead of the project routes', async () => {
     assert.match((await get('/api/web')).type, /application\/json/);
     assert.equal((await get('/demo/web')).status, 404);
-    for (const pathname of ['/styles.css', '/app.js', '/charts.js', '/data.js', '/s/manifest.json']) {
+    for (const pathname of ['/styles.css', '/app.js', '/charts.js', '/data.js', '/landing.css', '/landing.js', '/s/manifest.json']) {
       assert.equal((await get(pathname)).status, 200, pathname);
     }
   });
