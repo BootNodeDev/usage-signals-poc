@@ -1,30 +1,18 @@
 # Pulse proof of concept
 
-A working prototype of the tenant and operator experience of Pulse, a shared web and
-API analytics service for projects built on Stellar. It exists to try the riskiest assumptions
-and to record a demo. It is not the product.
+Pulse is a shared web and API analytics service for projects built on Stellar. This repository is
+a working prototype of its tenant and operator consoles. It tests the riskiest assumptions and
+records a demo. It is not the product.
 
-## Layout
+Try it at https://usage-signals-poc.vercel.app.
 
-| Path | What it is | Deployed as |
-| --- | --- | --- |
-| `console/` | Our code: the ingest gateway, the pinned tracker file and the local stack | Vercel project 1 |
-| `umami/` | Umami, unmodified, as a git submodule pinned to the commit of tag `v3.5.0` | Vercel project 2 |
+## Where to go next
 
-Both projects use one PostgreSQL database. Umami keeps its tables in the `public` schema and
-ours live in the `usage_signals` schema.
-
-## Start here
-
-- `console/README.md`: run the stack locally and run the checks.
-- `DECISIONS.md`: every technical choice, the source it follows and the alternative rejected.
-
-After cloning, fetch Umami with `git submodule update --init`.
-
-## What differs from the intended architecture
-
-Umami is a separate Vercel deployment closed with Vercel Authentication, not a private
-network service. There is no OpenTelemetry Collector, no disk spool and a single location. `DECISIONS.md` lists these gaps.
+- [`console/README.md`](console/README.md): what the prototype does and how to run it on your machine.
+- [`checks/README.md`](checks/README.md): the architecture checks and their results.
+- [`DECISIONS.md`](DECISIONS.md): each technical choice, its source, the alternative rejected and the known limits.
+- [`architecture.md`](architecture.md): the code layout, the routes and the data flow.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): setting up the repository and running the tests.
 
 ## Licence
 

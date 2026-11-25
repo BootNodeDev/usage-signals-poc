@@ -15,7 +15,7 @@ Proof of concept of Pulse, a shared web and API analytics service for Stellar ec
 | Framework | None | One Vercel function (`console/api/index.js`) and static pages in `console/public/` |
 | Database | PostgreSQL 18 through `pg` 8.23.1 | Neon on Vercel, Docker locally |
 | Analytics engine | Umami 3.5.0, unmodified | Git submodule `umami/`, deployed as its own Vercel project |
-| Package manager | pnpm (`console/pnpm-lock.yaml`) | The READMEs run the scripts with `npm run` |
+| Package manager | pnpm (`console/pnpm-lock.yaml`) | The READMEs and `CONTRIBUTING.md` run the scripts with `npm run` |
 | Linting | None configured | |
 | Naming | camelCase functions and variables, UPPER_SNAKE_CASE constants, kebab-case file names | Tests are `test/<name>.test.mjs`; scripts are `.mjs` |
 
@@ -131,8 +131,9 @@ The `/sdlc:create-issue` skill applies these labels automatically when creating 
 ## References
 
 - [`DECISIONS.md`](DECISIONS.md): every technical choice, its source and the alternative rejected
-- [`checks/README.md`](checks/README.md): the six architecture checks and their results
-- [`console/README.md`](console/README.md): local stack, layout and configuration
+- [`checks/README.md`](checks/README.md): the architecture checks and their results, one row per check linking its folder
+- [`console/README.md`](console/README.md): what the console is and how to run it
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): setup, local stack, scripts and tests
 - [Umami documentation](https://docs.umami.is/docs)
 - [Vercel Node.js runtime](https://vercel.com/docs/functions/runtimes/node-js)
 - [Neon documentation](https://neon.com/docs)

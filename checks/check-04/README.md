@@ -18,6 +18,35 @@ table of the last run is in `results.md`.
 
 Umami source references are to the submodule `umami/` at tag v3.5.0 (commit `d3c62a8`).
 
+## Summary of both rounds
+
+No as worded. In Umami 3.5.0 only a key's own user can create it. `createApiKey` has one caller,
+which takes the owner from the caller's session.
+
+Yes as reworded. A worker can provision a tenant's team, service user, membership, website and
+read key through Umami's HTTP API alone, without touching its database. It can later remove all
+of them the same way. All 653 rows are as expected, and the experiment catches 10 of 10 negative
+controls.
+
+- The worker signs in once as the new service user with a random password and creates the key. It
+  then replaces the password with a random value it does not keep. The key survives.
+- A second run creates no duplicate, and the next run completes a run stopped after any of the 11
+  steps.
+- Removal deletes the user first and then the team. It reads back before it reports success: no
+  user, no other team member, and the key answers 401.
+- The reviewer found that names with upper-case letters broke both. Umami lower-cases usernames
+  and the worker compared names as written, so a removal reported "completed" and left a working key. The
+  worker now normalises the name before any call. The tests cover mixed case, padding, accents
+  and a Turkish dotted I.
+- Umami offers no way to turn off the team join code. The worker rotates it to 50 random
+  characters and discards it.
+- A view-only key could publish its own tenant's totals through a share link. Binding the service
+  user to a team board closes it. This relies on `POST /api/users` accepting an `id`, which Umami
+  does not document.
+- The isolation test ran 185 cross-tenant rows on 106 of 119 read routes and found no leak.
+
+Not tested: two workers at once. Umami does not require unique team names.
+
 ## Corrected sentence for the document (line 429)
 
 > Umami teams, service users, team memberships and websites can be provisioned through an admin

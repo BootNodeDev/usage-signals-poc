@@ -170,9 +170,8 @@
       if (!list.length) body = '<tr><td colspan="9" class="muted">No project matches this search.</td></tr>';
       byId('projects').innerHTML = head + '<tbody>' + body + '</tbody>';
       var below = D.meta().small_counts.below;
-      byId('caption').textContent = list.length + ' of ' + all.length + ' projects · Aggregates only. A count from 1 to ' + (below - 1) +
-        ' is shown as <' + below + ', and rates over fewer than ' + below + ' visits are not shown (a placeholder threshold). Flagged traffic: ' +
-        NOT_CLASSIFIED.toLowerCase() + '.';
+      byId('caption').textContent = list.length + ' of ' + all.length + ' projects · Aggregates only. Counts of 1 to ' + (below - 1) +
+        ' show as <' + below + ' and rates need ' + below + ' visits, a placeholder threshold. Flagged traffic is not classified yet.';
     }
 
     function renderTray() {

@@ -100,6 +100,8 @@ in `docker-compose.yml` on that date.
 
 ## Known limits
 - Nothing is access-controlled; see decision 38.
+- Umami runs as a separate Vercel deployment closed with Vercel Authentication. The intended architecture keeps it on a private network.
+- There is no OpenTelemetry Collector and no disk spool, and everything runs in one location.
 - `styles.css` still carries a few rules of removed elements (the sample notice, the fictional tag).
 
 - `screen`, `language`, `title` and `tag` are not forwarded, so there is no laptop/desktop split and no page titles.

@@ -33,8 +33,9 @@ console/                  Vercel project 1: gateway, read API, start page, conso
   dev.mjs                 Local stand-in for Vercel: static files, /api/*, demo sites on a second port
   docker-compose.yml      PostgreSQL 18 and Umami 3.5.0, plus an Umami without its geo database for tests
 umami/                    Umami v3.5.0, unmodified git submodule; Vercel project 2
-checks/                   Six architecture experiments, each with its own run.mjs
+checks/                   Architecture experiments, each with its own script and README
 DECISIONS.md              Every technical choice, its source and the alternative rejected
+CONTRIBUTING.md           Setup, local stack, scripts and tests
 ```
 
 ## Key Abstractions
@@ -91,25 +92,16 @@ All server-side; there are no public variables. `console/local.env` holds the lo
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | Pooled PostgreSQL URL for the function. Set by the Neon integration on Vercel |
-| `DATABASE_URL_UNPOOLED` | Direct PostgreSQL URL for the seed's schema changes |
-| `UMAMI_URL` | Base URL of the Umami deployment |
-| `UMAMI_BYPASS_SECRET` | Protection Bypass for Automation secret of the Umami Vercel project |
+| `DATABASE_URL_UNPOOLED` | Direct PostgreSQL URL for the seed's schema changes. Set by the Neon integration on Vercel |
+| `UMAMI_URL` | Base URL of the Umami deployment. Set by hand on Vercel |
+| `UMAMI_BYPASS_SECRET` | Protection Bypass for Automation secret of the Umami Vercel project, which lets the console reach that closed deployment. Set by hand on Vercel |
 | `UMAMI_ADMIN_USER` | Umami account for the seed, the tests and the read endpoints. Defaults to `admin` |
 | `UMAMI_ADMIN_PASSWORD` | Password of that account |
 | `DEMO_SITE_HOSTS` | Production builds only: hosts of Demo site A, B and C, comma-separated, in that order |
 | `UMAMI_NOGEO_URL` | Tests only: the Umami without its geo database |
 | `GATEWAY_PORT`, `DEMO_PORT`, `GATEWAY_URL`, `DEMO_URL` | Local server and tests only |
 
-## Scripts
-
-Run in `console/`.
-
-| Command | Purpose |
-|---------|---------|
-| `npm run up` | Starts PostgreSQL and Umami in Docker, seeds, then serves on port 4300 (demo sites on 4301) |
-| `npm test` | Runs `test/*.test.mjs` against the running stack |
-| `npm run build` | The seed, `scripts/seed.mjs`; also the Vercel build command |
-| `npm run pin-tracker` | Regenerates the pinned tracker, its manifest and `lib/tracker.generated.js` |
+The scripts are in [`CONTRIBUTING.md`](CONTRIBUTING.md#scripts).
 
 ---
 
