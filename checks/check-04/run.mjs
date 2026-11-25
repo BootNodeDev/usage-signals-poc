@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { READ_ROUTES } from './read-routes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COMPOSE = ['compose', '-p', 'us-check-04', '-f', join(HERE, 'docker-compose.yml')];
@@ -120,75 +121,6 @@ async function provisionTenant(admin, label) {
   tenant.keyId = key.json.id;
   return tenant;
 }
-
-// Every GET route under /api/websites/[websiteId] that takes no further id. The common date range
-// is appended to each. A route is only counted if the tenant's own key gets 200 with this query,
-// because Umami validates the query before it checks access: a malformed probe would answer 400
-// on both sides of the boundary and prove nothing.
-const PIVOT = 'eventName=signup&propertyName=plan';
-const READ_ROUTES = [
-  ['', ''],
-  ['/active', ''],
-  ['/daterange', ''],
-  ['/stats', ''],
-  ['/pageviews', ''],
-  ['/metrics', 'type=path'],
-  ['/metrics/expanded', 'type=path'],
-  ['/values', 'type=path'],
-  ['/sessions', ''],
-  ['/sessions/stats', ''],
-  ['/sessions/weekly', ''],
-  ['/session-data/properties', ''],
-  ['/session-data/values', 'propertyName=plan'],
-  ['/session-data/stats', 'propertyName=plan'],
-  ['/session-data/array-series', 'propertyName=plan'],
-  ['/session-data/date-series', 'propertyName=plan'],
-  ['/session-data/numeric-series', 'propertyName=plan'],
-  ['/session-data/numeric-stats', 'propertyName=plan'],
-  ['/session-data/property-series', 'propertyName=plan'],
-  ['/session-data-pivot', 'propertyName=plan'],
-  ['/events', ''],
-  ['/events/series', ''],
-  ['/events/stats', ''],
-  ['/event-data', ''],
-  ['/event-data/events', ''],
-  ['/event-data/fields', ''],
-  ['/event-data/properties', ''],
-  ['/event-data/stats', ''],
-  ['/event-data/values', PIVOT],
-  ['/event-data-pivot', PIVOT],
-  ['/event-data-pivot/array-series', PIVOT],
-  ['/event-data-pivot/date-series', PIVOT],
-  ['/event-data-pivot/numeric-series', PIVOT],
-  ['/event-data-pivot/numeric-stats', PIVOT],
-  ['/event-data-pivot/property-series', PIVOT],
-  ['/funnels', ''],
-  ['/funnels/stats', 'window=60&steps=%5B%7B%22type%22%3A%22path%22%2C%22value%22%3A%22%2F%22%7D%2C%7B%22type%22%3A%22path%22%2C%22value%22%3A%22%2Fpricing%22%7D%5D'],
-  ['/goals', ''],
-  ['/goals/stats', 'type=path&value=%2F'],
-  ['/journeys', 'steps=3'],
-  ['/retention', ''],
-  ['/attribution', 'model=first-click&type=path&step=%2F'],
-  ['/breakdown', 'fields=%5B%22path%22%5D'],
-  ['/utm/metrics', 'type=utm_source'],
-  ['/revenue/stats', 'currency=USD'],
-  ['/revenue/chart', 'currency=USD'],
-  ['/revenue/metrics', 'type=country&currency=USD'],
-  ['/revenue/sessions', 'currency=USD'],
-  ['/performance/stats', ''],
-  ['/performance/chart', ''],
-  ['/performance/metrics', 'type=path'],
-  ['/errors', ''],
-  ['/errors/stats', ''],
-  ['/errors/values', 'type=browser'],
-  ['/heatmaps', ''],
-  ['/replays', ''],
-  ['/replays/saved', ''],
-  ['/export', ''],
-  ['/segments', 'type=segment'],
-  ['/annotations', ''],
-  ['/shares', ''],
-];
 
 function rangeQuery(extra) {
   const now = Date.now();
