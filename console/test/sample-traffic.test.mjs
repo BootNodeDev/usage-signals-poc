@@ -10,6 +10,7 @@ import {
   hoursWithSample,
   missingHours,
   pageViewsInHour,
+  planApiHour,
   planHour,
   sampleWindowStart,
 } from '../lib/sample-traffic.js';
@@ -19,6 +20,8 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const TUESDAY_NOON = Date.parse('2026-11-24T12:00:00Z');
 const PROFILE = { pageViewsPerDay: 140, pages: ['/demo/', '/demo/pricing', '/demo/docs'] };
+const API_PROFILE = { requestsPerDay: 2400 };
+const BOUNDS_MS = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000];
 
 function planDay(dayStart) {
   return Array.from({ length: 24 }, (_, hour) => planHour('s', PROFILE, dayStart + hour * HOUR)).flat();
@@ -65,6 +68,32 @@ describe('sample traffic plan', () => {
     assert.ok(now - start <= 30 * DAY, `window of ${(now - start) / DAY} days`);
     assert.ok(now - start > 30 * DAY - HOUR);
     assert.equal(sampleWindowStart(first + 2 * DAY, first), first);
+  });
+});
+
+describe('sample API plan', () => {
+  it('plans the same rows for the same site and hour', () => {
+    assert.deepEqual(planApiHour('s', API_PROFILE, TUESDAY_NOON), planApiHour('s', API_PROFILE, TUESDAY_NOON));
+    assert.notDeepEqual(planApiHour('s', API_PROFILE, TUESDAY_NOON), planApiHour('t', API_PROFILE, TUESDAY_NOON));
+  });
+
+  it('gives each row a histogram of 15 counts that adds up to its requests', () => {
+    for (const row of planApiHour('s', API_PROFILE, TUESDAY_NOON)) {
+      assert.equal(row.buckets.length, BOUNDS_MS.length + 1);
+      assert.equal(row.buckets.reduce((a, b) => a + b, 0), row.count);
+      assert.ok(row.count > 0 && row.sumMs > 0);
+      assert.match(row.route, /^\/v1\//);
+      assert.ok(row.status >= 100 && row.status <= 599);
+    }
+  });
+
+  it('gives a weekday close to the daily figure', () => {
+    const day = Date.parse('2026-11-24T00:00:00Z');
+    let total = 0;
+    for (let hour = 0; hour < 24; hour += 1) {
+      for (const row of planApiHour('s', API_PROFILE, day + hour * HOUR)) total += row.count;
+    }
+    assert.ok(Math.abs(total - 2400) <= 120, `weekday ${total}`);
   });
 });
 
@@ -136,7 +165,39 @@ describe('sample traffic run against the local stack', () => {
   it('spends no run budget on hours whose plan has no page views', async () => {
     const quiet = { [site.slug]: { ...PROFILE, pageViewsPerDay: 0 } };
     const report = await fillSampleTraffic({ now: hour + HOUR + 60_000, sites: quiet, first: hour - 200 * HOUR });
-    assert.deepEqual(report, { filled: 0, pageViews: 0, failedHours: 0, remaining: 0 });
+    assert.deepEqual(report, {
+      filled: 0,
+      pageViews: 0,
+      failedHours: 0,
+      remaining: 0,
+      api: { filled: 0, requests: 0 },
+    });
+  });
+
+  it('writes the planned API rows of a missing hour once, as service "sample"', async () => {
+    const { rows: [tenant] } = await pool.query(
+      `SELECT tenant_id AS id FROM usage_signals.site WHERE slug = $1`,
+      [site.slug],
+    );
+    const stored = async () => {
+      const { rows } = await pool.query(
+        `SELECT coalesce(sum(request_count), 0)::int AS n FROM usage_signals.api_metric_minute
+          WHERE tenant_id = $1 AND minute = $2 AND service = 'sample'`,
+        [tenant.id, new Date(hour)],
+      );
+      return rows[0].n;
+    };
+    await pool.query(
+      `DELETE FROM usage_signals.api_metric_minute WHERE tenant_id = $1 AND minute = $2`,
+      [tenant.id, new Date(hour)],
+    );
+    const planned = planApiHour(site.slug, API_PROFILE, hour).reduce((sum, row) => sum + row.count, 0);
+    assert.ok(planned > 0);
+    const run = () =>
+      fillSampleTraffic({ now: hour + HOUR + 60_000, sites: {}, apiSites: { [site.slug]: API_PROFILE }, first: hour });
+    assert.deepEqual((await run()).api, { filled: 1, requests: planned });
+    assert.deepEqual((await run()).api, { filled: 0, requests: 0 });
+    assert.equal(await stored(), planned);
   });
 
   it('still reads single hours from Umami when the first sample hour is months back', async () => {

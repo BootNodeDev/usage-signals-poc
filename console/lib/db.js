@@ -42,7 +42,8 @@ export async function isDomainOfActiveTenant(domain) {
   return rowCount > 0;
 }
 
-const SITE_COLUMNS = `s.id, s.slug, t.name, s.domain, t.status AS state, s.umami_website_id AS "umamiWebsiteId"`;
+const SITE_COLUMNS = `s.id, s.slug, t.id AS "tenantId", t.name, s.domain, t.status AS state,
+  s.umami_website_id AS "umamiWebsiteId"`;
 const SITE_ORDER = 's.created_at, s.id';
 
 /** Sites of every project that has not been removed, oldest first. */
@@ -100,4 +101,32 @@ export async function withTransactionLock(key, task) {
     });
     client.release(releaseError);
   }
+}
+
+/** Minutes, as epoch milliseconds, that hold API rows of `service` for the tenant in a range. */
+export async function apiMinutesOf(tenantId, service, startAt, endAt) {
+  const { rows } = await getPool().query(
+    `SELECT DISTINCT minute FROM usage_signals.api_metric_minute
+      WHERE tenant_id = $1 AND service = $2 AND minute >= $3 AND minute < $4`,
+    [tenantId, service, new Date(startAt), new Date(endAt)],
+  );
+  return new Set(rows.map((row) => row.minute.getTime()));
+}
+
+/**
+ * Stores the API rows of one minute. A row already stored for the same series is kept, so
+ * writing the same minute twice changes nothing.
+ */
+export async function insertApiMinute(tenantId, minute, service, rows) {
+  await getPool().query(
+    `INSERT INTO usage_signals.api_metric_minute
+       (tenant_id, minute, service, route, method, status_code, request_count, duration_sum_ms,
+        bucket_counts)
+     SELECT $1, $2, $3, r.route, r.method, r.status, r.count, r."sumMs", r.buckets
+       FROM jsonb_to_recordset($4::jsonb)
+         AS r(route text, method text, status smallint, count bigint, "sumMs" double precision,
+              buckets bigint[])
+     ON CONFLICT DO NOTHING`,
+    [tenantId, new Date(minute), service, JSON.stringify(rows)],
+  );
 }
