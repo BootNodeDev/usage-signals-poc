@@ -133,6 +133,12 @@ describe('sample traffic run against the local stack', () => {
     assert.equal(await storedPageViews(), planned);
   });
 
+  it('spends no run budget on hours whose plan has no page views', async () => {
+    const quiet = { [site.slug]: { ...PROFILE, pageViewsPerDay: 0 } };
+    const report = await fillSampleTraffic({ now: hour + HOUR + 60_000, sites: quiet, first: hour - 200 * HOUR });
+    assert.deepEqual(report, { filled: 0, pageViews: 0, failedHours: 0, remaining: 0 });
+  });
+
   it('still reads single hours from Umami when the first sample hour is months back', async () => {
     const now = hour + HOUR + 60_000;
     const done = await hoursWithSample(site, sampleWindowStart(now, hour - 90 * DAY), now);

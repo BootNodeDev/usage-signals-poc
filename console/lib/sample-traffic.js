@@ -244,12 +244,14 @@ async function fillHours(now, sites, start) {
   for (const site of registered) {
     const hours = missingHours(await hoursWithSample(site, start, now), now, start);
     for (const hour of hours) {
+      // A quiet hour can plan no page views; Umami then never marks it done, so it costs nothing.
+      const events = planHour(site.slug, sites[site.slug], hour);
+      if (events.length === 0) continue;
       if (budget === 0) {
         report.remaining += 1;
         continue;
       }
       budget -= 1;
-      const events = planHour(site.slug, sites[site.slug], hour);
       const failed = await sendAll(site, events);
       if (failed > 0) {
         report.failedHours += 1;
