@@ -40,7 +40,8 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 
 ## Key Abstractions
 
-- **Gateway** (`lib/gateway.js`, `handleEvent`): the only public write path for web events. It takes the visitor's address and user agent from the connection, never from the body. It refuses events from an Origin that is not a registered domain of an active tenant, and events that carry `ip`, `userAgent`, `timestamp`, `id`, `salt`, `browser`, `os` or `device`. It truncates the address (IPv4 to /24, IPv6 to /48) and forwards the event to Umami.
+- **Gateway** (`lib/gateway.js`, `handleEvent`): the only public write path for web events. It takes the visitor's address and user agent from the connection, never from the body. It refuses events from an Origin that is not a registered domain of an active tenant, and events that carry `ip`, `userAgent`, `timestamp`, `id`, `salt`, `browser`, `os` or `device`. It truncates the address (IPv4 to /24, IPv6 to /48), flags the event when it matches a rule, and forwards it to Umami.
+- **Flags** (`lib/flags.js`, `flagTag`): three rules. `bot`: `isbot` matches the User-Agent. `no-sec-fetch`: a `Sec-Fetch-Site`, `Sec-Fetch-Mode` or `Sec-Fetch-Dest` header is missing. `many-agents`: the truncated address has shown more than 10 User-Agents today (UTC). The codes of the rules that matched go in Umami's `tag` field, joined with `+`. A flagged event is stored, never dropped, and counted apart.
 - **Read endpoints**: `lib/tenant-api.js` answers for one site, named by the slug in the path. `lib/operator-api.js` answers for every site at once and replaces small counts with a marker. Both get their figures from `readFigures()` in `lib/web-read.js`.
 - **Data seam** (`public/data.js`, `window.LData`): the only thing pages read. `currentProjectSlug()` is the one place that decides which project a tenant page shows.
 - **Seed profiles** (`scripts/seed-profile.mjs`): local runs seed the fixtures in `scripts/fixtures.mjs`; production builds seed Demo site A, B and C from `DEMO_SITE_HOSTS`; preview builds seed nothing.
@@ -50,7 +51,8 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 ### Data Access Layer
 
 - The browser talks only to our API, never to Umami.
-- `lib/db.js` holds every query on our tables (`listSites`, `findSiteBySlug`, `findActiveSiteByDomain`, ...) through one `pg` pool registered with `attachDatabasePool`.
+- `lib/db.js` holds every query on our tables (`listSites`, `findSiteBySlug`, `findActiveSiteByDomain`, `countAgentsToday`, ...) through one `pg` pool registered with `attachDatabasePool`.
+- `usage_signals.agent_sighting` holds one row per truncated address and User-Agent seen today, both as SHA-256 hashes. `countAgentsToday()` deletes the rows of earlier days as it writes.
 - `lib/umami.js` forwards events to Umami's `/api/send`. `lib/umami-admin.js` logs in with the admin account for the seed, the tests and the read endpoints.
 - `umamiAccessHeaders()` in `lib/config.js` adds `x-vercel-protection-bypass` to every call to Umami, which is closed with Vercel Authentication.
 
@@ -75,13 +77,14 @@ Write path:
 1. A demo page loads the pinned tracker from `/s/` with its SRI hash.
 2. The tracker posts each event to `/api/e`.
 3. The gateway checks the Origin, refuses forged fields and truncates the address.
-4. The gateway forwards the event to Umami's `/api/send`, with the truncated address in `cf-connecting-ip` and the country in `cf-ipcountry`.
-5. Umami stores the event in its own tables (schema `public`).
+4. The gateway records the User-Agent for the address in `usage_signals.agent_sighting` and sets the `tag` to the rules the event matched, if any.
+5. The gateway forwards the event to Umami's `/api/send`, with the truncated address in `cf-connecting-ip` and the country in `cf-ipcountry`.
+6. Umami stores the event in its own tables (schema `public`). Its own bot check is off (`DISABLE_BOT_CHECK`), so bot traffic is stored too, flagged.
 
 Read path:
 
 1. A page calls `LData`, which fetches `/api/tenant/...` or `/api/operator/projects`.
-2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account.
+2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account: counted figures with the filter `tag=nre..` (no tag), flagged page views per day with `tag=re..`, and flagged page views by rule from `/breakdown?fields=["tag"]`.
 3. The operator endpoint replaces counts from 1 to 9 with `{ small: true, below: 10 }`.
 4. Answers are cached by the CDN for 10 seconds (`Cache-Control: public, max-age=0, s-maxage=10`).
 
@@ -112,6 +115,7 @@ The scripts are in [`CONTRIBUTING.md`](CONTRIBUTING.md#scripts).
 - **Small counts:** the operator endpoint never sends a count from 1 to 9. It sends `{ small: true, below: 10 }`, and the pages show `<10`. Zero stays zero; 10 and above are exact.
 - **Rates:** a bounce rate or visit duration over fewer than 10 visits is not sent; the pages show "Too few visits".
 - **Charts:** days with a small count are not drawn.
+- **Counted and flagged:** every figure leaves flagged page views out, except `flagged` and `flagged_by_rule`. Raw page views are counted plus flagged. A page view that matched two rules counts under both, so the rules can add up to more than `flagged`.
 - **Visitors:** the sum of each day's distinct visitors (`sumOfDaily` in `lib/web-read.js`), not distinct visitors over the whole range.
 
 ### Auth / Session Management
