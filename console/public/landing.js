@@ -68,8 +68,7 @@
   }
 
   function current() {
-    var rows = tenantRows();
-    return rows.filter(function (row) { return row.project.slug === state.slug; })[0] || rows[0];
+    return state.rows.filter(function (row) { return row.project.slug === state.slug; })[0] || tenantRows()[0];
   }
 
   var TENANT_HEADING = 'Demo site';
@@ -152,7 +151,6 @@
 
   function render() {
     var preview = byId('preview');
-    preview.setAttribute('aria-labelledby', 'role-' + state.role);
     if (!state.rows.length) {
       preview.innerHTML = '<p class="status">No project is enrolled yet.</p>';
       return;
@@ -168,24 +166,31 @@
 
   function viewKey() { return state.role === 'tenant' ? 'project:' + (state.slug || '') : 'totals'; }
 
-  /* Renders the current view, reading its figures the first time. Resolves true once it is on screen. */
+  function viewQuery() {
+    if (state.role !== 'tenant') return { figures: 'totals' };
+    return state.slug ? { figures: 'one', project: state.slug } : { figures: 'one' };
+  }
+
   function show() {
     var key = viewKey();
-    if (views[key]) {
-      state.rows = views[key];
-      render();
-      return Promise.resolve(true);
+    var preview = byId('preview');
+    preview.setAttribute('aria-labelledby', 'role-' + state.role);
+    preview.innerHTML = LOADING;
+    if (!views[key]) {
+      views[key] = D.loadOperator(RANGE_DAYS, viewQuery());
+      views[key].catch(function () { delete views[key]; });
     }
-    var query = state.role !== 'tenant' ? { figures: 'totals' } : state.slug ? { figures: 'one', project: state.slug } : { figures: 'one' };
-    byId('preview').innerHTML = LOADING;
-    return D.loadOperator(RANGE_DAYS, query).then(function () {
-      views[key] = D.operatorRows();
-      return key === viewKey() && show();
+    return views[key].then(function (rows) {
+      if (key !== viewKey()) return false;
+      state.rows = rows;
+      render();
+      if (key === 'project:') views['project:' + current().project.slug] = views[key];
+      return true;
     }, function (error) {
-      if (key === viewKey()) {
-        byId('preview').innerHTML = '<p class="status">The figures could not be read: ' + escapeHtml(error.message) +
-          ' The <a href="/operator/projects">operator console</a> may say more.</p>';
-      }
+      if (key !== viewKey()) return false;
+      if (state.role === 'tenant') state.slug = null;
+      preview.innerHTML = '<p class="status">The figures could not be read: ' + escapeHtml(error.message) +
+        ' The <a href="/operator/projects">operator console</a> may say more.</p>';
       return false;
     });
   }
@@ -232,7 +237,7 @@
     }
     var choice = event.target.closest('[data-slug]');
     if (!choice) return;
-    if (choice.dataset.slug !== current().project.slug) state.slug = choice.dataset.slug;
+    state.slug = choice.dataset.slug;
     show().then(function (shown) {
       if (shown) byId('project-button').focus();
     });

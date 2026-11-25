@@ -36,7 +36,8 @@
 
    Operator console
    ----------------
-   loadOperator(rangeDays, query) -> Promise. One read for every project.
+   loadOperator(rangeDays, query) -> Promise of the rows operatorRows() then returns. One read
+     for every project; resolving with them lets reads in flight together keep their own rows.
      query (optional) = { figures: 'totals' } to leave out the breakdowns, or
      { figures: 'one', project: slug } for the figures of one project only (without project:
      the first active one). The start page passes it; the operator console reads everything.
@@ -162,6 +163,7 @@
         });
         return { project: row.project, totals: row.totals, daily: row.daily, breakdowns: breakdowns };
       });
+      return operator.slice();
     });
   }
 

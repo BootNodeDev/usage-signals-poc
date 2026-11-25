@@ -48,10 +48,9 @@ export function operatorRow(site, figures) {
   };
 }
 
-// Must be the project that tenantRows() in landing.js offers first.
 function previewed(sites, slug) {
   if (slug) return sites.find((site) => site.slug === slug);
-  return sites.find((site) => site.state === 'active') ?? sites[0];
+  return sites.find((site) => site.state === 'active') ?? sites[0]; // the one tenantRows() in landing.js offers first
 }
 
 /**
@@ -66,6 +65,7 @@ export async function handleOperatorProjects(request) {
   const params = new URL(request.url).searchParams;
   const mode = params.get('figures') ?? 'all';
   if (!FIGURES.includes(mode)) return json(400, { error: `figures must be one of ${FIGURES.join(', ')}.` });
+  if (params.has('project') && mode !== 'one') return json(400, { error: 'project needs figures=one.' });
   try {
     const sites = await listSites();
     let read = sites;

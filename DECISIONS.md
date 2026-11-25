@@ -100,7 +100,7 @@ in `docker-compose.yml` on that date.
 
 47. **The start page reads only the view on screen, through two optional modes of `GET /api/operator/projects`.** Before, it read every figure of every project once and drew all three views from that answer. Measured on production on 2026-11-25 with three projects: 8 KB in 0.56 to 0.66 s, against 3 KB in 0.38 to 0.56 s for one project's figures. A full read costs six Umami calls per project, and the start page never shows the countries, devices or browsers.
     - `figures=totals` (the operator and public views): two Umami calls per project, breakdowns `{}`.
-    - `figures=one[&project=<slug>]` (the project team view): six calls for one project; the others are listed with `project` only, for the picker. Without `project` it reads the first active project, the one `tenantRows()` in `landing.js` offers first. An unknown slug answers 404.
+    - `figures=one[&project=<slug>]` (the project team view): six calls for one project; the others are listed with `project` only, for the picker. Without `project` it reads the first active project, the one `tenantRows()` in `landing.js` offers first. An unknown slug answers 404, and `project` without `figures=one` answers 400.
     - Each view is read the first time it is shown and kept until the page is reloaded. The operator console still reads everything.
     - Rejected: `/api/tenant/<slug>/web` for the project team view, which sends exact counts where the start page shows small ones as "<10"; a list request followed by a figures request, which is two round trips before the first preview; a separate start-page endpoint, which is a second route for the same read.
 
