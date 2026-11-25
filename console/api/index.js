@@ -7,7 +7,11 @@ import { handleSampleTraffic } from '../lib/sample-traffic.js';
 import { handleTenantApi, handleTenantProject, handleTenantWeb } from '../lib/tenant-api.js';
 
 const TENANT_ROUTE = /^\/api\/tenant\/([^/]+)\/(web|project|api)$/;
-const TENANT_HANDLERS = { web: handleTenantWeb, project: handleTenantProject, api: handleTenantApi };
+const TENANT_HANDLERS = {
+  web: handleTenantWeb,
+  project: handleTenantProject,
+  api: handleTenantApi,
+};
 
 export default {
   fetch(request) {

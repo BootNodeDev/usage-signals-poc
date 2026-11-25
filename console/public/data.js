@@ -34,6 +34,17 @@
    breakdown(dimension) -> [{ label, value }]   (distinct visitors in the period; [] when none)
      dimension = 'referrers' | 'countries' | 'devices' | 'browsers'
 
+   Tenant API figures
+   ------------------
+   loadApi(rangeDays) -> Promise. Reads the range for the current project and keeps it.
+     Rejects with an Error whose message can be shown.
+   api(rangeDays) -> { rows [ApiDay], totals ApiFigure | null, routes [ApiRoute] }
+     Answers from the last loadApi() of that range; totals is null when there is no request.
+     ApiDay = { day, requests }
+     ApiFigure = { requests, statuses { '2xx', '3xx', '4xx', '5xx' }, p50_ms, p95_ms }
+       p50_ms and p95_ms are estimated from histogram buckets; null when there is no request.
+     ApiRoute = ApiFigure + { method, route }, busiest first.
+
    Operator console
    ----------------
    loadOperator(rangeDays) -> Promise. One read for every project.
@@ -58,6 +69,7 @@
 
   var known = { project: null, tracker: null, smallCounts: null, state: 'ok', error: null, through: null };
   var webByRange = {};
+  var apiByRange = {};
   var latestWeb = null;
   var operator = [];
 
@@ -133,6 +145,19 @@
     return { rows: body.daily, totals: totalsOf(body.totals), prior: totalsOf(body.prior) };
   }
 
+  function loadApi(rangeDays) {
+    return getJson(tenantUrl('api?days=' + rangeDays)).then(function (body) {
+      apiByRange[rangeDays] = body;
+      known.through = body.through;
+    });
+  }
+
+  function api(rangeDays) {
+    var body = apiByRange[rangeDays];
+    if (!body) return { rows: [], totals: null, routes: [] };
+    return { rows: body.daily, totals: body.totals.requests ? body.totals : null, routes: body.routes };
+  }
+
   function label(dimension, value) {
     if (dimension === 'countries') {
       try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(value) || value; } catch (error) { return value; }
@@ -185,6 +210,8 @@
     meta: function () { return { product_name: PRODUCT_NAME, tracker: known.tracker, small_counts: known.smallCounts }; },
     loadWeb: loadWeb,
     web: web,
+    loadApi: loadApi,
+    api: api,
     breakdown: function (dimension) { return labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]); },
     loadOperator: loadOperator,
     operatorRows: function () { return operator.slice(); }

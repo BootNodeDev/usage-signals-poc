@@ -41,10 +41,10 @@ describe('tenant API endpoint', () => {
   const hour = Math.floor(Date.now() / 3_600_000) * 3_600_000;
   const today = new Date(hour).toISOString().slice(0, 10);
   const rows = [
-    ['GET', '/v1/accounts/{id}', 200, 18, buckets([[3, 18]])],
-    ['GET', '/v1/accounts/{id}', 404, 2, buckets([[0, 2]])],
-    ['POST', '/v1/transactions', 201, 5, buckets([[7, 5]])],
-    ['POST', '/v1/transactions', 504, 1, buckets([[14, 1]])],
+    ['GET', '/test/accounts/{id}', 200, 18, buckets([[3, 18]])],
+    ['GET', '/test/accounts/{id}', 404, 2, buckets([[0, 2]])],
+    ['POST', '/test/transactions', 201, 5, buckets([[7, 5]])],
+    ['POST', '/test/transactions', 504, 1, buckets([[14, 1]])],
   ];
 
   async function clear() {
@@ -78,11 +78,11 @@ describe('tenant API endpoint', () => {
     assert.equal(response.status, 200);
     assert.equal(body.days, 7);
     assert.equal(body.project.slug, TENANT.site.slug);
-    const ours = body.routes.filter((r) => ['/v1/accounts/{id}', '/v1/transactions'].includes(r.route));
+    const ours = body.routes.filter((r) => r.route.startsWith('/test/'));
     assert.deepEqual(ours, [
       {
         method: 'GET',
-        route: '/v1/accounts/{id}',
+        route: '/test/accounts/{id}',
         requests: 20,
         statuses: { '2xx': 18, '3xx': 0, '4xx': 2, '5xx': 0 },
         p50_ms: percentileMs(buckets([[0, 2], [3, 18]]), 0.5),
@@ -90,7 +90,7 @@ describe('tenant API endpoint', () => {
       },
       {
         method: 'POST',
-        route: '/v1/transactions',
+        route: '/test/transactions',
         requests: 6,
         statuses: { '2xx': 5, '3xx': 0, '4xx': 0, '5xx': 1 },
         p50_ms: percentileMs(buckets([[7, 5], [14, 1]]), 0.5),
