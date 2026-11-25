@@ -20,6 +20,9 @@ const SDK = {
   python: ['client-python', ['python', '/sdk/export.py']],
   go: ['client-go', ['export']],
 };
+const BROWSER_STAGGER_MS = 250;
+// Time left to apply the failure between the last first send and the earliest second send.
+const FAILURE_MARGIN_MS = 2000;
 const RULES = {
   silent: (port) => [
     ['-A', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'DROP'],
@@ -109,11 +112,25 @@ async function runCase(kit, client, testCase) {
   });
   const offsetsMs = [0, testCase.gapMs, testCase.gapMs + NEXT_MS];
   const input = { hosts, port, staggerMs: 100, offsetsMs };
+  const staggerMs = client.id === 'chromium' ? BROWSER_STAGGER_MS : input.staggerMs;
+  const firstSendsMs = (kit.REPS - 1) * staggerMs;
+  if (testCase.failure !== 'none' && firstSendsMs + FAILURE_MARGIN_MS >= testCase.gapMs) {
+    throw new Error(
+      `${client.id} ${testCase.id}: the first sends of ${kit.REPS} repetitions take ` +
+        `${firstSendsMs} ms, too close to the ${testCase.gapMs} ms gap for the failure to be ` +
+        'in place before a second send; lower CHECK_REPS',
+    );
+  }
   let result;
   if (client.id === 'collector') {
     result = runCollector(kit, testCase, input);
   } else if (client.id === 'chromium') {
-    const browser = { ...input, staggerMs: 250, tailMs: TAIL_MS, chromium: client.address };
+    const browser = {
+      ...input,
+      staggerMs: BROWSER_STAGGER_MS,
+      tailMs: TAIL_MS,
+      chromium: client.address,
+    };
     result = kit.execForResult('client-node', ['node', '/check/browser-open.mjs'], browser);
   } else {
     result = kit.execForResult(...SDK[client.id], input);
@@ -213,6 +230,13 @@ function findProblems(kit, rows) {
     if (!row.consistent) problems.push(`${name}: client results and arrivals disagree`);
     const got = row.columns.slice(1).map((column) => shareOf(column.delivered, kit.REPS));
     const [, failure, gap] = row.case.split('-');
+    // A later send that reaches the failing location means the failure was applied too late.
+    if (failure !== 'none' && row.arrived.failing !== kit.REPS) {
+      problems.push(
+        `${name}: ${row.arrived.failing} POSTs reached the failing location, expected ` +
+          `${kit.REPS}: the failure was applied after a later send`,
+      );
+    }
     const published = failure === 'none' ? ALL : PUBLISHED[row.client]?.[failure]?.[gap];
     if (String(got) !== String(published)) {
       problems.push(`${name}: 2nd and 3rd send "${got}", published "${published}"`);

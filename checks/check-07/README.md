@@ -42,6 +42,12 @@ by side, prints the tables and the verdict, removes the stack and exits non-zero
 control fails or a result differs from the one below. The scratch directory (`mktemp`) is the
 first line printed; it holds every request, SYN packet and DNS query as JSON lines.
 
+For the open-connection cases the comparison is on deliveries (all, none or some of each send),
+not on timings: a change in how late a send arrives does not fail the run. Each of those cases
+also checks that the failure was in place in time: the failing location must receive the first
+send of every repetition and nothing after it. In the run of 2026-11-25 that held on all 20
+failure rows (50 POSTs at the failing location for 50 repetitions).
+
 - `CHECK_PART=new` or `open` runs one half (about 10 and 20 minutes).
 - `CHECK_REPS` (50), `CHECK_WINDOW_MS` (150000): repetitions, and how long a new-connection
   request is observed before it counts as not delivered.
