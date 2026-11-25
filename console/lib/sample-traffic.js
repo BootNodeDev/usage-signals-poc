@@ -64,6 +64,8 @@ const API_ROUTES = [
 ];
 // Spread of durations around the median: a log-normal with this sigma.
 const DURATION_SIGMA = 0.6;
+// Each day's API volume is the profile's figure times a factor in this range, so days differ.
+const API_DAY_SPREAD = [0.8, 1.2];
 
 // Share of a day's traffic in each UTC hour: low at night in the Americas and Europe.
 const HOUR_WEIGHTS = [3, 2, 2, 2, 2, 2, 3, 4, 5, 6, 6, 7, 7, 7, 8, 8, 8, 7, 7, 6, 6, 5, 4, 3];
@@ -271,7 +273,10 @@ function bucketOf(ms) {
  */
 export function planApiHour(slug, profile, hourStart) {
   const next = random(`api:${slug}:${hourStart}`);
-  const expected = pageViewsInHour(profile.requestsPerDay, hourStart);
+  const day = Math.floor(hourStart / (24 * HOUR_MS));
+  const [low, high] = API_DAY_SPREAD;
+  const dayFactor = low + (high - low) * random(`api-day:${slug}:${day}`)();
+  const expected = pageViewsInHour(profile.requestsPerDay * dayFactor, hourStart);
   const target = Math.floor(expected) + (next() < expected % 1 ? 1 : 0);
   const series = new Map();
   for (let request = 0; request < target; request += 1) {

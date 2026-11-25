@@ -87,13 +87,20 @@ describe('sample API plan', () => {
     }
   });
 
-  it('gives a weekday close to the daily figure', () => {
-    const day = Date.parse('2026-11-24T00:00:00Z');
-    let total = 0;
-    for (let hour = 0; hour < 24; hour += 1) {
-      for (const row of planApiHour('s', API_PROFILE, day + hour * HOUR)) total += row.count;
+  it('keeps a weekday within a fifth of the daily figure, and days differ', () => {
+    const dayTotal = (dayStart) => {
+      let total = 0;
+      for (let hour = 0; hour < 24; hour += 1) {
+        for (const row of planApiHour('s', API_PROFILE, dayStart + hour * HOUR)) total += row.count;
+      }
+      return total;
+    };
+    const tuesday = dayTotal(Date.parse('2026-11-24T00:00:00Z'));
+    const wednesday = dayTotal(Date.parse('2026-11-25T00:00:00Z'));
+    for (const total of [tuesday, wednesday]) {
+      assert.ok(total >= 2400 * 0.75 && total <= 2400 * 1.25, `weekday ${total}`);
     }
-    assert.ok(Math.abs(total - 2400) <= 120, `weekday ${total}`);
+    assert.notEqual(tuesday, wednesday);
   });
 });
 
