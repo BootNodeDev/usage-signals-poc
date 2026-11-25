@@ -54,7 +54,7 @@ button { font: inherit; color: inherit; }
 
 .hero-body {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
-  grid-template-areas: "intro video"; align-items: center; gap: 0 64px; padding-block: 40px 28px;
+  grid-template-areas: "intro video"; align-items: center; gap: 0 64px; padding-block: 40px 48px;
 }
 .intro { grid-area: intro; }
 .wordmark { margin: 0; font-size: clamp(88px, 10.5vw, 152px); font-weight: 900; letter-spacing: -0.04em; line-height: 0.86; }
@@ -91,20 +91,14 @@ button { font: inherit; color: inherit; }
 
 /* Role picker: tabs on the top edge of the preview, which rises into the hero */
 .picker { position: relative; margin-top: -150px; color: var(--on-field); }
-.picker-label { margin: 0 0 12px 16px; font-weight: 700; }
-.roles { display: flex; align-items: flex-end; gap: 8px; padding-inline: 16px; }
+.picker-label { margin: 0 0 12px; font-weight: 700; }
+.roles { display: flex; align-items: flex-end; gap: 8px; }
 .role {
-  position: relative; display: grid; gap: 2px; min-width: 216px; padding: 14px 52px 16px 22px;
+  position: relative; display: grid; gap: 2px; min-width: 216px; padding: 14px 22px 16px;
   border: 0; border-radius: 14px 14px 0 0; text-align: left; cursor: pointer;
   background: var(--glass); color: var(--on-field);
   box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4);
 }
-.role::after {
-  content: ""; position: absolute; top: 16px; right: 18px; width: 20px; height: 20px; border-radius: 50%;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75); transition: box-shadow 160ms ease-out;
-}
-.role:hover::after { box-shadow: inset 0 0 0 2px #ffffff, inset 0 0 0 5px rgba(255, 255, 255, 0.35); }
-.role[aria-selected="true"]::after { box-shadow: inset 0 0 0 6px var(--ink); }
 .role b { font-size: 18px; font-weight: 800; }
 .role span { font-size: 14px; color: var(--on-field-muted); transition: color 160ms ease-out; }
 .role { transition: background-color 160ms ease-out, box-shadow 160ms ease-out; }
@@ -113,11 +107,9 @@ button { font: inherit; color: inherit; }
 .role[aria-selected="true"] { z-index: 1; margin-bottom: -1px; padding-bottom: 17px; background: var(--sheet); color: var(--ink); box-shadow: none; cursor: default; }
 .role[aria-selected="true"] span { color: var(--muted); }
 
-.hero-bars { height: 112px; margin-block: 4px 28px; }
-
 /* Preview */
 main { padding-bottom: 48px; }
-.preview { position: relative; padding: 28px 32px 32px; border: 1px solid var(--rule); border-radius: 16px; background: var(--sheet); box-shadow: 0 24px 48px rgba(14, 10, 40, 0.12); }
+.preview { position: relative; padding: 28px 32px 32px; border: 1px solid var(--rule); border-radius: 0 16px 16px 16px; background: var(--sheet); box-shadow: 0 24px 48px rgba(14, 10, 40, 0.12); }
 .preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; }
 .preview-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 .preview-title h2 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.01em; }
@@ -172,7 +164,6 @@ td.num { font-weight: 800; }
 @media (max-width: 760px) {
   .hero { padding-bottom: 0; }
   .hero-body { grid-template-columns: 1fr; grid-template-areas: "intro" "video"; padding-block: 36px 24px; }
-  .hero-bars { margin-bottom: 0; }
   .video { display: flex; align-items: center; gap: 16px; margin-top: 22px; padding: 8px 16px 8px 8px; border-radius: 18px; }
   .video-poster { width: 116px; flex: none; border-radius: 11px; }
   .play span { width: 44px; height: 44px; }
@@ -181,15 +172,12 @@ td.num { font-weight: 800; }
   .video-text b { font-size: 20px; }
   .video-text span { font-size: 14px; }
   .picker { margin-top: 24px; color: var(--ink); }
-  .picker-label { margin-left: 0; }
-  .roles { flex-wrap: wrap; padding-inline: 0; }
+  .roles { flex-wrap: wrap; }
   .role { flex: 1 1 100%; min-width: 0; border-radius: 14px; background: var(--tone); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--rule); }
   .role span, .role:hover span { color: var(--muted); }
-  .role::after, .role:hover::after { box-shadow: inset 0 0 0 2px var(--muted); }
   .role:hover { background: #dedcec; box-shadow: inset 0 0 0 1.5px var(--rule); }
   .role[aria-selected="true"] { margin-bottom: 0; padding-bottom: 16px; box-shadow: inset 0 0 0 2px var(--ink); }
-  .role[aria-selected="true"]::after { box-shadow: inset 0 0 0 6px var(--ink); }
-  .preview { margin-top: 12px; padding: 22px 18px; }
+  .preview { margin-top: 12px; padding: 22px 18px; border-radius: 16px; }
   .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .split { grid-template-columns: 1fr; }
 }

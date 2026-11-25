@@ -107,7 +107,7 @@
     }).join('') + '</div>' : '';
     var smallDay = row.daily.some(function (entry) { return isSmall(entry.pageviews); });
     return head('<h2>' + escapeHtml(names.shared || project.name) + '</h2>' + picker, escapeHtml(project.domain) + ', last ' + RANGE_DAYS + ' days',
-      '<a class="button button-ink" href="' + consoleUrl(project) + '">Open the console for ' + escapeHtml(project.name) + '</a>') +
+      '<a class="button button-ink" href="' + consoleUrl(project) + '">View the console</a>') +
       '<div class="figures">' +
         figure('Page views', count(totals.pageviews), 'Every page load the tracker saw') +
         figure('Visitors', count(totals.visitors), 'Each person counts once a day') +
@@ -123,7 +123,7 @@
   function operatorPreview() {
     var rows = D.sortRows(state.rows, function (row) { return row.totals.pageviews; }, true);
     return head('<h2>All projects</h2>', rows.length + ' projects, last ' + RANGE_DAYS + ' days',
-      '<a class="button button-ink" href="/operator/projects">Open the operator console</a>') +
+      '<a class="button button-ink" href="/operator/projects">View the console</a>') +
       '<div class="table-wrap"><table><thead><tr><th>Project</th><th class="num">Page views</th><th class="num">Visitors</th><th class="num">Visits</th>' +
       '<th class="num">Bounce rate</th><th class="num">Visit duration</th></tr></thead><tbody>' + rows.map(function (row) {
         var t = row.totals;
@@ -157,15 +157,6 @@
     byId('visit-link').textContent = 'Open ' + project.name;
     byId('visit-link').href = siteUrl(project);
     byId('visit').hidden = false;
-  }
-
-  function drawHeroBars() {
-    var length = state.rows.length ? state.rows[0].daily.length : 0;
-    var all = [];
-    for (var index = 0; index < length; index++) {
-      all.push(state.rows.reduce(function (sum, row) { return sum + drawn(row.daily[index] && row.daily[index].pageviews); }, 0));
-    }
-    if (all.length) byId('hero-bars').innerHTML = bars(all, { height: 112, gap: 0.2, fill: 'rgba(255,255,255,0.2)', today: '#e9ecf1', baseline: 'rgba(255,255,255,0.55)' });
   }
 
   function selectRole(tab) {
@@ -218,7 +209,6 @@
 
   D.loadOperator(RANGE_DAYS).then(function () {
     state.rows = D.operatorRows();
-    drawHeroBars();
     render();
   }, function (error) {
     byId('preview').innerHTML = '<p class="status">The figures could not be read: ' + escapeHtml(error.message) +
