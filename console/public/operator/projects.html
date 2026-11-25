@@ -46,7 +46,7 @@
             <h1>Compare</h1>
             <p class="title-sub" id="compare-summary"></p>
           </div>
-          <div class="controls" id="compare-controls"></div>
+          <div class="controls" id="compare-controls"><button class="btn" type="button" id="compare-csv">Download CSV</button></div>
         </div>
         <div id="compare"></div>
       </div>
@@ -200,9 +200,32 @@
       picked.forEach(function (r, i) { byId('compare-breakdown-' + i).innerHTML = '<div class="bars">' + valueRows(r.breakdowns[state.compareTab]) + '</div>'; });
     }
 
+    function comparedRows() {
+      return state.compared.map(find).filter(function (r) { return r && hasData(r); });
+    }
+
+    /* The compare table as it reads on screen: "<10" for a small count, "Too few visits" for a withheld rate. */
+    function downloadCompare() {
+      var csvCount = function (value) { return isSmall(value) ? '<' + value.below : value; };
+      var csvRate = function (value, scale, digits) {
+        if (value === null) return '';
+        return isSmall(value) ? 'Too few visits' : Number((value * scale).toFixed(digits));
+      };
+      var picked = comparedRows();
+      var days = picked[0].daily;
+      App.downloadCsv('compare-' + days[0].day + '-to-' + days[days.length - 1].day + '.csv',
+        ['Project', 'Domain', 'Page views', 'Visitors (sum of daily)', 'Visits', 'Bounce rate (%)', 'Visit duration (s)'],
+        picked.map(function (r) {
+          var t = r.totals;
+          return [r.project.name, r.project.domain, csvCount(t.pageviews), csvCount(t.visitors), csvCount(t.visits),
+            csvRate(t.bounce_rate, 100, 1), csvRate(t.avg_visit_seconds, 1, 0)];
+        }));
+    }
+
     function renderCompare() {
-      var picked = state.compared.map(find).filter(function (r) { return r && hasData(r); });
+      var picked = comparedRows();
       byId('compare-back').innerHTML = App.icon('back') + 'Projects';
+      byId('compare-csv').hidden = picked.length < 2;
       if (picked.length < 2) {
         byId('compare-summary').textContent = 'Same metrics, same period, same scale';
         byId('compare').innerHTML = App.emptyState('Nothing to compare yet', 'Select two or three projects with web data in the projects list.');
@@ -365,6 +388,7 @@
     byId('tray-cancel').addEventListener('click', function () { state.comparing = false; state.compared = []; renderTray(); renderTable(); });
     byId('tray-open').addEventListener('click', function () { showView('compare'); });
     byId('compare-back').addEventListener('click', function () { showView('list'); });
+    byId('compare-csv').addEventListener('click', downloadCompare);
     byId('drawer').addEventListener('close', function () { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list' && loaded) renderTable(); });
     App.rangeControl(byId('range'), render);
   }
