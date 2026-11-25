@@ -26,7 +26,7 @@ console/                  Vercel project 1: gateway, read API, start page, conso
     data.js               The only data source of every page (window.LData)
     app.js, charts.js     Console shell, formatters and charts
     s/                    Pinned Umami tracker and its manifest (generated)
-    fonts/                Nunito Sans for the start page (OFL)
+    fonts/                Nunito Sans for every page (OFL)
   db/schema.sql           Our tables, schema usage_signals; applied by the seed
   scripts/                seed.mjs (the Vercel build command), seed-profile.mjs, fixtures.mjs, pin-tracker.mjs
   test/                   node:test suites, run against the local stack
@@ -44,6 +44,7 @@ DECISIONS.md              Every technical choice, its source and the alternative
 - **Data seam** (`public/data.js`, `window.LData`): the only thing pages read. `currentProjectSlug()` is the one place that decides which project a tenant page shows.
 - **Seed profiles** (`scripts/seed-profile.mjs`): local runs seed the fixtures in `scripts/fixtures.mjs`; production builds seed Demo site A, B and C from `DEMO_SITE_HOSTS`; preview builds seed nothing.
 - **Demo sites** (`lib/demo-site.js`): `/demo/` pages rendered for the host they are asked on, each tagged with that host's website id.
+- **Brand** (`landing.css`, `styles.css`, `demo.css`): the Pulse look of the start page, the consoles and the demo sites. Nunito Sans from `public/fonts/`, ink `#201d3a`, the gradient from `#5b2134` to `#064a8c`. Spacing scale 4 8 12 16 24 32 48 64; type scale 12 14 16 20 28 40. Hierarchy comes from size, weight and space: the `--tone` field groups things, borders do not.
 
 ### Data Access Layer
 

@@ -39,39 +39,40 @@
   }
   function day(iso) { return Number(iso.slice(8)) + ' ' + MONTHS[Number(iso.slice(5, 7)) - 1]; }
 
-  function bars(values, options) {
+  function bars(values) {
     var width = 1000;
-    var height = options.height;
+    var height = 200;
     var max = Math.max.apply(null, values.concat(1)) * 1.08;
     var step = width / values.length;
-    var gap = step * options.gap;
+    var gap = step * 0.26;
     var last = values.length - 1;
     var rects = values.map(function (value, index) {
       var h = (value / max) * height;
       return '<rect x="' + (index * step + gap / 2).toFixed(2) + '" y="' + (height - h).toFixed(2) + '" width="' + (step - gap).toFixed(2) +
-        '" height="' + h.toFixed(2) + '" fill="' + (index === last ? options.today : options.fill) + '"/>';
+        '" height="' + h.toFixed(2) + '"' + (index === last ? ' class="today"' : '') + '/>';
     }).join('');
     return '<svg viewBox="0 0 ' + width + ' ' + (height + 1) + '" preserveAspectRatio="none" width="100%" height="100%" aria-hidden="true">' + rects +
-      '<line x1="0" x2="' + width + '" y1="' + height + '" y2="' + height + '" stroke="' + options.baseline + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
+      '<line x1="0" x2="' + width + '" y1="' + height + '" y2="' + height + '" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
   }
 
   function consoleUrl(project) { return '/' + encodeURIComponent(project.slug) + '/web'; }
-  function siteUrl(project) { return 'https://' + project.domain + '/demo/'; }
+  function siteUrl(project) { return '//' + project.domain + '/demo/'; }
 
-  function current() {
-    return state.rows.filter(function (row) { return row.project.slug === state.slug; })[0] || state.rows[0];
+  /* Only an active project serves its demo site, so only active ones are offered while any exist. */
+  function tenantRows() {
+    var active = state.rows.filter(function (row) { return row.project.state === 'active'; });
+    return active.length ? active : state.rows;
   }
 
-  /* "Demo site A", "Demo site B" split into the shared words "Demo site" and the tabs "A", "B". */
-  function splitNames(rows) {
-    var names = rows.map(function (row) { return row.project.name; });
-    var shared = names.reduce(function (prefix, name) {
-      while (name.indexOf(prefix) !== 0) prefix = prefix.slice(0, -1);
-      return prefix;
-    });
-    var cut = names.length > 1 ? shared.lastIndexOf(' ') + 1 : 0;
-    var labels = names.map(function (name) { return name.slice(cut) || name; });
-    return { shared: names[0].slice(0, cut).trim(), labels: labels };
+  function current() {
+    var rows = tenantRows();
+    return rows.filter(function (row) { return row.project.slug === state.slug; })[0] || rows[0];
+  }
+
+  var TENANT_HEADING = 'Demo site';
+
+  function optionLabel(name) {
+    return name.indexOf(TENANT_HEADING + ' ') === 0 ? name.slice(TENANT_HEADING.length + 1) : name;
   }
 
   function head(title, note, action) {
@@ -101,13 +102,15 @@
     var row = current();
     var project = row.project;
     var totals = row.totals;
-    var names = splitNames(state.rows);
-    var picker = state.rows.length > 1 ? '<div class="switch" role="group" aria-label="Project">' + state.rows.map(function (other, index) {
-      return '<button type="button" data-slug="' + escapeHtml(other.project.slug) + '" aria-label="' + escapeHtml(other.project.name) + '" aria-pressed="' +
-        (other === row) + '">' + escapeHtml(names.labels[index]) + '</button>';
-    }).join('') + '</div>' : '';
+    var rows = tenantRows();
+    var picker = rows.length > 1 ? '<div class="project-menu"><button class="project-button" id="project-button" type="button" ' +
+      'aria-expanded="false" aria-controls="project-list" aria-label="Project: ' + escapeHtml(project.name) + '">' + escapeHtml(optionLabel(project.name)) +
+      '</button><ul class="project-list" id="project-list" hidden>' + rows.map(function (other) {
+        return '<li><button type="button" data-slug="' + escapeHtml(other.project.slug) + '" aria-label="' + escapeHtml(other.project.name) + '"' +
+          (other === row ? ' aria-current="true"' : '') + '>' + escapeHtml(optionLabel(other.project.name)) + '</button></li>';
+      }).join('') + '</ul></div>' : '';
     var smallDay = row.daily.some(function (entry) { return isSmall(entry.pageviews); });
-    return head('<h2>' + escapeHtml(names.shared || project.name) + '</h2>' + picker, 'Last ' + RANGE_DAYS + ' days',
+    return head('<h2>' + TENANT_HEADING + '</h2>' + picker, 'Last ' + RANGE_DAYS + ' days',
       '<a class="button button-ink" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">View the console</a>') +
       '<div class="figures">' +
         figure('Page views', count(totals.pageviews), 'Every page load the tracker saw') +
@@ -115,7 +118,7 @@
         figure('Visit duration', rate(totals.avg_visit_seconds, duration), 'Average') +
         figure('Bounce rate', rate(totals.bounce_rate, pct), 'Visits with one page view') +
       '</div><div class="split"><div><h3 class="block-title">Page views per day</h3><div class="chart">' +
-        bars(row.daily.map(function (entry) { return drawn(entry.pageviews); }), { height: 200, gap: 0.26, fill: '#474d8c', today: '#b9bcdb', baseline: '#cfcde0' }) +
+        bars(row.daily.map(function (entry) { return drawn(entry.pageviews); })) +
         '</div><div class="axis">' + axis(row.daily) + '</div>' +
         (smallDay ? '<p class="figure-note">Days with fewer than ' + below() + ' page views are not shown.</p>' : '') +
       '</div><div><h3 class="block-title">Where visitors came from</h3>' + ranked(row.breakdowns.referrers.slice(0, 5)) + '</div></div>';
@@ -157,7 +160,7 @@
     byId('visit-link').textContent = 'Open ' + project.name;
     byId('visit-link').href = siteUrl(project);
     byId('visit-text-link').href = siteUrl(project);
-    byId('visit').hidden = false;
+    byId('visit').hidden = project.state !== 'active';
   }
 
   function selectRole(tab) {
@@ -188,19 +191,40 @@
     selectRole(next);
   });
 
-  byId('preview').addEventListener('click', function (event) {
-    var button = event.target.closest('[data-slug]');
+  function toggleProjects(open) {
+    var button = byId('project-button');
     if (!button) return;
-    state.slug = button.dataset.slug;
+    button.setAttribute('aria-expanded', String(open));
+    byId('project-list').hidden = !open;
+  }
+
+  byId('preview').addEventListener('click', function (event) {
+    if (event.target.closest('#project-button')) {
+      toggleProjects(byId('project-list').hidden);
+      return;
+    }
+    var choice = event.target.closest('[data-slug]');
+    if (!choice) return;
+    state.slug = choice.dataset.slug;
     render();
-    byId('preview').querySelector('[data-slug="' + state.slug + '"]').focus();
+    byId('project-button').focus();
+  });
+
+  document.addEventListener('click', function (event) {
+    if (!event.target.closest('.project-menu')) toggleProjects(false);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || !byId('project-list') || byId('project-list').hidden) return;
+    toggleProjects(false);
+    byId('project-button').focus();
   });
 
   var dialog = byId('video-dialog');
   var player = dialog.querySelector('iframe');
 
   document.querySelector('.video').addEventListener('click', function (event) {
-    if (typeof dialog.showModal !== 'function') return;
+    if (typeof dialog.showModal !== 'function' || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     player.src = player.dataset.src;
     dialog.showModal();

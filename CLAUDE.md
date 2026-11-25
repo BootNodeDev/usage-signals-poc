@@ -2,7 +2,7 @@
 
 # Agent Configuration
 
-Proof of concept of Pulse, a shared web and API analytics service for Stellar ecosystem projects. "Usage Signals" is the working title, still used in the repository name, the READMEs and the console pages. This is not the product: see `README.md` and `DECISIONS.md`.
+Proof of concept of Pulse, a shared web and API analytics service for Stellar ecosystem projects. "Usage Signals" was the working title; it stays only in identifiers such as the repository name, the URLs and the package name. This is not the product: see `README.md` and `DECISIONS.md`.
 
 ---
 
