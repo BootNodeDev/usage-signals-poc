@@ -216,7 +216,8 @@
         var rows = inGap ? [{ name: config.gap.tip || 'No data', value: '\u2013' }] : config.series.map(function (s) {
           return { swatch: swatch(s), name: s.name, value: config.format(s.values[i]) };
         }).reverse();
-        if (!inGap && config.series.length > 1) rows.push({ name: config.totalName || 'Total', value: config.format(totals[i]) });
+        var exact = config.series.every(function (s) { return s.values[i] !== null; });
+        if (!inGap && exact && config.series.length > 1) rows.push({ name: config.totalName || 'Total', value: config.format(totals[i]) });
         showTip(event, tipRows(config.tipTitles ? config.tipTitles[i] : config.labels[i], rows));
       });
       overlay.addEventListener('mouseleave', function () {

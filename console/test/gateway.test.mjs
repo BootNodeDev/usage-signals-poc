@@ -23,7 +23,6 @@ const GATEWAY = requireEnv('GATEWAY_URL');
 const DEMO = requireEnv('DEMO_URL');
 const [SITE_A, SITE_B, SITE_SUSPENDED, SITE_PUBLIC_HOST] = TENANTS.map((tenant) => tenant.site);
 const BREAKDOWNS = ['referrer', 'country', 'browser', 'os', 'device'];
-// What a browser adds to the tracker's fetch(); without it every event would be flagged.
 const FETCH_METADATA = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
 const FORGEABLE_FIELDS = {
   ip: '9.9.9.9',

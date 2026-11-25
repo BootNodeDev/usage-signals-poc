@@ -60,7 +60,11 @@ export function dailyRows(days, counted, flagged) {
   }));
 }
 
-/** Flagged page views by rule, from Umami's page views by tag. An event that matched two rules counts under both. */
+/**
+ * Flagged page views by rule, from Umami's page views by tag. An event that matched two rules counts under both.
+ * @example
+ *   flaggedByRule([{ tag: 'bot+no-sec-fetch', views: '2' }]) // { bot: 2, 'no-sec-fetch': 2, 'many-agents': 0 }
+ */
 export function flaggedByRule(byTag) {
   const counts = Object.fromEntries(RULES.map((rule) => [rule, 0]));
   for (const row of byTag) {

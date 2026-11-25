@@ -117,14 +117,17 @@
     function drawn(value) { return isSmall(value) ? 0 : value; }
     function hasSmallDay(r) { return r.daily.some(function (d) { return isSmall(d.pageviews) || isSmall(d.flagged); }); }
     function chartNote(r) {
-      return hasSmallDay(r) ? '<p class="caption">Days with fewer than ' + D.meta().small_counts.below + ' page views are not drawn.</p>' : '';
+      return hasSmallDay(r) ? '<p class="caption">Counts under ' + D.meta().small_counts.below + ' are not drawn.</p>' : '';
     }
+    /* A small count is null in a chart: not drawn, "<10" in the tip, and no raw total for its day. */
     function dailySeries(r) {
+      var exact = function (value) { return isSmall(value) ? null : value; };
       return [
-        { name: 'Counted', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return drawn(d.pageviews); }) },
-        { name: 'Flagged', color: 'var(--data-flagged)', hatch: true, values: r.daily.map(function (d) { return drawn(d.flagged); }) }
+        { name: 'Counted', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return exact(d.pageviews); }) },
+        { name: 'Flagged', color: 'var(--data-flagged)', hatch: true, values: r.daily.map(function (d) { return exact(d.flagged); }) }
       ];
     }
+    function chartCount(value) { return value === null ? '<' + D.meta().small_counts.below : fmt.int(value); }
     /* The flagged share of raw page views needs both exact counts; otherwise only the flagged count is shown. */
     function flaggedShare(t) {
       if (isSmall(t.pageviews) || isSmall(t.flagged) || !(t.pageviews + t.flagged)) return count(t.flagged);
@@ -255,7 +258,7 @@
       picked.forEach(function (r, i) {
         Charts.columns(byId('multiple-' + i), {
           label: r.project.name + ': page views per day, counted and flagged', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 180, max: max,
-          format: fmt.int, tickFormat: fmt.tick, totalName: 'Raw', series: dailySeries(r)
+          format: chartCount, tickFormat: fmt.tick, totalName: 'Raw', series: dailySeries(r)
         });
       });
     }
@@ -308,7 +311,7 @@
       if (hasData(r)) {
         Charts.columns(byId('drawer-chart'), {
           label: p.name + ': page views per day, counted and flagged', labels: r.daily.map(function (d) { return fmt.day(d.day); }), height: 200,
-          format: fmt.int, tickFormat: fmt.tick, totalName: 'Raw', series: dailySeries(r)
+          format: chartCount, tickFormat: fmt.tick, totalName: 'Raw', series: dailySeries(r)
         });
         var paintBreakdown = function () { byId('drawer-breakdown').innerHTML = valueRows(r.breakdowns[state.drawerTab]); };
         App.tabs(byId('drawer-tabs'), function (tab) { state.drawerTab = tab; paintBreakdown(); });

@@ -56,7 +56,12 @@ export async function countAgentsToday(address, userAgent) {
   const { rows } = await getPool().query(
     `WITH today AS (SELECT (now() AT TIME ZONE 'UTC')::date AS day),
      expired AS (
-       DELETE FROM usage_signals.agent_sighting WHERE day < (SELECT day FROM today)
+       DELETE FROM usage_signals.agent_sighting
+        WHERE (day, address_hash, agent_hash) IN (
+          -- SKIP LOCKED: requests running at once clear different old rows instead of waiting.
+          SELECT day, address_hash, agent_hash FROM usage_signals.agent_sighting
+           WHERE day < (SELECT day FROM today)
+           LIMIT 500 FOR UPDATE SKIP LOCKED)
      ),
      added AS (
        INSERT INTO usage_signals.agent_sighting (day, address_hash, agent_hash)

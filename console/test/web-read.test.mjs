@@ -16,20 +16,19 @@ const GATEWAY = requireEnv('GATEWAY_URL');
 const UMAMI = requireEnv('UMAMI_URL');
 const SITE = TENANTS[1].site;
 const RUN = `${Date.now() % 100_000}.${Math.floor(Math.random() * 1_000)}`;
-// A network of its own per run, so the many-agents rule never sees earlier runs' User-Agents.
-const NETWORK = 1 + Math.floor(Math.random() * 254);
+const RUN_NETWORK = 1 + Math.floor(Math.random() * 254);
 const FETCH_METADATA = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
 const CHROME = {
-  address: `8.8.${NETWORK}.8`,
+  address: `8.34.${RUN_NETWORK}.8`,
   country: 'US',
   userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.${RUN} Safari/537.36`,
 };
 const FIREFOX = {
-  address: `200.45.${NETWORK}.35`,
+  address: `200.46.${RUN_NETWORK}.35`,
   country: 'AR',
   userAgent: `Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.${RUN}`,
 };
-const SCRIPT = { address: `190.210.${NETWORK}.9`, country: 'UY', userAgent: `curl/8.${RUN}`, fetchMetadata: false };
+const SCRIPT = { address: `190.211.${RUN_NETWORK}.9`, country: 'UY', userAgent: `curl/8.${RUN}`, fetchMetadata: false };
 const spawned = [];
 
 async function readWeb(base, slug, days) {

@@ -31,8 +31,7 @@ ALTER TABLE usage_signals.site
 
 CREATE INDEX IF NOT EXISTS site_tenant_id_idx ON usage_signals.site (tenant_id);
 
--- One row per distinct User-Agent a truncated address showed on a UTC day, for the many-agents
--- flag. Both are SHA-256 hashes, never the values. The gateway deletes earlier days as it writes.
+-- Hashed User-Agents per hashed truncated address and UTC day, for the many-agents flag.
 CREATE TABLE IF NOT EXISTS usage_signals.agent_sighting (
   day           date  NOT NULL,
   address_hash  bytea NOT NULL CHECK (octet_length(address_hash) = 32),

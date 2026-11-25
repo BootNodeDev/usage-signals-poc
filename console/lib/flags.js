@@ -1,11 +1,10 @@
-// The rules that flag an event. A flagged event is stored like any other, with the codes of the
-// rules it matched in Umami's tag field, and is counted apart from the rest.
+// The rules that flag an event; a flagged event is stored with their codes in Umami's tag field.
 import { isbot } from 'isbot';
 
 /** Rule codes, in the order the consoles list them. */
 export const RULES = ['bot', 'no-sec-fetch', 'many-agents'];
 
-// Placeholder threshold, to be agreed with the program.
+/** More distinct User-Agents than this from one address in a UTC day flags its events. A placeholder. */
 export const MAX_AGENTS_PER_ADDRESS = 10;
 
 // Browsers send all three on the tracker's fetch(), to HTTPS and localhost addresses only.
