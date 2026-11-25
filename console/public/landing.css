@@ -212,11 +212,10 @@ td.num { font-weight: 800; }
   .hero { padding-bottom: 0; }
   .hero-body { grid-template-columns: 1fr; grid-template-areas: "intro" "video"; padding-block: 36px 24px; }
   .wordmark { font-size: 68px; }
-  .video { display: flex; align-items: center; gap: 16px; margin-top: 22px; padding: 8px 16px 8px 8px; border-radius: 18px; }
-  .video-poster { width: 116px; flex: none; border-radius: 11px; }
-  .play span { width: 44px; height: 44px; }
-  .play svg { width: 16px; height: 16px; margin-left: 3px; }
-  .video-text { padding: 0; }
+  .video { margin-top: 24px; padding: 8px 8px 14px; border-radius: 18px; }
+  .video-poster { border-radius: 11px; }
+  .play span { width: 60px; height: 60px; }
+  .play svg { width: 22px; height: 22px; }
   .video-text b { font-size: 20px; }
   .picker { margin-top: 24px; color: var(--ink); }
   .roles { display: none; }
