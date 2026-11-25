@@ -198,6 +198,23 @@
     byId('preview').querySelector('[data-slug="' + state.slug + '"]').focus();
   });
 
+  var dialog = byId('video-dialog');
+  var player = dialog.querySelector('iframe');
+
+  document.querySelector('.video').addEventListener('click', function (event) {
+    if (typeof dialog.showModal !== 'function') return;
+    event.preventDefault();
+    player.src = player.dataset.src;
+    dialog.showModal();
+  });
+
+  dialog.addEventListener('click', function (event) {
+    if (event.target === dialog) dialog.close();
+  });
+
+  // Unloading the player is what stops the sound.
+  dialog.addEventListener('close', function () { player.removeAttribute('src'); });
+
   D.loadOperator(RANGE_DAYS).then(function () {
     state.rows = D.operatorRows();
     drawHeroBars();

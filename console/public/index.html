@@ -5,25 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pulse</title>
 <meta name="description" content="Working prototype of Pulse, web and API analytics for Stellar ecosystem projects.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700;6..12,800;6..12,900&display=swap" rel="stylesheet">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/nunito-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/landing.css">
 </head>
 <body>
 <header class="hero">
   <div class="wrap hero-top">
     <img class="logo" src="/bootnode.svg" alt="BootNode" width="131" height="52">
-    <a class="source" href="https://github.com/BootNodeDev/usage-signals-poc" aria-label="Source on GitHub">
+    <a class="source" href="https://github.com/BootNodeDev/usage-signals-poc" target="_blank" rel="noopener" aria-label="Source on GitHub (opens in a new tab)">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
     </a>
   </div>
   <div class="wrap hero-body">
     <h1 class="wordmark">Pulse</h1>
     <p class="tagline">Web and API analytics for Stellar ecosystem projects.</p>
-    <a class="video" href="https://vimeo.com/1248550588">
+    <a class="video" href="https://vimeo.com/1248550588" target="_blank" rel="noopener">
       <span class="video-poster">
-        <img src="/demo-video.jpg" alt="" width="880" height="495">
+        <img src="/demo-video-880.webp" srcset="/demo-video-440.webp 440w, /demo-video-880.webp 880w" sizes="(max-width: 760px) 116px, 420px" alt="" width="880" height="495" fetchpriority="high">
         <span class="play"><span><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 1.8v14.4L15.6 9z" fill="#201d3a"/></svg></span></span>
       </span>
       <span class="video-text"><b>Watch the demo</b><span>1 min 24 s on Vimeo</span></span>
@@ -46,9 +45,14 @@
   </section>
   <section class="visit" id="visit" aria-label="Count your own visit" hidden>
     <p><b>Count your own visit.</b> Open <span id="visit-name"></span>, read a page, then refresh this view. Your page view is in the total.</p>
-    <a class="button button-line" id="visit-link" href="/"></a>
+    <a class="button button-line" id="visit-link" href="/" target="_blank" rel="noopener"></a>
   </section>
 </main>
+
+<dialog class="video-dialog" id="video-dialog" aria-label="Pulse demo video">
+  <form method="dialog"><button class="video-close" aria-label="Close the video"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3 3 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></form>
+  <div class="video-frame"><iframe title="Pulse demo video" data-src="https://player.vimeo.com/video/1248550588?autoplay=1&amp;dnt=1" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>
+</dialog>
 
 <script src="/data.js"></script>
 <script src="/landing.js"></script>

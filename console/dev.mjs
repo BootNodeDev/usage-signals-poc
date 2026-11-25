@@ -16,6 +16,8 @@ const CONTENT_TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
 };
 // Mirrors the "headers" rule in vercel.json.
 const PINNED_ASSET_HEADERS = {
