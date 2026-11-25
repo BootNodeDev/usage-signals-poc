@@ -43,28 +43,22 @@ button { font: inherit; color: inherit; }
 .wrap { width: min(1200px, 100% - 48px); margin-inline: auto; }
 
 /* Hero */
-.hero { background: var(--field); color: var(--on-field); padding-block: 28px 150px; }
-.hero-top { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-.logo-link {
-  display: flex; align-items: center; gap: 10px; border-radius: 8px; color: var(--on-field); text-decoration: none;
-  font-size: 32px; font-weight: 900; letter-spacing: -0.04em; opacity: 0.92; transition: opacity 160ms ease-out;
-}
-.logo-link:hover { opacity: 1; }
-.logo-mark { height: 40px; width: auto; overflow: visible; }
+.hero { background: var(--field); color: var(--on-field); padding-block: 24px 150px; }
 
 .hero-body {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
-  grid-template-areas: "intro video"; align-items: center; gap: 0 64px; padding-block: 48px 40px;
+  grid-template-areas: "intro video"; align-items: center; gap: 0 64px; padding-block: 72px 56px;
 }
 .intro { grid-area: intro; }
-.headline { max-width: 17ch; margin: 0; font-size: clamp(40px, 4.2vw, 60px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.04; }
+.wordmark { display: flex; align-items: center; gap: 0.2em; margin: 0; font-size: clamp(88px, 9vw, 136px); font-weight: 900; letter-spacing: -0.04em; line-height: 0.86; }
+.mark { flex: none; width: auto; height: 0.86em; overflow: visible; }
 .repo-link {
   display: inline-flex; align-items: center; gap: 10px; margin-top: 20px; border-radius: 6px;
   font-size: 16px; font-weight: 700; color: var(--on-field); text-decoration: none;
 }
 .repo-link svg { width: 20px; height: 20px; opacity: 0.85; }
 .repo-link:hover { text-decoration: underline; text-underline-offset: 4px; }
-.tagline { margin: 22px 0 0; max-width: 36ch; font-size: clamp(18px, 1.5vw, 21px); line-height: 1.35; color: var(--on-field-muted); }
+.tagline { margin: 18px 0 0; max-width: 30ch; font-size: clamp(20px, 2vw, 26px); line-height: 1.3; color: var(--on-field-muted); }
 
 /* Video */
 .video {
@@ -217,7 +211,7 @@ td.num { font-weight: 800; }
 @media (max-width: 760px) {
   .hero { padding-bottom: 0; }
   .hero-body { grid-template-columns: 1fr; grid-template-areas: "intro" "video"; padding-block: 36px 24px; }
-  .headline { font-size: 38px; }
+  .wordmark { font-size: 68px; }
   .video { display: flex; align-items: center; gap: 16px; margin-top: 22px; padding: 8px 16px 8px 8px; border-radius: 18px; }
   .video-poster { width: 116px; flex: none; border-radius: 11px; }
   .play span { width: 44px; height: 44px; }
