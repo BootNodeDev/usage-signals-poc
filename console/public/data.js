@@ -37,7 +37,7 @@
    Operator console
    ----------------
    loadOperator(rangeDays) -> Promise. One read for every project.
-   operatorRows() -> [{ project { id, name, domain, state },
+   operatorRows() -> [{ project { id, slug, name, domain, state },
        totals { pageviews, visitors, visits, bounces (each a Count),
                 bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
                 flagged (always null: not classified) },

@@ -344,7 +344,9 @@ describe('GET /api/operator/projects', () => {
     for (const site of [siteB, siteD]) {
       const row = body.projects.find((candidate) => candidate.project.id === site.id);
       const web = await exact(site);
-      assert.deepEqual(row.project, { id: site.id, name: TENANTS.find((t) => t.site === site).name, domain: site.domain, state: 'active' });
+      assert.deepEqual(row.project, {
+        id: site.id, slug: site.slug, name: TENANTS.find((t) => t.site === site).name, domain: site.domain, state: 'active',
+      });
       for (const key of COUNT_KEYS) assertShown(row.totals[key], web.totals[key], `${site.slug} ${key}`);
       assert.equal(row.daily.length, web.daily.length);
       row.daily.forEach((day, index) => assertShown(day.pageviews, web.daily[index].pageviews, `${site.slug} ${day.day}`));

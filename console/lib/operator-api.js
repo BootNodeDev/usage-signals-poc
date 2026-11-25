@@ -27,7 +27,7 @@ export function operatorRow(site, figures) {
     shown[dimension] = rows.map((row) => ({ label: row.label, value: smallCount(row.value) }));
   }
   return {
-    project: { id: site.id, name: site.name, domain: site.domain, state: site.state },
+    project: { id: site.id, slug: site.slug, name: site.name, domain: site.domain, state: site.state },
     totals: {
       pageviews: smallCount(totals.pageviews),
       visitors: smallCount(totals.visitors),
