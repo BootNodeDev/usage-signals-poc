@@ -3,14 +3,16 @@
 // and a database dump.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { truncateAddress } from '../lib/client-address.js';
 import { requireEnv } from '../lib/config.js';
+import { MAX_AGENTS_PER_ADDRESS } from '../lib/flags.js';
 import { umamiLogin, umamiRequest } from '../lib/umami-admin.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
 
@@ -21,6 +23,8 @@ const GATEWAY = requireEnv('GATEWAY_URL');
 const DEMO = requireEnv('DEMO_URL');
 const [SITE_A, SITE_B, SITE_SUSPENDED, SITE_PUBLIC_HOST] = TENANTS.map((tenant) => tenant.site);
 const BREAKDOWNS = ['referrer', 'country', 'browser', 'os', 'device'];
+// What a browser adds to the tracker's fetch(); without it every event would be flagged.
+const FETCH_METADATA = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
 const FORGEABLE_FIELDS = {
   ip: '9.9.9.9',
   userAgent: 'Forged/1.0',
@@ -68,6 +72,7 @@ const VISITORS = [
   FIREFOX_NEIGHBOUR,
   CHROME_OTHER_NETWORK,
 ];
+const ROTATED_AGENTS = [];
 
 let umami;
 let windowStart;
@@ -90,12 +95,13 @@ function trackerBody(site, url, referrer = '') {
   };
 }
 
-function sendEvent({ gateway = GATEWAY, site, visitor, origin, body }) {
+function sendEvent({ gateway = GATEWAY, site, visitor, origin, body, fetchMetadata = true }) {
   const headers = {
     'content-type': 'application/json',
     'user-agent': visitor.userAgent,
     'x-forwarded-for': visitor.address,
     'x-vercel-ip-country': visitor.country,
+    ...(fetchMetadata && FETCH_METADATA),
   };
   const sentOrigin = origin === undefined ? `http://${site.domain}` : origin;
   if (sentOrigin !== null) headers.origin = sentOrigin;
@@ -419,6 +425,33 @@ describe('gateway', () => {
     });
   });
 
+  it('stores flagged events with the rules they matched in the tag', async () => {
+    const network = randomBytes(4).toString('hex');
+    const address = `2a0b:${network.slice(0, 4)}:${network.slice(4)}::1`;
+    const rotating = { ...FIREFOX_DESKTOP, address, truncated: truncateAddress(address) };
+    VISITORS.push(rotating);
+    for (let index = 0; index <= MAX_AGENTS_PER_ADDRESS; index += 1) {
+      ROTATED_AGENTS.push(`${FIREFOX_DESKTOP.userAgent}.${Number.parseInt(network, 16)}.${index}`);
+    }
+    const sent = [
+      { visitor: { ...CHROME_DESKTOP, userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' } },
+      { visitor: SAFARI_MOBILE, fetchMetadata: false },
+      ...ROTATED_AGENTS.map((userAgent) => ({ visitor: { ...rotating, userAgent } })),
+    ];
+    for (const event of sent) {
+      const response = await sendEvent({ ...event, site: SITE_A, body: trackerBody(SITE_A, '/flagged') });
+      assert.equal(response.status, 202);
+    }
+    const range = `startAt=${windowStart}&endAt=${Date.now() + 60_000}`;
+    const flagged = `fields=${encodeURIComponent('["tag"]')}&tag=${encodeURIComponent('re..')}`;
+    const rows = await umamiJson(`/api/websites/${SITE_A.umamiWebsiteId}/breakdown?${range}&${flagged}`);
+    assert.deepEqual(Object.fromEntries(rows.map((row) => [row.tag, Number(row.views)])), {
+      bot: 1,
+      'no-sec-fetch': 1,
+      'many-agents': 1,
+    });
+  });
+
   it('serves the pinned tracker with the integrity value the demo page declares', async () => {
     const manifest = await (await fetch(`${GATEWAY}/s/manifest.json`)).json();
     const tracker = await fetch(`${GATEWAY}${manifest.path}`);
@@ -450,6 +483,9 @@ describe('gateway', () => {
         assert.ok(!dump.includes(needle), 'a client address is stored in the database');
         assert.ok(!logs.includes(needle), 'a client address is in the container logs');
       }
+    }
+    for (const userAgent of ROTATED_AGENTS) {
+      assert.ok(!dump.includes(userAgent), 'a User-Agent is stored in the database');
     }
   });
 });
