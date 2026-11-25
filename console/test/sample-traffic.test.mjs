@@ -7,13 +7,16 @@ import { requireEnv } from '../lib/config.js';
 import {
   fillSampleTraffic,
   handleSampleTraffic,
+  hoursWithSample,
   missingHours,
   pageViewsInHour,
   planHour,
+  sampleWindowStart,
 } from '../lib/sample-traffic.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
 
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 const TUESDAY_NOON = Date.parse('2026-11-24T12:00:00Z');
 const PROFILE = { pageViewsPerDay: 140, pages: ['/demo/', '/demo/pricing', '/demo/docs'] };
 
@@ -53,6 +56,16 @@ describe('sample traffic plan', () => {
     assert.deepEqual(missingHours(new Set(), now, first), [first, first + HOUR, first + 2 * HOUR]);
     assert.deepEqual(missingHours(new Set([first + HOUR]), now, first), [first, first + 2 * HOUR]);
   });
+
+  it('looks back at most 30 days, from a whole hour, and never before the first sample hour', () => {
+    const first = Date.parse('2026-11-20T00:00:00Z');
+    const now = first + 45 * DAY + 10 * 60_000;
+    const start = sampleWindowStart(now, first);
+    assert.equal(start % HOUR, 0);
+    assert.ok(now - start <= 30 * DAY, `window of ${(now - start) / DAY} days`);
+    assert.ok(now - start > 30 * DAY - HOUR);
+    assert.equal(sampleWindowStart(first + 2 * DAY, first), first);
+  });
 });
 
 describe('sample traffic route', () => {
@@ -90,11 +103,15 @@ describe('sample traffic run against the local stack', () => {
     return rows[0].n;
   }
 
-  it('sends the planned page views of a missing hour once, tagged as sample', async () => {
+  async function clearHour() {
     await pool.query(
       `DELETE FROM public.website_event WHERE website_id = $1 AND created_at >= $2 AND created_at < $3`,
       [site.umamiWebsiteId, new Date(hour), new Date(hour + HOUR)],
     );
+  }
+
+  it('sends the planned page views of a missing hour once, tagged as sample', async () => {
+    await clearHour();
     const planned = planHour(site.slug, PROFILE, hour).length;
     assert.ok(planned > 0);
     // Starting the run at the fixed hour makes it the only complete hour that is missing.
@@ -105,5 +122,20 @@ describe('sample traffic run against the local stack', () => {
     const again = await fillSampleTraffic({ now: hour + HOUR + 60_000, sites, first: hour });
     assert.equal(again.filled, 0);
     assert.equal(await storedPageViews(), planned);
+  });
+
+  it('sends an hour once when two runs start at the same time', async () => {
+    await clearHour();
+    const planned = planHour(site.slug, PROFILE, hour).length;
+    const run = () => fillSampleTraffic({ now: hour + HOUR + 60_000, sites, first: hour });
+    const reports = await Promise.all([run(), run()]);
+    assert.equal(reports.filter((report) => report === null).length, 1);
+    assert.equal(await storedPageViews(), planned);
+  });
+
+  it('still reads single hours from Umami when the first sample hour is months back', async () => {
+    const now = hour + HOUR + 60_000;
+    const done = await hoursWithSample(site, sampleWindowStart(now, hour - 90 * DAY), now);
+    assert.ok(done.has(hour), `hours read: ${[...done].map((h) => new Date(h).toISOString())}`);
   });
 });

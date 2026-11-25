@@ -1,15 +1,20 @@
 // Sample traffic for the demo sites, so the console shows steady figures up to the current hour.
 // A Vercel cron job calls the route every three hours. Each run asks Umami which complete hours have no
 // page view tagged "sample" yet and fills them, so a missed run is caught up by the next one and
-// nothing is stored outside Umami. The tag also keeps the sample apart from real visits.
+// nothing is stored outside Umami. A database lock lets only one run send at a time, since Vercel
+// can deliver a scheduled run twice. The tag also keeps the sample apart from real visits.
 import { createHash } from 'node:crypto';
-import { listSites } from './db.js';
+import { listSites, withTransactionLock } from './db.js';
 import { umamiGet } from './umami-admin.js';
 import { forwardToUmami } from './umami.js';
 
 // The first hour filled. The sample traffic loaded by hand on 2026-11-19 ends the day before.
 export const FIRST_SAMPLE_HOUR = Date.parse('2026-11-20T00:00:00Z');
 const HOUR_MS = 3_600_000;
+// Umami answers per hour only for a range of 30 days or less, and per day beyond that.
+const WINDOW_MS = 30 * 24 * HOUR_MS;
+// Any fixed number: it names the run's advisory lock in Postgres.
+const RUN_LOCK_KEY = 4_502_028;
 const MAX_HOURS_PER_RUN = 72;
 const CONCURRENT_SENDS = 8;
 const SAMPLE_TAG = 'sample';
@@ -205,29 +210,39 @@ export function missingHours(done, now, first = FIRST_SAMPLE_HOUR) {
   return hours;
 }
 
+/** The first hour a run looks at: 30 days back from `now`, rounded up, and not before `first`. */
+export function sampleWindowStart(now, first = FIRST_SAMPLE_HOUR) {
+  return Math.max(first, Math.ceil((now - WINDOW_MS) / HOUR_MS) * HOUR_MS);
+}
+
 /** UTC hours, as epoch milliseconds, in which Umami holds sample page views for the site. */
-async function hoursWithSample(site, first, now) {
+export async function hoursWithSample(site, first, now) {
   const query = `startAt=${first}&endAt=${now}&unit=hour&timezone=UTC&tag=${SAMPLE_TAG}`;
   const body = await umamiGet(`/api/websites/${site.umamiWebsiteId}/pageviews?${query}`);
   return new Set(body.pageviews.filter((point) => point.y > 0).map((point) => Date.parse(point.x)));
 }
 
 /**
- * Sends the sample traffic of every missing hour, at most MAX_HOURS_PER_RUN site-hours per run.
- * An hour with any sample page view counts as done, so a partly failed hour is not completed.
+ * Sends the sample traffic of every missing hour in the last 30 days, at most MAX_HOURS_PER_RUN
+ * site-hours per run. An hour with any sample page view counts as done, so a partly failed hour
+ * is not completed. Returns null when another run is sending.
  */
-export async function fillSampleTraffic({
+export function fillSampleTraffic({
   now = Date.now(),
   sites = SAMPLE_SITES,
   first = FIRST_SAMPLE_HOUR,
 } = {}) {
+  return withTransactionLock(RUN_LOCK_KEY, () => fillHours(now, sites, sampleWindowStart(now, first)));
+}
+
+async function fillHours(now, sites, start) {
   const registered = (await listSites()).filter(
     (site) => site.state === 'active' && sites[site.slug],
   );
   const report = { filled: 0, pageViews: 0, failedHours: 0, remaining: 0 };
   let budget = MAX_HOURS_PER_RUN;
   for (const site of registered) {
-    const hours = missingHours(await hoursWithSample(site, first, now), now, first);
+    const hours = missingHours(await hoursWithSample(site, start, now), now, start);
     for (const hour of hours) {
       if (budget === 0) {
         report.remaining += 1;
@@ -255,6 +270,10 @@ export async function handleSampleTraffic(request) {
   }
   try {
     const report = await fillSampleTraffic();
+    if (report === null) {
+      console.log('sample traffic: skipped, another run is sending');
+      return Response.json({ skipped: 'Another run is sending.' });
+    }
     console.log(`sample traffic: ${JSON.stringify(report)}`);
     return Response.json(report, { status: report.failedHours > 0 ? 502 : 200 });
   } catch (error) {
