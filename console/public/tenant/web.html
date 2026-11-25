@@ -3,10 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Web analytics · Usage Signals</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<title>Web analytics · Pulse</title>
+<link rel="preload" href="/fonts/nunito-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="stylesheet" href="/styles.css">
 <script>
@@ -115,7 +113,7 @@
           '<p>This prototype does not classify traffic yet, so there is no flagged or filtered figure: nothing has been checked, and nothing has been removed.</p>') + '</div>' +
         '<div class="figure-row"><div class="figure-value">' + fmt.int(t.pageviews) + '</div>' +
         '<div class="figure-note">' + App.delta(t.pageviews, prior && prior.pageviews, { range: range, good: 'up' }) + '</div></div>' +
-        '<div class="flagline"><span><b>' + NOT_CLASSIFIED + '</b> <span class="muted">· flagged traffic and the rules that fired will show here</span></span></div></div>' +
+        '<div class="flagline"><span><b>' + NOT_CLASSIFIED + '</b> <span class="muted">· flagged traffic will show here</span></span></div></div>' +
 
         figure(App.info('visitors', 'Visitors (sum of daily)', '<p>A visitor is counted once per day and never linked across days, so a multi-day figure is the sum of daily visitors.</p>'),
           fmt.int(t.visitors), NOT_CLASSIFIED) +
@@ -153,7 +151,7 @@
       byId('empty').hidden = true;
 
       renderHeadline(t, result.prior, range);
-      byId('legend').innerHTML = Charts.legend(series) + '<span class="muted">Flagged band: ' + NOT_CLASSIFIED.toLowerCase() + '</span>';
+      byId('legend').innerHTML = Charts.legend(series) + '<span class="muted">No flagged band yet</span>';
       series[0].values = rows.map(function (r) { return r.pageviews; });
       Charts.columns(byId('chart'), {
         label: 'Page views per day, as counted, last ' + range + ' days',

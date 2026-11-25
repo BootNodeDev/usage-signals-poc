@@ -33,9 +33,6 @@ const LOOKS = [
     pages: ['markets', 'changelog'],
   },
 ];
-const FONTS =
-  'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700' +
-  '&family=IBM+Plex+Sans:wght@400;500;600&display=swap';
 
 function html(status, body) {
   return new Response(body, {
@@ -102,9 +99,7 @@ function renderPage({ site, origin, page, look }) {
       data-website-id="${site.umamiWebsiteId}"
     ></script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="${FONTS}" rel="stylesheet">
+    <link rel="preload" href="/fonts/nunito-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/demo.css">
   </head>
   <body data-accent="${look.accent}">
@@ -135,7 +130,7 @@ function renderPage({ site, origin, page, look }) {
       </div>
     </main>
     <footer>
-      <div class="wrap">Sample site for the Usage Signals prototype, served on ${escapeHtml(site.domain)}.</div>
+      <div class="wrap">Sample site for the Pulse prototype, served on ${escapeHtml(site.domain)}.</div>
     </footer>
   </body>
 </html>

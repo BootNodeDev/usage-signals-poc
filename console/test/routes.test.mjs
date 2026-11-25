@@ -73,7 +73,7 @@ describe('operator console', () => {
     it(`serves /${screen} and redirects /${screen}.html to it with 308`, async () => {
       const answer = await get(`/${screen}`);
       assert.equal(answer.status, 200);
-      assert.match(answer.text, /<title>[^<]*Operator · Usage Signals<\/title>/);
+      assert.match(answer.text, /<title>[^<]*Operator · Pulse<\/title>/);
       const old = await get(`/${screen}.html`);
       assert.equal(old.status, 308);
       assert.equal(old.location, `/${screen}`);
@@ -94,7 +94,7 @@ describe('other paths', () => {
   it('builds the start page links to each site, its console and the operator view from the operator endpoint', async () => {
     const script = (await get('/landing.js')).text;
     assert.ok(script.includes("'/' + encodeURIComponent(project.slug) + '/web'"), 'no link to a project console');
-    assert.ok(script.includes("'https://' + project.domain + '/demo/'"), 'no link to a sample site');
+    assert.ok(script.includes("'//' + project.domain + '/demo/'"), 'no link to a sample site');
     assert.ok(script.includes('href="/operator/projects"'), 'no link to the operator view');
     const { projects } = await (await fetch(`${GATEWAY}/api/operator/projects?days=30`)).json();
     for (const tenant of TENANTS.filter((candidate) => candidate.status !== 'removed')) {
@@ -168,9 +168,9 @@ describe('demo site per host', () => {
       headings.add(home.body.match(/<h1>([^<]+)<\/h1>/)[1]);
       for (const { body } of [home, second]) {
         assert.ok(body.includes('<link rel="stylesheet" href="/demo.css">'));
-        assert.equal(body.match(/Usage Signals/g).length, 1, 'the product is named outside the footer line');
-        assert.ok(body.includes('Sample site for the Usage Signals prototype'));
-        assert.ok(!/class="brand"|class="tally"|<svg|<img|<style/.test(body), 'the page carries the console mark, an image or inline styles');
+        assert.equal(body.match(/Pulse/g).length, 1, 'the product is named outside the footer line');
+        assert.ok(body.includes('Sample site for the Pulse prototype'));
+        assert.ok(!/class="brand"|class="mark"|<svg|<img|<style/.test(body), 'the page carries the console mark, an image or inline styles');
         assert.equal(body.match(/<script/g).length, 1, 'the page loads a script besides the tracker');
         assert.match(body, /<meta name="viewport" content="width=device-width, initial-scale=1">/);
       }
@@ -179,12 +179,12 @@ describe('demo site per host', () => {
     assert.equal(headings.size, active.length);
   });
 
-  it('serves the demo stylesheet as a static file, square and without motion', async () => {
+  it('serves the demo stylesheet as a static file, without motion or outside files', async () => {
     const response = await fetch(`${GATEWAY}/demo.css`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /text\/css/);
     const css = await response.text();
-    assert.ok(!/border-radius:\s*[1-9]|animation|transition|@import|url\(/.test(css));
+    assert.ok(!/animation|transition|@import|url\((?!"\/fonts\/)/.test(css));
     for (const accent of ['violet', 'gold', 'ink', 'tone']) assert.ok(css.includes(`[data-accent="${accent}"]`), accent);
   });
 
