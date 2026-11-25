@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { TENANTS } from '../scripts/fixtures.mjs';
 import {
   PRODUCTION_TENANTS,
-  assertSlugs,
+  assertSites,
   missingInputs,
   parseDemoSiteHosts,
   selectProfile,
@@ -53,16 +53,13 @@ describe('selectProfile', () => {
     assert.deepEqual(tenants.map((t) => t.name), ['Demo site A', 'Strata Vault Kit']);
   });
 
-  it("keeps Strata Vault Kit's website id, which its site's tracker tag carries", () => {
-    const strata = selectProfile(PRODUCTION_ENV).tenants.find((t) => t.site.slug === 'strata-vault-kit');
-    assert.equal(strata.site.umamiWebsiteId, 'f0000000-0000-4000-8000-0000000004ff');
-  });
-
-  it('keeps for Demo site A the ids the first production site was created with', () => {
-    const [siteA] = selectProfile(PRODUCTION_ENV).tenants;
+  it("keeps Demo site A's first ids and the Strata website id its tracker tag carries", () => {
+    const { tenants } = selectProfile(PRODUCTION_ENV);
+    const [siteA] = tenants;
     assert.equal(siteA.id, 'f0000000-0000-4000-8000-000000000001');
     assert.equal(siteA.site.id, 'f0000000-0000-4000-8000-0000000000f1');
     assert.equal(siteA.site.umamiWebsiteId, 'f0000000-0000-4000-8000-0000000000ff');
+    assert.equal(tenants.at(-1).site.umamiWebsiteId, 'f0000000-0000-4000-8000-0000000004ff');
     assert.deepEqual(PRODUCTION_TENANTS.map((t) => t.name), ['Demo site A', 'Demo site B', 'Demo site C']);
   });
 
@@ -122,10 +119,6 @@ describe('parseDemoSiteHosts', () => {
     assert.throws(() => parseDemoSiteHosts(CONSOLE, CONSOLE), /console's own host/);
   });
 
-  it('refuses the host of a live site', () => {
-    assert.throws(() => parseDemoSiteHosts('strata-vault-kit-app.vercel.app', CONSOLE), /live site/);
-  });
-
   it('refuses loopback and reserved hosts', () => {
     for (const host of ['app.localhost', 'drift.example', '127.0.0.1']) {
       assert.throws(() => parseDemoSiteHosts(host, CONSOLE), /DEMO_SITE_HOSTS/, host);
@@ -133,33 +126,38 @@ describe('parseDemoSiteHosts', () => {
   });
 });
 
-describe('assertSlugs', () => {
-  const withSlug = (slug, name = 'Some project') => ({ name, site: { slug } });
+describe('assertSites', () => {
+  const withSlug = (slug, name = 'Some project') => ({ name, site: { slug, domain: `${slug}.usage-signals.org` } });
 
   it('accepts lower-case letters, digits and single hyphens', () => {
-    assertSlugs(['demo-site-a', 'a', 'x1', 'site-2-b'].map((slug) => withSlug(slug)));
+    assertSites(['demo-site-a', 'a', 'x1', 'site-2-b'].map((slug) => withSlug(slug)));
   });
 
   for (const reserved of ['api', 'demo', 'operator', 's', 'tenant']) {
     it(`refuses the reserved word "${reserved}" and names the project`, () => {
-      assert.throws(() => assertSlugs([withSlug(reserved, 'Clashing project')]), /"Clashing project" is reserved/);
+      assert.throws(() => assertSites([withSlug(reserved, 'Clashing project')]), /"Clashing project" is reserved/);
     });
   }
 
   it('refuses a malformed slug', () => {
     const slugs = ['Demo', 'demo_site', 'demo--site', '-demo', 'demo-', 'demo site', 'demo.site', '', undefined, 'x'.repeat(64)];
     for (const slug of slugs) {
-      assert.throws(() => assertSlugs([withSlug(slug)]), /must be lower-case letters/, String(slug));
+      assert.throws(() => assertSites([withSlug(slug)]), /must be lower-case letters/, String(slug));
     }
   });
 
   it('refuses the same slug on two sites', () => {
-    assert.throws(() => assertSlugs([withSlug('same'), withSlug('same')]), /used by two sites/);
+    assert.throws(() => assertSites([withSlug('same'), withSlug('same')]), /used by two sites/);
   });
 
-  it('gives every fixture and every production site a valid slug', () => {
-    assertSlugs(TENANTS);
-    assertSlugs(selectProfile(PRODUCTION_ENV).tenants);
+  it('refuses a demo host that is the host of a live site', () => {
+    const env = { ...PRODUCTION_ENV, DEMO_SITE_HOSTS: 'strata-vault-kit-app.vercel.app' };
+    assert.throws(() => selectProfile(env), /domain "strata-vault-kit-app.vercel.app" of "Strata Vault Kit" is used by two sites/);
+  });
+
+  it('gives every fixture and every production site a valid slug and its own domain', () => {
+    assertSites(TENANTS);
+    assertSites(selectProfile(PRODUCTION_ENV).tenants);
   });
 });
 

@@ -81,7 +81,6 @@ export function parseDemoSiteHosts(value, consoleHost) {
     if (!HOST_NAME.test(host)) fail(`"${host}" is not a plain host name`);
     if (RESERVED_HOST.test(host)) fail(`"${host}" is a loopback or reserved host`);
     if (host === consoleHost) fail(`"${host}" is the console's own host`);
-    if (LIVE_TENANTS.some(({ site }) => site.domain === host)) fail(`"${host}" is the host of a live site`);
     if (hosts.indexOf(host) !== hosts.lastIndexOf(host)) fail(`"${host}" is listed twice`);
   }
   return hosts;
@@ -98,17 +97,20 @@ function productionTenants(env) {
 
 /**
  * Stops the seed when a site's slug cannot address a tenant console: wrong shape, a word the
- * routes already use, or the same slug twice.
+ * routes already use, or the same slug twice. Also stops it when two sites share a domain.
  */
-export function assertSlugs(tenants) {
-  const seen = new Set();
+export function assertSites(tenants) {
+  const slugs = new Set();
+  const domains = new Set();
   for (const { name, site } of tenants) {
     const problem =
       (!isSlug(site.slug) && 'must be lower-case letters, digits and single hyphens, at most 63 characters') ||
       (RESERVED_SLUGS.includes(site.slug) && `is reserved for a route of the console (${RESERVED_SLUGS.join(', ')})`) ||
-      (seen.has(site.slug) && 'is used by two sites');
+      (slugs.has(site.slug) && 'is used by two sites');
     if (problem) throw new Error(`The slug "${site.slug}" of "${name}" ${problem}.`);
-    seen.add(site.slug);
+    if (domains.has(site.domain)) throw new Error(`The domain "${site.domain}" of "${name}" is used by two sites.`);
+    slugs.add(site.slug);
+    domains.add(site.domain);
   }
 }
 
@@ -117,6 +119,6 @@ export function selectProfile(env) {
   const name = profileName(env);
   const tenants = { local: TENANTS, production: [], preview: [] }[name];
   const profile = { name, tenants: name === 'production' ? productionTenants(env) : tenants };
-  assertSlugs(profile.tenants);
+  assertSites(profile.tenants);
   return profile;
 }
