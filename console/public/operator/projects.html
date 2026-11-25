@@ -147,6 +147,7 @@
     }
 
     function renderTable() {
+      if (!loaded) return;
       var list = sorted(visible());
       var head = '<thead><tr>' + (state.comparing ? '<th class="col-check"><span class="sr-only">Select</span></th>' : '') +
         '<th>Project</th><th>State</th>' + columns.map(function (c, index) {
@@ -389,7 +390,7 @@
     byId('tray-open').addEventListener('click', function () { showView('compare'); });
     byId('compare-back').addEventListener('click', function () { showView('list'); });
     byId('compare-csv').addEventListener('click', downloadCompare);
-    byId('drawer').addEventListener('close', function () { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list' && loaded) renderTable(); });
+    byId('drawer').addEventListener('close', function () { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list') renderTable(); });
     App.rangeControl(byId('range'), render);
   }
 
