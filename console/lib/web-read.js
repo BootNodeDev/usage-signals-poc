@@ -7,6 +7,8 @@ const DAY_MS = 86_400_000;
 // Short shared cache: several viewers cost one read, and a new page view shows within seconds.
 const CACHE_CONTROL = 'public, max-age=0, s-maxage=10';
 const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'device', browsers: 'browser' };
+/** Every breakdown readFigures() can read, and what it reads by default. */
+export const DIMENSIONS = Object.keys(BREAKDOWNS);
 
 export function json(status, body, headers = {}) {
   return Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } });
@@ -73,23 +75,18 @@ function totalsOf(stats, visitors) {
   };
 }
 
-/** Exact figures of one site for the last `dayCount` UTC days, today included. `breakdowns: false` skips their four reads. */
-export async function readFigures(site, dayCount, { breakdowns = true } = {}) {
+/** Exact figures of one site for the last `dayCount` UTC days, today included, with the breakdowns named in `dimensions`. */
+export async function readFigures(site, dayCount, dimensions = DIMENSIONS) {
   const now = Date.now();
   const { days, startAt, endAt } = rangeOf(dayCount, now);
   const base = `/api/websites/${site.umamiWebsiteId}`;
   const range = `startAt=${startAt}&endAt=${endAt}`;
-  const dimensions = breakdowns ? Object.keys(BREAKDOWNS) : [];
   const [stats, series, ...metrics] = await Promise.all([
     umamiGet(`${base}/stats?${range}`),
     umamiGet(`${base}/pageviews?${range}&unit=day&timezone=UTC`),
     ...dimensions.map((name) => umamiGet(`${base}/metrics?${range}&type=${BREAKDOWNS[name]}`)),
   ]);
   const daily = dailyRows(days, series, series);
-  const byDimension = {};
-  dimensions.forEach((name, index) => {
-    byDimension[name] = metrics[index].map((row) => ({ label: row.x, value: row.y }));
-  });
   return {
     days: dayCount,
     through: new Date(now).toISOString(),
@@ -97,7 +94,9 @@ export async function readFigures(site, dayCount, { breakdowns = true } = {}) {
     // Umami's comparison period; its visitor figure is not a sum of daily and is left out.
     prior: stats.comparison ? totalsOf(stats.comparison, null) : null,
     daily,
-    breakdowns: byDimension,
+    breakdowns: Object.fromEntries(
+      dimensions.map((name, index) => [name, metrics[index].map((row) => ({ label: row.x, value: row.y }))]),
+    ),
   };
 }
 

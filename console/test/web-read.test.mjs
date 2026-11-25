@@ -379,7 +379,7 @@ describe('GET /api/operator/projects', () => {
       assert.deepEqual(one.projects.map((row) => row.project), listed, query);
       const withFigures = one.projects.filter((row) => row.totals);
       assert.deepEqual(withFigures.map((row) => row.project.slug), [slug], query);
-      assert.deepEqual(Object.keys(withFigures[0].breakdowns), ['referrers', 'countries', 'devices', 'browsers'], query);
+      assert.deepEqual(Object.keys(withFigures[0].breakdowns), ['referrers'], query);
     }
   });
 

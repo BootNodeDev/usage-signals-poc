@@ -164,11 +164,13 @@
     byId('visit').hidden = project.state !== 'active';
   }
 
-  function viewKey() { return state.role === 'tenant' ? 'project:' + (state.slug || '') : 'totals'; }
-
   function viewQuery() {
-    if (state.role !== 'tenant') return { figures: 'totals' };
-    return state.slug ? { figures: 'one', project: state.slug } : { figures: 'one' };
+    return state.role === 'tenant' ? { figures: 'one', project: state.slug } : { figures: 'totals' };
+  }
+
+  function viewKey() {
+    var query = viewQuery();
+    return query.figures + ':' + (query.project || '');
   }
 
   function show() {
@@ -182,9 +184,13 @@
     }
     return views[key].then(function (rows) {
       if (key !== viewKey()) return false;
+      var read = rows.filter(function (row) { return row.totals; })[0];
+      if (state.role === 'tenant' && read) {
+        state.slug = read.project.slug;
+        views[viewKey()] = views[key];
+      }
       state.rows = rows;
       render();
-      if (key === 'project:') views['project:' + current().project.slug] = views[key];
       return true;
     }, function (error) {
       if (key !== viewKey()) return false;
