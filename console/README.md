@@ -51,7 +51,7 @@ prototype. See decision 38 in `../DECISIONS.md`.
 and `DATABASE_URL_UNPOOLED` come from the Neon Marketplace integration; `UMAMI_URL` is set by
 hand, and so is `UMAMI_BYPASS_SECRET`, the Protection Bypass for Automation secret of the Umami
 project, which lets the console reach that closed deployment. `CRON_SECRET` authorises the
-hourly job that sends the demo sites' sample traffic (`/api/cron/sample-traffic`, DECISIONS 45);
+job that runs every three hours and sends the demo sites' sample traffic (`/api/cron/sample-traffic`, DECISIONS 45);
 without it the route answers 401. Overrides go in `.env.local` (gitignored).
 
 `npm run pin-tracker` regenerates the tracker, its manifest and `lib/tracker.generated.js`.

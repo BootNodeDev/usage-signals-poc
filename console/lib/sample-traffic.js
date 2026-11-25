@@ -1,5 +1,5 @@
 // Sample traffic for the demo sites, so the console shows steady figures up to the current hour.
-// A Vercel cron job calls the route every hour. Each run asks Umami which complete hours have no
+// A Vercel cron job calls the route every three hours. Each run asks Umami which complete hours have no
 // page view tagged "sample" yet and fills them, so a missed run is caught up by the next one and
 // nothing is stored outside Umami. The tag also keeps the sample apart from real visits.
 import { createHash } from 'node:crypto';
