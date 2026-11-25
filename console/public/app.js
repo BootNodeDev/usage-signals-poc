@@ -179,7 +179,7 @@
 
   function csvCell(value) {
     if (typeof value === 'number') return String(value);
-    var text = value === null || value === undefined ? '' : String(value);
+    var text = String(value);
     var formula = /^[\s=+\-@]/.test(text); /* spreadsheets run such text as a formula (OWASP, CSV injection) */
     return '"' + (formula ? "'" : '') + text.replace(/"/g, '""') + '"';
   }

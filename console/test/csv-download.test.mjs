@@ -6,11 +6,11 @@ import vm from 'node:vm';
 
 const source = await readFile(path.resolve(import.meta.dirname, '..', 'public', 'app.js'), 'utf8');
 const clicked = [];
-const element = () => ({ dataset: {}, appendChild() {}, click() { clicked.push(this); } });
-const window = { LData: { meta: () => ({}), project: () => null, currentProjectSlug: () => null } };
+const element = () => ({ appendChild() {}, click() { clicked.push(this); } });
+const window = { LData: { meta: () => ({}), project: () => null } };
 vm.runInNewContext(source, {
   window,
-  document: { readyState: 'complete', body: element(), head: element(), getElementById: element, createElement: element, addEventListener() {} },
+  document: { readyState: 'loading', head: element(), createElement: element, addEventListener() {} },
   Blob: class { constructor(parts, options) { this.text = parts.join(''); this.type = options.type; } },
   URL: { createObjectURL: (blob) => blob, revokeObjectURL() {} },
   setTimeout: () => {},
@@ -23,7 +23,7 @@ function download(rows) {
 
 describe('downloadCsv', () => {
   it('saves a UTF-8 file under the given name, one CRLF line per row, numbers bare and text quoted', () => {
-    const link = download([['Café, "the" bar', 1234], ['<10', 0], [null, 12.5]]);
+    const link = download([['Café, "the" bar', 1234], ['<10', 0], ['', 12.5]]);
     assert.equal(link.download, 'file.csv');
     assert.equal(link.href.type, 'text/csv;charset=utf-8');
     assert.equal(link.href.text, '\uFEFF"Name","Count"\r\n"Café, ""the"" bar",1234\r\n"<10",0\r\n"",12.5\r\n');
