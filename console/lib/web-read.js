@@ -54,7 +54,7 @@ export function dailyRows(days, pageviewSeries, sessionSeries) {
 }
 
 // The range is whole UTC days and ends now: the current day is included, incomplete.
-function rangeOf(dayCount, now) {
+export function rangeOf(dayCount, now) {
   const today = Math.floor(now / DAY_MS) * DAY_MS;
   const days = [];
   for (let offset = dayCount - 1; offset >= 0; offset -= 1) {

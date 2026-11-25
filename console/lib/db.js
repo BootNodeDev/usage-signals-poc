@@ -130,3 +130,37 @@ export async function insertApiMinute(tenantId, minute, service, rows) {
     [tenantId, new Date(minute), service, JSON.stringify(rows)],
   );
 }
+
+const BUCKET_SUMS = Array.from(
+  { length: 15 },
+  (_, i) => `sum(bucket_counts[${i + 1}])::float8`,
+).join(', ');
+
+/**
+ * API rows of the tenant in a range, summed per route, method and status class, with the
+ * histogram buckets summed one by one.
+ */
+export async function apiRouteSums(tenantId, startAt, endAt) {
+  const { rows } = await getPool().query(
+    `SELECT route, method, status_code / 100 AS class, sum(request_count)::float8 AS requests,
+            ARRAY[${BUCKET_SUMS}] AS buckets
+       FROM usage_signals.api_metric_minute
+      WHERE tenant_id = $1 AND minute >= $2 AND minute < $3
+      GROUP BY route, method, class`,
+    [tenantId, new Date(startAt), new Date(endAt)],
+  );
+  return rows;
+}
+
+/** API requests of the tenant per UTC day in a range, as `{ day: 'YYYY-MM-DD', requests }`. */
+export async function apiDailySums(tenantId, startAt, endAt) {
+  const { rows } = await getPool().query(
+    `SELECT to_char(minute AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+            sum(request_count)::float8 AS requests
+       FROM usage_signals.api_metric_minute
+      WHERE tenant_id = $1 AND minute >= $2 AND minute < $3
+      GROUP BY day`,
+    [tenantId, new Date(startAt), new Date(endAt)],
+  );
+  return rows;
+}

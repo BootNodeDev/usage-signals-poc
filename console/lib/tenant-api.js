@@ -1,6 +1,7 @@
 // Tenant console endpoints. The project is named by the slug in the path and each answer holds
 // that one site only. This is addressing, not access control: anyone who knows a slug can read
 // its aggregates. With sign-in, `projectOf` is where the session replaces the path.
+import { readApiFigures } from './api-read.js';
 import { findSiteBySlug } from './db.js';
 import { isSlug } from './slug.js';
 import { TRACKER } from './tracker.generated.js';
@@ -38,5 +39,14 @@ export function handleTenantWeb(request, slug) {
 export function handleTenantProject(request, slug) {
   return answer(request, slug, (site) =>
     cached({ project: { ...publicProject(site), website_id: site.umamiWebsiteId }, tracker: TRACKER }),
+  );
+}
+
+/** GET /api/tenant/<slug>/api?days=7|30|90 */
+export function handleTenantApi(request, slug) {
+  const dayCount = rangeParam(request);
+  if (request.method === 'GET' && !dayCount) return badRange();
+  return answer(request, slug, async (site) =>
+    cached({ project: publicProject(site), ...(await readApiFigures(site, dayCount)) }),
   );
 }
