@@ -117,7 +117,7 @@
       '</div><div class="split"><div><h3 class="block-title">Page views per day</h3><div class="chart">' +
         bars(row.daily.map(function (entry) { return drawn(entry.pageviews); }), { height: 200, gap: 0.26, fill: '#474d8c', today: '#b9bcdb', baseline: '#cfcde0' }) +
         '</div><div class="axis">' + axis(row.daily) + '</div>' +
-        (smallDay ? '<p class="figure-note">Days with fewer than ' + below() + ' page views are not drawn.</p>' : '') +
+        (smallDay ? '<p class="figure-note">Days with fewer than ' + below() + ' page views are not shown.</p>' : '') +
       '</div><div><h3 class="block-title">Where visitors came from</h3>' + ranked(row.breakdowns.referrers.slice(0, 5)) + '</div></div>';
   }
 
