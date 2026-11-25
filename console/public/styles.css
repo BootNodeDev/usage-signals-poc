@@ -28,7 +28,7 @@
   --radius: 8px;
   --radius-large: 14px;
 
-  /* Data: violet is counted traffic, gold is flagged traffic */
+  /* Data */
   --data-filtered: var(--violet);
   --data-flagged: var(--gold);
   --data-error: #c4242a;

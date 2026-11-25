@@ -56,10 +56,17 @@
   }
 
   function consoleUrl(project) { return '/' + encodeURIComponent(project.slug) + '/web'; }
-  function siteUrl(project) { return 'https://' + project.domain + '/demo/'; }
+  function siteUrl(project) { return location.protocol + '//' + project.domain + '/demo/'; }
+
+  /* Only an active project serves its demo site, so only active ones are offered while any exist. */
+  function tenantRows() {
+    var active = state.rows.filter(function (row) { return row.project.state === 'active'; });
+    return active.length ? active : state.rows;
+  }
 
   function current() {
-    return state.rows.filter(function (row) { return row.project.slug === state.slug; })[0] || state.rows[0];
+    var rows = tenantRows();
+    return rows.filter(function (row) { return row.project.slug === state.slug; })[0] || rows[0];
   }
 
   var TENANT_HEADING = 'Demo site';
@@ -95,9 +102,10 @@
     var row = current();
     var project = row.project;
     var totals = row.totals;
-    var picker = state.rows.length > 1 ? '<div class="project-menu"><button class="project-button" id="project-button" type="button" ' +
+    var rows = tenantRows();
+    var picker = rows.length > 1 ? '<div class="project-menu"><button class="project-button" id="project-button" type="button" ' +
       'aria-expanded="false" aria-controls="project-list" aria-label="Project: ' + escapeHtml(project.name) + '">' + escapeHtml(optionLabel(project.name)) +
-      '</button><ul class="project-list" id="project-list" hidden>' + state.rows.map(function (other) {
+      '</button><ul class="project-list" id="project-list" hidden>' + rows.map(function (other) {
         return '<li><button type="button" data-slug="' + escapeHtml(other.project.slug) + '" aria-label="' + escapeHtml(other.project.name) + '"' +
           (other === row ? ' aria-current="true"' : '') + '>' + escapeHtml(optionLabel(other.project.name)) + '</button></li>';
       }).join('') + '</ul></div>' : '';
@@ -152,7 +160,7 @@
     byId('visit-link').textContent = 'Open ' + project.name;
     byId('visit-link').href = siteUrl(project);
     byId('visit-text-link').href = siteUrl(project);
-    byId('visit').hidden = false;
+    byId('visit').hidden = project.state !== 'active';
   }
 
   function selectRole(tab) {
@@ -216,7 +224,7 @@
   var player = dialog.querySelector('iframe');
 
   document.querySelector('.video').addEventListener('click', function (event) {
-    if (typeof dialog.showModal !== 'function') return;
+    if (typeof dialog.showModal !== 'function' || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     player.src = player.dataset.src;
     dialog.showModal();
