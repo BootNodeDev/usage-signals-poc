@@ -45,9 +45,14 @@ button { font: inherit; color: inherit; }
 /* Hero */
 .hero { background: var(--field); color: var(--on-field); padding-block: 28px 150px; }
 .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-.logo { display: block; height: 52px; width: auto; }
-.logo-link { display: block; border-radius: 8px; opacity: 0.92; transition: opacity 160ms ease-out; }
+.logo-link {
+  display: flex; align-items: center; gap: 10px; border-radius: 8px; color: var(--on-field); text-decoration: none;
+  font-size: 32px; font-weight: 900; letter-spacing: -0.04em; opacity: 0.92; transition: opacity 160ms ease-out;
+}
 .logo-link:hover { opacity: 1; }
+.logo-mark { height: 40px; width: auto; overflow: visible; }
+.hero-links { display: flex; align-items: center; gap: 20px; }
+.logo { display: block; height: 40px; width: auto; opacity: 0.85; }
 .source { display: grid; place-items: center; width: 44px; height: 44px; margin-right: -7px; border-radius: 50%; color: var(--on-field-muted); }
 .source:hover { color: var(--on-field); }
 .source svg { width: 30px; height: 30px; }
