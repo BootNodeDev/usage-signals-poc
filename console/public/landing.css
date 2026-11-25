@@ -127,7 +127,7 @@ main { padding-bottom: 56px; }
 .footer-credit:hover svg, .footer-credit:focus-visible svg { color: #ffffff; }
 .footer-source { display: grid; place-items: center; width: 44px; height: 44px; margin-right: -7px; border-radius: 50%; color: inherit; transition: color 160ms ease-out; }
 .footer-source:hover { color: var(--on-field); }
-.footer-source svg { width: 28px; height: 28px; }
+.footer-source svg { width: 20px; height: 20px; }
 .preview { position: relative; padding: 28px 32px 32px; border: 1px solid var(--rule); border-radius: 0 16px 16px 16px; background: var(--sheet); box-shadow: 0 24px 48px rgba(14, 10, 40, 0.12); }
 .preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; }
 .preview-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
@@ -221,7 +221,7 @@ td.num { font-weight: 800; }
   .picker { margin-top: 24px; color: var(--ink); }
   .roles { display: none; }
   .preview-head > div { flex: 1 1 100%; }
-  .preview-head .button { flex: 1 1 100%; justify-content: center; }
+  .preview-head .button, .visit .button { flex: 1 1 100%; justify-content: center; }
   .role-select {
     display: block; width: 100%; height: 52px; padding: 0 48px 0 16px;
     border: 2px solid var(--ink); border-radius: 14px; appearance: none; cursor: pointer;
