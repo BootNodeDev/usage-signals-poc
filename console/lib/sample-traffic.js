@@ -264,14 +264,38 @@ async function fillHours(now, sites, start) {
   return report;
 }
 
-/** GET /api/cron/sample-traffic. Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`. */
+const RANGE_ERROR =
+  'Give from and to as whole UTC hours in the past, from before to, at most 30 days apart.';
+
+/** The run's range: the last 30 days, or the `from` and `to` of the query, or null if invalid. */
+function requestedRange(url) {
+  const from = url.searchParams.get('from');
+  const to = url.searchParams.get('to');
+  if (from === null && to === null) return {};
+  const first = Date.parse(from);
+  const now = Date.parse(to);
+  const valid =
+    first % HOUR_MS === 0 &&
+    now % HOUR_MS === 0 &&
+    first < now &&
+    now - first <= WINDOW_MS &&
+    now <= Date.now();
+  return valid ? { first, now } : null;
+}
+
+/**
+ * GET /api/cron/sample-traffic. Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`.
+ * `from` and `to` fill an older range by hand, such as the months before the first sample hour.
+ */
 export async function handleSampleTraffic(request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
     return Response.json({ error: 'Unauthorized.' }, { status: 401 });
   }
+  const range = requestedRange(new URL(request.url));
+  if (range === null) return Response.json({ error: RANGE_ERROR }, { status: 400 });
   try {
-    const report = await fillSampleTraffic();
+    const report = await fillSampleTraffic(range);
     if (report === null) {
       console.log('sample traffic: skipped, another run is sending');
       return Response.json({ skipped: 'Another run is sending.' });
