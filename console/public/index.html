@@ -28,8 +28,10 @@
     </a>
   </div>
   <div class="wrap hero-body">
-    <h1 class="wordmark">Pulse</h1>
-    <p class="tagline">Web and API analytics for Stellar ecosystem projects.</p>
+    <div class="intro">
+      <h1 class="wordmark">Pulse</h1>
+      <p class="tagline">Web and API analytics for Stellar ecosystem projects.</p>
+    </div>
     <a class="video" href="https://vimeo.com/1248550588" target="_blank" rel="noopener">
       <span class="video-poster">
         <img src="/demo-video-880.webp" srcset="/demo-video-440.webp 440w, /demo-video-880.webp 880w" sizes="(max-width: 760px) 116px, 420px" alt="" width="880" height="495" fetchpriority="high">
@@ -37,19 +39,19 @@
       </span>
       <span class="video-text"><b>Watch the demo</b><span>1 min 24 s on Vimeo</span></span>
     </a>
-    <div class="picker">
-      <p class="picker-label" id="picker-label">See Pulse as</p>
-      <div class="roles" role="tablist" aria-labelledby="picker-label">
-        <button class="role" type="button" role="tab" id="role-tenant" data-role="tenant" aria-controls="preview" aria-selected="true"><b>A project team</b><span>One site, in full detail</span></button>
-        <button class="role" type="button" role="tab" id="role-operator" data-role="operator" aria-controls="preview" aria-selected="false" tabindex="-1"><b>The SCF operator</b><span>Every project, side by side</span></button>
-        <button class="role" type="button" role="tab" id="role-public" data-role="public" aria-controls="preview" aria-selected="false" tabindex="-1"><b>The public</b><span>Totals per project</span></button>
-      </div>
-    </div>
   </div>
   <div class="wrap"><div class="hero-bars" id="hero-bars" aria-hidden="true"></div></div>
 </header>
 
 <main class="wrap">
+  <div class="picker">
+    <p class="picker-label" id="picker-label">See Pulse as</p>
+    <div class="roles" role="tablist" aria-labelledby="picker-label">
+      <button class="role" type="button" role="tab" id="role-tenant" data-role="tenant" aria-controls="preview" aria-selected="true"><b>A project team</b><span>One site, in full detail</span></button>
+      <button class="role" type="button" role="tab" id="role-operator" data-role="operator" aria-controls="preview" aria-selected="false" tabindex="-1"><b>The SCF operator</b><span>Every project, side by side</span></button>
+      <button class="role" type="button" role="tab" id="role-public" data-role="public" aria-controls="preview" aria-selected="false" tabindex="-1"><b>The public</b><span>Totals per project</span></button>
+    </div>
+  </div>
   <section class="preview" id="preview" role="tabpanel" aria-labelledby="role-tenant">
     <div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><span>Loading data</span></div>
   </section>
