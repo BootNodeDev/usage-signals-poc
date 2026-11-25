@@ -1,9 +1,10 @@
 // Sample traffic for the demo sites, so the console shows steady figures up to the current hour.
-// A Vercel cron job calls the route every hour. Each run fills the complete hours that have no
-// sample yet, so a missed run is caught up by the next one. Every event is sent to Umami with
-// the tag "sample", which keeps it apart from real visits.
+// A Vercel cron job calls the route every hour. Each run asks Umami which complete hours have no
+// page view tagged "sample" yet and fills them, so a missed run is caught up by the next one and
+// nothing is stored outside Umami. The tag also keeps the sample apart from real visits.
 import { createHash } from 'node:crypto';
-import { listSites, listSampleHours, recordSampleHour } from './db.js';
+import { listSites } from './db.js';
+import { umamiGet } from './umami-admin.js';
 import { forwardToUmami } from './umami.js';
 
 // The first hour filled. The sample traffic loaded by hand on 2026-11-19 ends the day before.
@@ -204,9 +205,16 @@ export function missingHours(done, now, first = FIRST_SAMPLE_HOUR) {
   return hours;
 }
 
+/** UTC hours, as epoch milliseconds, in which Umami holds sample page views for the site. */
+async function hoursWithSample(site, first, now) {
+  const query = `startAt=${first}&endAt=${now}&unit=hour&timezone=UTC&tag=${SAMPLE_TAG}`;
+  const body = await umamiGet(`/api/websites/${site.umamiWebsiteId}/pageviews?${query}`);
+  return new Set(body.pageviews.filter((point) => point.y > 0).map((point) => Date.parse(point.x)));
+}
+
 /**
  * Sends the sample traffic of every missing hour, at most MAX_HOURS_PER_RUN site-hours per run.
- * An hour is recorded only when all its events were accepted; a failed hour is retried later.
+ * An hour with any sample page view counts as done, so a partly failed hour is not completed.
  */
 export async function fillSampleTraffic({
   now = Date.now(),
@@ -219,8 +227,7 @@ export async function fillSampleTraffic({
   const report = { filled: 0, pageViews: 0, failedHours: 0, remaining: 0 };
   let budget = MAX_HOURS_PER_RUN;
   for (const site of registered) {
-    const done = new Set((await listSampleHours(site.id)).map((date) => date.getTime()));
-    const hours = missingHours(done, now, first);
+    const hours = missingHours(await hoursWithSample(site, first, now), now, first);
     for (const hour of hours) {
       if (budget === 0) {
         report.remaining += 1;
@@ -233,7 +240,6 @@ export async function fillSampleTraffic({
         report.failedHours += 1;
         continue;
       }
-      await recordSampleHour(site.id, new Date(hour), events.length);
       report.filled += 1;
       report.pageViews += events.length;
     }

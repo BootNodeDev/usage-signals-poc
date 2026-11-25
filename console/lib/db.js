@@ -80,21 +80,3 @@ export async function findActiveSiteByDomain(domain) {
   );
   return rows[0] ?? null;
 }
-
-/** UTC hours that already have sample traffic for a site, as Date objects. */
-export async function listSampleHours(siteId) {
-  const { rows } = await getPool().query(
-    'SELECT hour FROM usage_signals.sample_hour WHERE site_id = $1',
-    [siteId],
-  );
-  return rows.map((row) => row.hour);
-}
-
-export async function recordSampleHour(siteId, hour, pageViews) {
-  await getPool().query(
-    `INSERT INTO usage_signals.sample_hour (site_id, hour, page_views)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (site_id, hour) DO NOTHING`,
-    [siteId, hour, pageViews],
-  );
-}

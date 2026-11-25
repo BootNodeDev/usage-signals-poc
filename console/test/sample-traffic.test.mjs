@@ -91,10 +91,6 @@ describe('sample traffic run against the local stack', () => {
   }
 
   it('sends the planned page views of a missing hour once, tagged as sample', async () => {
-    await pool.query('DELETE FROM usage_signals.sample_hour WHERE site_id = $1 AND hour = $2', [
-      site.id,
-      new Date(hour),
-    ]);
     await pool.query(
       `DELETE FROM public.website_event WHERE website_id = $1 AND created_at >= $2 AND created_at < $3`,
       [site.umamiWebsiteId, new Date(hour), new Date(hour + HOUR)],
