@@ -2,63 +2,54 @@
 
 # Agent Configuration
 
-<!-- This is your project's agent configuration. Claude Code reads this file
-     as CLAUDE.md. Other agents (Cursor, Windsurf, etc.) read AGENTS.md, which
-     points here. Customize each section for your stack. -->
+Proof of concept of Pulse, a shared web and API analytics service for Stellar ecosystem projects. "Usage Signals" is the working title, still used in the repository name, the READMEs and the console pages. This is not the product: see `README.md` and `DECISIONS.md`.
 
 ---
 
 ## Stack & Conventions
 
-<!-- Replace with your project's specifics. The table format makes it easy
-     to scan and reminds you to be explicit about each category. -->
-
 | Category | Technology | Notes |
 |----------|-----------|-------|
-| Language | TypeScript (strict mode) | |
-| Framework | Next.js / React | |
-| Package manager | pnpm | |
-| Linting | ESLint + Prettier | Run `pnpm lint` before committing |
-| Naming | camelCase vars/functions, PascalCase components/types, kebab-case files | |
+| Language | JavaScript, ES modules (`"type": "module"`) | No TypeScript, no build step |
+| Runtime | Node.js 24 or newer (`engines.node`) | Vercel resolves it to its default, 26.x |
+| Framework | None | One Vercel function (`console/api/index.js`) and static pages in `console/public/` |
+| Database | PostgreSQL 18 through `pg` 8.23.1 | Neon on Vercel, Docker locally |
+| Analytics engine | Umami 3.5.0, unmodified | Git submodule `umami/`, deployed as its own Vercel project |
+| Package manager | pnpm (`console/pnpm-lock.yaml`) | The READMEs run the scripts with `npm run` |
+| Linting | None configured | |
+| Naming | camelCase functions and variables, UPPER_SNAKE_CASE constants, kebab-case file names | Tests are `test/<name>.test.mjs`; scripts are `.mjs` |
 
 ## Code Style
 
-<!-- Agents will guess formatting rules if you don't spell them out.
-     Be explicit about the decisions your linter/formatter enforces. -->
-
-- **Semicolons:** yes/no <!-- pick one -->
-- **Quotes:** single/double <!-- pick one -->
-- **Print width:** 80/100/120 <!-- pick one -->
-- **Trailing commas:** all/es5/none <!-- pick one -->
-- **Indent:** spaces/tabs, width 2/4 <!-- pick one -->
-- **Import ordering:** <!-- describe the grouping order or reference the plugin -->
+- **Semicolons:** yes
+- **Quotes:** single
+- **Print width:** no formatter enforces one
+- **Trailing commas:** in multi-line literals in the Node code (`lib/`, `scripts/`, `test/`)
+- **Indent:** spaces, width 2
+- **Import ordering:** Node built-ins with the `node:` prefix, then packages, then relative imports
+- **Browser scripts** in `console/public/` (`data.js`, `app.js`, `charts.js`, `landing.js`): plain scripts with `var` and `function` inside an IIFE with `'use strict'`, loaded by `<script>` tags; no bundler
 
 ## Working Rules
 
-<!-- Project-specific operational constraints the agent must respect.
-     These are the "always/never" rules that aren't captured by linting. -->
-
-- Use **pnpm** only (never npm or yarn)
-- Treat generated files as **read-only** <!-- e.g., config/generated-config.json -->
-- Path alias: `@/*` maps to `src/` (tsconfig `paths`)
+- Pages read data only through `window.LData` in `console/public/data.js`. In that file, `currentProjectSlug()` is the only code that reads the address. Tests enforce both.
+- Keep sample data out of `console/public/`. A test fails on the old sample strings, a link to a `.html` file, a hardcoded UUID, or a mention of Umami outside `index.html`.
+- The tenant console and the operator console never link to each other (`test/routes.test.mjs`).
+- Treat `console/lib/tracker.generated.js` and `console/public/s/` (tracker and `manifest.json`) as generated. Regenerate them with `npm run pin-tracker`.
+- Keep Umami unmodified. Fetch it with `git submodule update --init`.
+- Qualify every SQL statement with its schema: ours is `usage_signals`, Umami's is `public`.
+- Record each technical choice in `DECISIONS.md`, with its source and the alternative rejected.
+- Local values live in `console/local.env`. Overrides go in `console/.env.local`, which git ignores.
 
 ## Architecture
-
-<!-- See architecture.md for the full system overview: project structure,
-     key abstractions, data flow, and domain-specific details. Keep this
-     section as a quick pointer -- not a duplicate. -->
 
 See [`architecture.md`](architecture.md) for project structure, data flow, and key abstractions.
 
 ## Testing
 
-<!-- Define what to test, how to test it, and what not to bother with -->
-
-- **Framework:** Vitest + React Testing Library
-- **Run tests:** `pnpm test`
-- **What to test:** Business logic, API integrations, component behavior
-- **What not to test:** Styling, third-party library internals, trivial getters/setters
-- **Coverage:** Aim for meaningful coverage, not a number. Cover the paths that matter.
+- **Framework:** `node:test` (`describe` and `it`) with `node:assert/strict`
+- **Run tests:** in `console/`, start the stack with `npm run up` (needs Docker), then run `npm test` in a second terminal. Test files run one at a time (`--test-concurrency=1`).
+- **What to test:** each endpoint against the running stack: gateway refusals and address truncation, the read endpoints and their small counts, routes, and the seed profiles
+- **Architecture checks:** each `checks/*/run.mjs` starts its own isolated stack. Results are in `checks/README.md`.
 
 ## Commit Standards
 
@@ -67,6 +58,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 **Format:** `type(scope): subject`
 
 - **Scope** is optional: `feat: add login` and `feat(auth): add login` are both valid
+- **Scopes in use:** `console`, `checks`, `umami`
 - **Subject** uses imperative mood, lowercase after the colon, no trailing period
 - **Body** (optional): separated by a blank line, explains *what* and *why*
 
@@ -133,17 +125,15 @@ The `/sdlc:create-issue` skill applies these labels automatically when creating 
 
 ## Validation Checklist
 
-<!-- Commands the agent (and developers) should run before declaring work done. -->
-
-- `pnpm lint`
-- `pnpm test`
-- `pnpm build` (when feasible for runtime-impacting changes)
+- In `console/`: `npm run up`, then `npm test` in a second terminal (needs Docker)
+- There is no lint step and no separate build. On Vercel the build command is the seed, `node scripts/seed.mjs`.
 
 ## References
 
-<!-- Links to external documentation the agent should consult when working
-     on this project. Keeps the agent grounded in current APIs rather than
-     stale training data. -->
-
-- [Project docs](https://example.com) <!-- replace URL and description -->
-- [API reference](https://example.com) <!-- replace URL and description -->
+- [`DECISIONS.md`](DECISIONS.md): every technical choice, its source and the alternative rejected
+- [`checks/README.md`](checks/README.md): the six architecture checks and their results
+- [`console/README.md`](console/README.md): local stack, layout and configuration
+- [Umami documentation](https://docs.umami.is/docs)
+- [Vercel Node.js runtime](https://vercel.com/docs/functions/runtimes/node-js)
+- [Neon documentation](https://neon.com/docs)
+- [SCF request for proposals: Web and API Analytics for Stellar Ecosystem Projects](https://stellar.gitbook.io/scf-handbook/scf-awards/build-award/rfp-track#web-and-api-analytics-for-stellar-ecosystem-projects)
