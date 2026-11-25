@@ -1,0 +1,92 @@
+# Isolated stack for round two of checks 1 and 2. Same pinned Umami and PostgreSQL images as
+# compose.yml. No fixed host ports: Docker assigns them and round2.mjs asks for them.
+# Credentials are local to this experiment and are not secrets.
+name: us-check-01-r2
+
+x-umami: &umami
+  image: ghcr.io/umami-software/umami:3.5.0@sha256:b64f40400d77bcadd39cf5c62a1e368c99524ca442024f96e1133355a19a5dbc
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/heartbeat >/dev/null || exit 1"]
+    interval: 3s
+    timeout: 3s
+    retries: 40
+    start_period: 20s
+  ports:
+    - "127.0.0.1::3000"
+
+x-umami-environment: &umami-environment
+  DATABASE_URL: postgresql://check:check-local-only@postgres:5432/check
+  APP_SECRET: check-01-local-app-secret
+  DISABLE_TELEMETRY: "1"
+
+services:
+  postgres:
+    image: postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
+    environment:
+      POSTGRES_USER: check
+      POSTGRES_PASSWORD: check-local-only
+      POSTGRES_DB: check
+    # Every statement and its parameters go to the log, so that the log scan sees whatever
+    # Umami sends to the database.
+    command: ["postgres", "-c", "log_statement=all"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U check -d check"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # The Umami the forwarder posts to: client salts are honoured, as the design needs.
+  umami:
+    <<: *umami
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *umami-environment
+      ENABLE_CLIENT_SALT: "1"
+
+  # A deployment that violates the first condition: default settings, client salts ignored.
+  umami-defaults:
+    <<: *umami
+    depends_on:
+      umami:
+        condition: service_healthy
+    environment:
+      <<: *umami-environment
+
+  # Copies libfaketime out of an Alpine of the same release as the Umami image. The library
+  # is the only way to give direct ingestion a wall clock the script controls.
+  faketime-lib:
+    image: alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+    command:
+      - sh
+      - -c
+      - apk add --no-cache libfaketime=0.9.14-r0 >/dev/null && cp /usr/lib/faketime/libfaketime.so.1 /out/
+    volumes:
+      - faketime:/out
+
+  # Direct ingestion, as a browser does it: no timestamp in the payload, so the event time is
+  # this process's clock. The image is unmodified; the preloaded library answers the time
+  # written to /clock/now (UTC, YYYY-MM-DD HH:MM:SS), which round2.mjs sets before each
+  # request.
+  umami-clock:
+    <<: *umami
+    depends_on:
+      umami:
+        condition: service_healthy
+      faketime-lib:
+        condition: service_completed_successfully
+    environment:
+      <<: *umami-environment
+      ENABLE_CLIENT_SALT: "1"
+      LD_PRELOAD: /faketime/libfaketime.so.1
+      FAKETIME_TIMESTAMP_FILE: /clock/now
+      FAKETIME_NO_CACHE: "1"
+      DONT_FAKE_MONOTONIC: "1"
+    volumes:
+      - faketime:/faketime:ro
+    tmpfs:
+      - /clock:mode=1777
+
+volumes:
+  faketime:
