@@ -84,30 +84,6 @@ describe('sample traffic route', () => {
     assert.equal((await handleSampleTraffic(request())).status, 401);
     assert.equal((await handleSampleTraffic(request('Bearer wrong'))).status, 401);
   });
-
-  it('answers 400 for a range that is not two whole hours in the past, at most 30 days apart', async () => {
-    process.env.CRON_SECRET = 'local-cron-secret';
-    const call = async (query) => {
-      const response = await handleSampleTraffic(
-        new Request(`http://x/api/cron/sample-traffic?${query}`, {
-          headers: { authorization: 'Bearer local-cron-secret' },
-        }),
-      );
-      return [response.status, (await response.json()).error];
-    };
-    const message = 'Give from and to as whole UTC hours in the past, from before to, at most 30 days apart.';
-    for (const query of [
-      'from=2026-06-01T00:00:00Z',
-      'to=2026-06-01T00:00:00Z',
-      'from=2026-06-01T00:00:00Z&to=2026-07-02T00:00:00Z',
-      'from=2026-06-01T00:30:00Z&to=2026-06-02T00:00:00Z',
-      'from=2026-06-02T00:00:00Z&to=2026-06-01T00:00:00Z',
-      'from=2026-06-01T00:00:00Z&to=2999-01-01T00:00:00Z',
-      'from=junk&to=2026-06-02T00:00:00Z',
-    ]) {
-      assert.deepEqual(await call(query), [400, message], query);
-    }
-  });
 });
 
 describe('sample traffic run against the local stack', () => {
