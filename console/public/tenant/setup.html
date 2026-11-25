@@ -84,13 +84,13 @@
       '<dl class="kv"><dt>Name</dt><dd>' + esc(project.name) + '</dd>' +
       '<dt>Registered domain</dt><dd class="mono">' + esc(project.domain) + '</dd>' +
       '<dt>State</dt><dd>' + App.statePill(project.state) + ' <span class="muted">' + esc(STATE_NOTES[project.state] || '') + '</span></dd>' +
-      '<dt>How it was registered</dt><dd>Seeded when this prototype was deployed. There is no enrollment flow yet.</dd></dl></section>' +
+      '<dt>How it was registered</dt><dd>Created at deploy time. There is no enrollment yet.</dd></dl></section>' +
 
       '<section class="block"><div class="block-head"><h2>Tracking tag</h2></div>' +
-      '<p class="muted">Add this to every page of <span class="mono">' + esc(project.domain) + '</span>. The file is pinned: tracker version <b>' + esc(tracker.version) +
-      '</b>, and the browser refuses it if its content does not match the integrity value.</p>' +
+      '<p class="muted">Add this to every page of <span class="mono">' + esc(project.domain) + '</span>. The browser runs tracker <b>' + esc(tracker.version) +
+      '</b> only if it matches the integrity value.</p>' +
       '<pre class="code" id="tag"></pre>' +
-      '<p class="muted">Events are accepted only when the page\'s origin is exactly the registered domain, over https (http is accepted for a local address only).</p></section>' +
+      '<p class="muted">Only https pages on this exact domain count. A local address may use http.</p></section>' +
 
       '<section class="block"><div class="block-head"><h2>Check that it works</h2></div>' +
       '<ol class="steps"><li>Open a page of the site that carries the tag.</li>' +

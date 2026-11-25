@@ -113,7 +113,7 @@
           '<p>This prototype does not classify traffic yet, so there is no flagged or filtered figure: nothing has been checked, and nothing has been removed.</p>') + '</div>' +
         '<div class="figure-row"><div class="figure-value">' + fmt.int(t.pageviews) + '</div>' +
         '<div class="figure-note">' + App.delta(t.pageviews, prior && prior.pageviews, { range: range, good: 'up' }) + '</div></div>' +
-        '<div class="flagline"><span><b>' + NOT_CLASSIFIED + '</b> <span class="muted">· flagged traffic and the rules that fired will show here</span></span></div></div>' +
+        '<div class="flagline"><span><b>' + NOT_CLASSIFIED + '</b> <span class="muted">· flagged traffic will show here</span></span></div></div>' +
 
         figure(App.info('visitors', 'Visitors (sum of daily)', '<p>A visitor is counted once per day and never linked across days, so a multi-day figure is the sum of daily visitors.</p>'),
           fmt.int(t.visitors), NOT_CLASSIFIED) +
@@ -151,7 +151,7 @@
       byId('empty').hidden = true;
 
       renderHeadline(t, result.prior, range);
-      byId('legend').innerHTML = Charts.legend(series) + '<span class="muted">Flagged band: ' + NOT_CLASSIFIED.toLowerCase() + '</span>';
+      byId('legend').innerHTML = Charts.legend(series) + '<span class="muted">No flagged band yet</span>';
       series[0].values = rows.map(function (r) { return r.pageviews; });
       Charts.columns(byId('chart'), {
         label: 'Page views per day, as counted, last ' + range + ' days',
