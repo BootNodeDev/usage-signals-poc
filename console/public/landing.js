@@ -82,9 +82,8 @@
   }
 
   function tenantActions(project) {
-    var active = project.state === 'active';
-    var openConsole = '<a class="button ' + (active ? 'button-line' : 'button-ink') + '" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">Open console</a>';
-    if (!active) return openConsole;
+    var openConsole = '<a class="button button-line" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">Open console</a>';
+    if (project.state !== 'active') return openConsole;
     return '<div class="head-actions">' + openConsole + '<div class="visit-split"><a id="visit-site" href="' + escapeHtml(siteUrl(project)) + '" target="_blank" rel="noopener">View site' +
       EXTERNAL_ICON + '</a><button id="refresh" type="button" aria-label="Refresh the figures" title="Refresh the figures"' +
       (state.visited[project.slug] ? '' : ' disabled') + '>' + REFRESH_ICON + '</button></div>' +
@@ -142,7 +141,7 @@
   function operatorPreview() {
     var rows = D.sortRows(state.rows, function (row) { return row.totals.pageviews; }, true);
     return head('<h2>All projects</h2>', rows.length + ' projects, last ' + RANGE_DAYS + ' days',
-      '<a class="button button-ink" href="/operator/projects" target="_blank" rel="noopener">Open console</a>') +
+      '<a class="button button-line" href="/operator/projects" target="_blank" rel="noopener">Open console</a>') +
       '<div class="table-wrap"><table><thead><tr><th>Project</th><th class="num">Page views</th><th class="num">Visitors</th><th class="num">Visits</th>' +
       '<th class="num">Bounce rate</th><th class="num">Visit duration</th></tr></thead><tbody>' + rows.map(function (row) {
         var t = row.totals;

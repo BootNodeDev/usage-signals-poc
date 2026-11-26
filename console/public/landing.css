@@ -146,7 +146,6 @@ main { padding-bottom: 56px; }
 .project-list button[aria-current="true"] { background: var(--tone); color: var(--ink); }
 
 .button { display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 999px; font-size: 15px; font-weight: 700; text-decoration: none; }
-.button-ink { background: var(--ink); color: #ffffff; }
 .button-line { background: var(--sheet); color: var(--ink); box-shadow: inset 0 0 0 1.5px #cfcde0; }
 .button-line:hover { box-shadow: inset 0 0 0 1.5px var(--ink); }
 
