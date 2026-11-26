@@ -188,6 +188,8 @@ Path normalization, replacing "S, which is always redacted":
 > appears, in either case and next to any other text. A shorter fragment of a seed, and a seed
 > that is percent-encoded or sits in `service.name`, is not recognized.
 
+*Round two: replaced by the sentence in D below.*
+
 Delivery, replacing "The writer removes duplicates with a point-level key kept for 2 days, so a
 retried batch is not counted twice.":
 
@@ -195,6 +197,8 @@ retried batch is not counted twice.":
 > with the point-level key; that key is not built yet. Without it, a collector killed in the
 > middle of a delivery counted 2.4% too much in the review (3,750 requests sent, 3,840
 > stored), and a batch that a tenant's exporter sends three times is counted three times.
+
+*Round two: the writer now removes duplicates. Replaced by the sentence in A below.*
 
 ## The nine points
 
@@ -485,6 +489,7 @@ table at the top.
   advised, the older SDK bounds that start at 0, cumulative data, a status code sent as a
   string and every other unstorable point are answered 200 by the collector, because it
   accepts a request before the writer sees it. The script asserts this as a finding.
+- *Round two: the next item no longer holds. The run uses a Builder build; see C below.*
 - **The Builder.** The run uses the contrib image restricted by configuration.
 - **"Synced".** `fsync: true` is configured. Killing the collector process does not lose a
   batch with or without it; only a power loss or a kernel crash would show the difference.
