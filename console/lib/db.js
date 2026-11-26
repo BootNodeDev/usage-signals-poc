@@ -80,3 +80,24 @@ export async function findActiveSiteByDomain(domain) {
   );
   return rows[0] ?? null;
 }
+
+/**
+ * Runs `task` while this connection holds a transaction-level advisory lock on `key`, and returns
+ * null without running it when another connection holds the lock. A session-level lock would not
+ * hold through Neon's pooled connection, which hands each transaction to any server connection.
+ */
+export async function withTransactionLock(key, task) {
+  const client = await getPool().connect();
+  let releaseError;
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT pg_try_advisory_xact_lock($1) AS locked', [key]);
+    if (!rows[0].locked) return null;
+    return await task();
+  } finally {
+    await client.query('ROLLBACK').catch((error) => {
+      releaseError = error;
+    });
+    client.release(releaseError);
+  }
+}
