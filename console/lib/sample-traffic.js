@@ -3,7 +3,7 @@
 // have no sample yet, so a missed run is caught up by the next one and no run state is kept.
 // Page views go to Umami with the tag "sample", which keeps them apart from real visits; Umami
 // tells which hours are done. API metrics go to usage_signals.api_metric_minute, where real API
-// ingestion will write, as one row per hour, route, method and status with service "sample".
+// ingestion will write, as one row per hour, route, method and status under each site's service.
 // A database lock lets only one run fill at a time, since Vercel can deliver a run twice.
 import { createHash } from 'node:crypto';
 import { apiMinutesOf, insertApiMinute, listSites, withTransactionLock } from './db.js';
@@ -22,7 +22,6 @@ const MAX_HOURS_PER_RUN = 72;
 const MAX_API_HOURS_PER_RUN = 240;
 const CONCURRENT_SENDS = 8;
 const SAMPLE_TAG = 'sample';
-const SAMPLE_SERVICE = 'sample';
 
 // Page views a day for each demo site, close to the hand-loaded sample of October and November.
 export const SAMPLE_SITES = {
@@ -31,11 +30,12 @@ export const SAMPLE_SITES = {
   'demo-site-c': { pageViewsPerDay: 15, pages: ['/demo/', '/demo/explorer', '/demo/status'] },
 };
 
-// API requests a day for each demo site.
+// The API service of each demo site and its requests a day. Each name is used only by the
+// sample, so the hours a service already holds are the hours the sample has filled.
 export const SAMPLE_API = {
-  'demo-site-a': { requestsPerDay: 2400 },
-  'demo-site-b': { requestsPerDay: 900 },
-  'demo-site-c': { requestsPerDay: 120 },
+  'demo-site-a': { service: 'wallet-api', requestsPerDay: 2400 },
+  'demo-site-b': { service: 'anchor-api', requestsPerDay: 900 },
+  'demo-site-c': { service: 'explorer-api', requestsPerDay: 120 },
 };
 
 // The upper bounds of the shared histogram, in milliseconds; a 15th bucket holds the rest.
@@ -255,7 +255,8 @@ export function missingHours(done, now, first = FIRST_SAMPLE_HOUR) {
 
 /** The first hour a run looks at: 30 days back from `now`, rounded up, and not before `first`. */
 export function sampleWindowStart(now, first = FIRST_SAMPLE_HOUR) {
-  return Math.max(first, Math.ceil((now - WINDOW_MS) / HOUR_MS) * HOUR_MS);
+  const wholeHour = (time) => Math.ceil(time / HOUR_MS) * HOUR_MS;
+  return Math.max(wholeHour(first), wholeHour(now - WINDOW_MS));
 }
 
 function durationMs(next, medianMs) {
@@ -340,16 +341,17 @@ async function fillApiHours(now, apiSites, start) {
   const report = { filled: 0, requests: 0, remaining: 0 };
   let budget = MAX_API_HOURS_PER_RUN;
   for (const site of registered) {
-    const done = await apiMinutesOf(site.tenantId, SAMPLE_SERVICE, start, now);
+    const profile = apiSites[site.slug];
+    const done = await apiMinutesOf(site.tenantId, profile.service, start, now);
     for (const hour of missingHours(done, now, start)) {
-      const rows = planApiHour(site.slug, apiSites[site.slug], hour);
+      const rows = planApiHour(site.slug, profile, hour);
       if (rows.length === 0) continue;
       if (budget === 0) {
         report.remaining += 1;
         continue;
       }
       budget -= 1;
-      await insertApiMinute(site.tenantId, hour, SAMPLE_SERVICE, rows);
+      await insertApiMinute(site.tenantId, hour, profile.service, rows);
       report.filled += 1;
       report.requests += rows.reduce((sum, row) => sum + row.count, 0);
     }

@@ -20,7 +20,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const TUESDAY_NOON = Date.parse('2026-11-24T12:00:00Z');
 const PROFILE = { pageViewsPerDay: 140, pages: ['/demo/', '/demo/pricing', '/demo/docs'] };
-const API_PROFILE = { requestsPerDay: 2400 };
+const API_PROFILE = { service: 'sample-test-api', requestsPerDay: 2400 };
 const BOUNDS_MS = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000];
 
 function planDay(dayStart) {
@@ -68,6 +68,8 @@ describe('sample traffic plan', () => {
     assert.ok(now - start <= 30 * DAY, `window of ${(now - start) / DAY} days`);
     assert.ok(now - start > 30 * DAY - HOUR);
     assert.equal(sampleWindowStart(first + 2 * DAY, first), first);
+    // A first hour given mid-hour starts at the next whole hour, so every run plans the same hours.
+    assert.equal(sampleWindowStart(first + 2 * DAY, first + 15 * 60_000), first + HOUR);
   });
 });
 
@@ -181,7 +183,7 @@ describe('sample traffic run against the local stack', () => {
     });
   });
 
-  it('writes the planned API rows of a missing hour once, as service "sample"', async () => {
+  it('writes the planned API rows of a missing hour once, under the profile\'s service', async () => {
     const { rows: [tenant] } = await pool.query(
       `SELECT tenant_id AS id FROM usage_signals.site WHERE slug = $1`,
       [site.slug],
@@ -189,8 +191,8 @@ describe('sample traffic run against the local stack', () => {
     const stored = async () => {
       const { rows } = await pool.query(
         `SELECT coalesce(sum(request_count), 0)::int AS n FROM usage_signals.api_metric_minute
-          WHERE tenant_id = $1 AND minute = $2 AND service = 'sample'`,
-        [tenant.id, new Date(hour)],
+          WHERE tenant_id = $1 AND minute = $2 AND service = $3`,
+        [tenant.id, new Date(hour), API_PROFILE.service],
       );
       return rows[0].n;
     };
@@ -218,8 +220,8 @@ describe('sample traffic run against the local stack', () => {
     assert.equal(webFails.error, 'page views broke');
     assert.ok(webFails.api.remaining === 0 && webFails.api.error === undefined);
     await pool.query(
-      `DELETE FROM usage_signals.api_metric_minute WHERE minute = $1 AND service = 'sample'`,
-      [new Date(hour)],
+      `DELETE FROM usage_signals.api_metric_minute WHERE minute = $1 AND service = $2`,
+      [new Date(hour), API_PROFILE.service],
     );
     const apiFails = await fillSampleTraffic({
       now, sites, apiSites: { [site.slug]: brokenApi }, first: hour,
