@@ -39,12 +39,59 @@ You need Docker, Node 24 or newer, and pnpm.
    | Demo site of Aurora Wallet | http://localhost:4301/demo/ |
    | Umami, login `admin` and password `umami` | http://localhost:3301 |
 
+## Try the gateway checks
+
+The gateway accepts an event only from a registered site. It refuses identity fields that only
+the gateway may set. The values below point at the live demo. To use your local stack, set them
+to `http://localhost:4300`, `http://localhost:4301` and `a0000000-0000-4000-8000-0000000000aa`.
+
+```sh
+GATEWAY=https://usage-signals-poc.vercel.app
+ORIGIN=https://usage-signals-poc-demo-site-a.vercel.app
+WEBSITE=f0000000-0000-4000-8000-0000000000ff
+```
+
+Each command prints the response body and then the HTTP status code.
+
+1. The gateway accepts a normal event.
+
+   ```sh
+   curl -s -w ' %{http_code}\n' "$GATEWAY/api/e" -H "origin: $ORIGIN" \
+     -H 'content-type: application/json' \
+     -d "{\"type\":\"event\",\"payload\":{\"website\":\"$WEBSITE\",\"url\":\"/\"}}"
+   ```
+
+   `{} 202`
+
+2. The gateway refuses an event from a foreign origin.
+
+   ```sh
+   curl -s -w ' %{http_code}\n' "$GATEWAY/api/e" -H 'origin: https://evil.example' \
+     -H 'content-type: application/json' \
+     -d "{\"type\":\"event\",\"payload\":{\"website\":\"$WEBSITE\",\"url\":\"/\"}}"
+   ```
+
+   `{"error":"Origin is not a registered domain of an active project."} 403`
+
+3. The gateway refuses an event that sets the visitor's address.
+
+   ```sh
+   curl -s -w ' %{http_code}\n' "$GATEWAY/api/e" -H "origin: $ORIGIN" \
+     -H 'content-type: application/json' \
+     -d "{\"type\":\"event\",\"payload\":{\"website\":\"$WEBSITE\",\"url\":\"/\",\"ip\":\"9.9.9.9\"}}"
+   ```
+
+   `{"error":"These fields are set by the gateway and must not be sent: ip."} 400`
+
+The gateway stores the first event as flagged, because `curl` sends a bot User-Agent and no
+`Sec-Fetch-*` headers. The next section explains the flags.
+
 ## Try the flags
 
 The gateway flags an event that matches a rule: a known bot, missing `Sec-Fetch-*` headers, or
 more than 10 User-Agents from one network in a day. It stores the event and counts it apart.
 
-1. Visit the demo site of Aurora Wallet in a browser. The page view is counted.
+1. Visit the demo site of Aurora Wallet in a browser. The gateway counts the page view.
 2. Send an event the way a script does. It has a bot User-Agent and no `Sec-Fetch-*` headers.
 
    ```sh
@@ -53,7 +100,7 @@ more than 10 User-Agents from one network in a day. It stores the event and coun
      -d '{"type":"event","payload":{"website":"a0000000-0000-4000-8000-0000000000aa","url":"/"}}'
    ```
 
-3. Send 11 events from one network, each with another User-Agent. The 11th is flagged.
+3. Send 11 events from one network, each with another User-Agent. The gateway flags the eleventh.
 
    ```sh
    for i in $(seq 1 11); do

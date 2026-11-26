@@ -8,6 +8,7 @@ records a demo.
 
 - Live demo: https://usage-signals-poc.vercel.app
 - Demo video: https://vimeo.com/1248550588
+- Try the gateway checks: three `curl` commands in [`console/README.md`](console/README.md#try-the-gateway-checks)
 
 ## RFP requirements
 
