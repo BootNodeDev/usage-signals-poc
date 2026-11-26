@@ -155,9 +155,9 @@
     var rows = D.sortRows(state.rows, function (row) { return row.totals.visitors; }, true);
     return head('<h2>Totals per project</h2>', 'What anyone can see, last ' + RANGE_DAYS + ' days',
       '<a class="button button-line" href="/public" target="_blank" rel="noopener">Open console</a>') +
-      '<div class="table-wrap"><table><thead><tr><th class="rank">#</th><th>Project</th><th class="num">Visitors</th><th class="num">Page views</th></tr></thead><tbody>' +
-      rows.map(function (row, index) {
-        return '<tr><td class="rank">' + (index + 1) + '</td><td class="name"><b>' + escapeHtml(row.project.name) + '</b></td>' +
+      '<div class="table-wrap"><table><thead><tr><th>Project</th><th class="num">Visitors</th><th class="num">Page views</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr><td class="name"><b>' + escapeHtml(row.project.name) + '</b></td>' +
           '<td class="num">' + count(row.totals.visitors) + '</td><td class="num">' + count(row.totals.pageviews) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
