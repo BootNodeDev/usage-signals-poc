@@ -177,7 +177,7 @@ describe('sample traffic run against the local stack', () => {
       pageViews: 0,
       failedHours: 0,
       remaining: 0,
-      api: { filled: 0, requests: 0 },
+      api: { filled: 0, requests: 0, remaining: 0 },
     });
   });
 
@@ -202,9 +202,30 @@ describe('sample traffic run against the local stack', () => {
     assert.ok(planned > 0);
     const run = () =>
       fillSampleTraffic({ now: hour + HOUR + 60_000, sites: {}, apiSites: { [site.slug]: API_PROFILE }, first: hour });
-    assert.deepEqual((await run()).api, { filled: 1, requests: planned });
-    assert.deepEqual((await run()).api, { filled: 0, requests: 0 });
+    assert.deepEqual((await run()).api, { filled: 1, requests: planned, remaining: 0 });
+    assert.deepEqual((await run()).api, { filled: 0, requests: 0, remaining: 0 });
     assert.equal(await stored(), planned);
+  });
+
+  it('fills the API rows when the page views fail, and the page views when the API rows fail', async () => {
+    const broken = { get pageViewsPerDay() { throw new Error('page views broke'); }, pages: PROFILE.pages };
+    const brokenApi = { get requestsPerDay() { throw new Error('API rows broke'); } };
+    const now = hour + HOUR + 60_000;
+    await clearHour();
+    const webFails = await fillSampleTraffic({
+      now, sites: { [site.slug]: broken }, apiSites: { [site.slug]: API_PROFILE }, first: hour,
+    });
+    assert.equal(webFails.error, 'page views broke');
+    assert.ok(webFails.api.remaining === 0 && webFails.api.error === undefined);
+    await pool.query(
+      `DELETE FROM usage_signals.api_metric_minute WHERE minute = $1 AND service = 'sample'`,
+      [new Date(hour)],
+    );
+    const apiFails = await fillSampleTraffic({
+      now, sites, apiSites: { [site.slug]: brokenApi }, first: hour,
+    });
+    assert.equal(apiFails.api.error, 'API rows broke');
+    assert.equal(apiFails.filled, 1);
   });
 
   it('still reads single hours from Umami when the first sample hour is months back', async () => {

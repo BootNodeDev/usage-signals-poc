@@ -18,6 +18,8 @@ const WINDOW_MS = 30 * 24 * HOUR_MS;
 // Any fixed number: it names the run's advisory lock in Postgres.
 const RUN_LOCK_KEY = 4_502_028;
 const MAX_HOURS_PER_RUN = 72;
+// API rows are local inserts, cheaper than page views sent to Umami one by one.
+const MAX_API_HOURS_PER_RUN = 240;
 const CONCURRENT_SENDS = 8;
 const SAMPLE_TAG = 'sample';
 const SAMPLE_SERVICE = 'sample';
@@ -317,22 +319,36 @@ export function fillSampleTraffic({
 } = {}) {
   const start = sampleWindowStart(now, first);
   return withTransactionLock(RUN_LOCK_KEY, async () => ({
-    ...(await fillHours(now, sites, start)),
-    api: await fillApiHours(now, apiSites, start),
+    ...(await settled('page views', fillHours(now, sites, start))),
+    api: await settled('API rows', fillApiHours(now, apiSites, start)),
   }));
 }
 
-/** Writes the sample API rows of every complete hour that has none yet. */
+/** A failed fill becomes `{ error }`, so the other fill still runs. */
+function settled(what, fill) {
+  return fill.catch((error) => {
+    console.error(`sample traffic: ${what} failed: ${error.message}`);
+    return { error: error.message };
+  });
+}
+
+/** Writes the sample API rows of every complete hour that has none yet, at most MAX_API_HOURS_PER_RUN. */
 async function fillApiHours(now, apiSites, start) {
   const registered = (await listSites()).filter(
     (site) => site.state === 'active' && apiSites[site.slug],
   );
-  const report = { filled: 0, requests: 0 };
+  const report = { filled: 0, requests: 0, remaining: 0 };
+  let budget = MAX_API_HOURS_PER_RUN;
   for (const site of registered) {
     const done = await apiMinutesOf(site.tenantId, SAMPLE_SERVICE, start, now);
     for (const hour of missingHours(done, now, start)) {
       const rows = planApiHour(site.slug, apiSites[site.slug], hour);
       if (rows.length === 0) continue;
+      if (budget === 0) {
+        report.remaining += 1;
+        continue;
+      }
+      budget -= 1;
       await insertApiMinute(site.tenantId, hour, SAMPLE_SERVICE, rows);
       report.filled += 1;
       report.requests += rows.reduce((sum, row) => sum + row.count, 0);
@@ -383,6 +399,7 @@ export async function handleSampleTraffic(request) {
       return Response.json({ skipped: 'Another run is sending.' });
     }
     console.log(`sample traffic: ${JSON.stringify(report)}`);
+    if (report.error || report.api.error) return Response.json(report, { status: 503 });
     return Response.json(report, { status: report.failedHours > 0 ? 502 : 200 });
   } catch (error) {
     console.error(`sample traffic: run failed: ${error.message}`);
