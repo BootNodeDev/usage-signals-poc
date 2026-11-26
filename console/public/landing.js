@@ -253,9 +253,10 @@
       return;
     }
     if (event.target.closest('#refresh')) {
+      delete state.visited[current().project.slug];
       views = {};
       show().then(function (shown) {
-        if (shown) byId('refresh').focus();
+        if (shown) byId('visit-site').focus();
       });
       return;
     }
