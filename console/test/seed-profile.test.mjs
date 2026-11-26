@@ -136,7 +136,7 @@ describe('assertSites', () => {
     assertSites(['demo-site-a', 'a', 'x1', 'site-2-b'].map((slug) => withSlug(slug)));
   });
 
-  for (const reserved of ['api', 'demo', 'operator', 's', 'tenant']) {
+  for (const reserved of ['api', 'demo', 'operator', 'public', 's', 'tenant']) {
     it(`refuses the reserved word "${reserved}" and names the project`, () => {
       assert.throws(() => assertSites([withSlug(reserved, 'Clashing project')]), /"Clashing project" is reserved/);
     });
