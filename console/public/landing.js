@@ -5,7 +5,7 @@
   var D = window.LData;
   var RANGE_DAYS = 30;
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  var state = { role: 'tenant', slug: null, rows: [] };
+  var state = { role: 'tenant', slug: null, rows: [], visited: {} };
   var views = {};
 
   function byId(id) { return document.getElementById(id); }
@@ -71,10 +71,23 @@
     return state.rows.filter(function (row) { return row.project.slug === state.slug; })[0] || tenantRows()[0];
   }
 
-  var TENANT_HEADING = 'Demo site';
+  var DEMO_PREFIX = 'Demo site ';
+  var EXTERNAL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
+  var REFRESH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
 
   function optionLabel(name) {
-    return name.indexOf(TENANT_HEADING + ' ') === 0 ? name.slice(TENANT_HEADING.length + 1) : name;
+    return name.indexOf(DEMO_PREFIX) === 0 ? name.slice(DEMO_PREFIX.length) : name;
+  }
+
+  function tenantActions(project) {
+    var openConsole = '<a class="button button-line" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">Open console</a>';
+    if (project.state !== 'active') return openConsole;
+    return '<div class="head-actions">' + openConsole + '<div class="visit-split"><a id="visit-site" href="' + escapeHtml(siteUrl(project)) + '" target="_blank" rel="noopener">View site' +
+      EXTERNAL_ICON + '</a><button id="refresh" type="button" aria-label="Refresh the figures" title="Refresh the figures"' +
+      (state.visited[project.slug] ? '' : ' disabled') + '>' + REFRESH_ICON + '</button></div>' +
+      '<p class="visit-note">Viewing the site counts a page view. Refresh to see it.</p></div>';
   }
 
   function head(title, note, action) {
@@ -112,8 +125,7 @@
           (other === row ? ' aria-current="true"' : '') + '>' + escapeHtml(optionLabel(other.project.name)) + '</button></li>';
       }).join('') + '</ul></div>' : '';
     var smallDay = row.daily.some(function (entry) { return isSmall(entry.pageviews); });
-    return head('<h2>' + TENANT_HEADING + '</h2>' + picker, 'Last ' + RANGE_DAYS + ' days',
-      '<a class="button button-ink" href="' + consoleUrl(project) + '" target="_blank" rel="noopener">View the console</a>') +
+    return head('<h2>Stats for site</h2>' + picker, 'Last ' + RANGE_DAYS + ' days', tenantActions(project)) +
       '<div class="figures">' +
         figure('Page views', count(totals.pageviews), 'Flagged traffic left out') +
         figure('Visitors', count(totals.visitors), 'Each person counts once a day') +
@@ -129,7 +141,7 @@
   function operatorPreview() {
     var rows = D.sortRows(state.rows, function (row) { return row.totals.pageviews; }, true);
     return head('<h2>All projects</h2>', rows.length + ' projects, last ' + RANGE_DAYS + ' days',
-      '<a class="button button-ink" href="/operator/projects" target="_blank" rel="noopener">View the console</a>') +
+      '<a class="button button-line" href="/operator/projects" target="_blank" rel="noopener">Open console</a>') +
       '<div class="table-wrap"><table><thead><tr><th>Project</th><th class="num">Page views</th><th class="num">Visitors</th><th class="num">Visits</th>' +
       '<th class="num">Bounce rate</th><th class="num">Visit duration</th></tr></thead><tbody>' + rows.map(function (row) {
         var t = row.totals;
@@ -156,12 +168,6 @@
       return;
     }
     preview.innerHTML = state.role === 'operator' ? operatorPreview() : state.role === 'public' ? publicPreview() : tenantPreview();
-    var project = current().project;
-    byId('visit-name').textContent = project.name;
-    byId('visit-link').textContent = 'Open ' + project.name;
-    byId('visit-link').href = siteUrl(project);
-    byId('visit-text-link').href = siteUrl(project);
-    byId('visit').hidden = project.state !== 'active';
   }
 
   function viewQuery() {
@@ -239,6 +245,19 @@
   byId('preview').addEventListener('click', function (event) {
     if (event.target.closest('#project-button')) {
       toggleProjects(byId('project-list').hidden);
+      return;
+    }
+    if (event.target.closest('#visit-site')) {
+      state.visited[current().project.slug] = true;
+      byId('refresh').disabled = false;
+      return;
+    }
+    if (event.target.closest('#refresh')) {
+      delete state.visited[current().project.slug];
+      views = {};
+      show().then(function (shown) {
+        if (shown) byId('visit-site').focus();
+      });
       return;
     }
     var choice = event.target.closest('[data-slug]');
