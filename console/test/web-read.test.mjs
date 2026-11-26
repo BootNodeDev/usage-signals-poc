@@ -460,9 +460,10 @@ describe('GET /api/public/projects', () => {
     assert.ok(!text.includes(TENANTS.find((tenant) => tenant.status === 'suspended').name), 'the answer lists a suspended project');
   });
 
-  it('answers 400 for an unsupported range and 405 to anything but GET', async () => {
-    assert.equal((await fetch(`${GATEWAY}/api/public/projects?days=14`)).status, 400);
-    assert.equal((await fetch(`${GATEWAY}/api/public/projects`)).status, 400);
+  it('answers 400 for an unsupported range or any other spelling of a range, and 405 to anything but GET', async () => {
+    for (const query of ['?days=14', '', '?days=07', '?days=7&days=7', '?days=7&nocache=1', '?nocache=1&days=7']) {
+      assert.equal((await fetch(`${GATEWAY}/api/public/projects${query}`)).status, 400, query);
+    }
     assert.equal((await fetch(`${GATEWAY}/api/public/projects?days=7`, { method: 'POST' })).status, 405);
   });
 });

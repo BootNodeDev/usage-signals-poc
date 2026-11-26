@@ -76,7 +76,6 @@
    -----------
    loadPublic(rangeDays) -> Promise of [PublicRow]. One read for every active project.
    PublicRow = { project { name }, totals { pageviews, visitors (each a Count) } }
-     Nothing else about a project reaches this page: no id, slug, domain, state or other figure.
 
    sortRows(rows, pick, descending) -> [row]
      Sorts by pick(row), a Count or a rate. A Small sorts between zero and `below`; null

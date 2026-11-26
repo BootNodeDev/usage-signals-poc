@@ -165,7 +165,7 @@
   function render() {
     var preview = byId('preview');
     if (!state.rows.length) {
-      preview.innerHTML = '<p class="status">No project is enrolled yet.</p>';
+      preview.innerHTML = '<p class="status">' + (state.role === 'public' ? 'No project is active yet.' : 'No project is enrolled yet.') + '</p>';
       return;
     }
     preview.innerHTML = state.role === 'operator' ? operatorPreview() : state.role === 'public' ? publicPreview() : tenantPreview();
@@ -208,7 +208,7 @@
       if (key !== viewKey()) return false;
       if (state.role === 'tenant') state.slug = null;
       preview.innerHTML = '<p class="status">The figures could not be read: ' + escapeHtml(error.message) +
-        ' The <a href="/operator/projects">operator console</a> may say more.</p>';
+        (state.role === 'public' ? '' : ' The <a href="/operator/projects">operator console</a> may say more.') + '</p>';
       return false;
     });
   }

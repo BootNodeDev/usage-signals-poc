@@ -142,8 +142,8 @@ in `docker-compose.yml` on that date.
     - **The start page's public tab reads the same endpoint** and no longer shows the domain. Its "Open public page" button opens `/public`. The operator tab still reads `figures=totals` (decision 48).
     - **One row per site, as in the operator console.** Every project has one site today; a project with two would show its name twice.
     - **The page uses the console frame with its own navigation (`PUBLIC_NAV` in `console/public/app.js`) and links to neither console.** `public` joins the reserved slugs of 39.
-    - Cost: four Umami reads per active project, behind the same 10-second shared cache.
-    - Rejected: the operator endpoint with `figures=totals`, which sends ids, slugs, domains, states and every figure to anyone who opens the browser's network panel; a `figures=public` mode on the operator endpoint, which puts a read meant for anyone inside the handler that is to get the operator access check (decision 38).
+    - **Cost: four Umami reads per active project, behind the same 10-second shared cache.** The endpoint answers 400 to any query but `?days=7`, `?days=30` or `?days=90`, so extra parameters cannot make a new cache entry and send the reads to Umami again. Source: https://vercel.com/docs/caching/cdn-cache/purge ("The request URL (query strings are ignored for static files)" is part of the cache key).
+    - Rejected: a smaller read of two Umami calls (counted stats and series only), which would be a second code path for figures the operator and tenant endpoints read through `readFigures()`; the operator endpoint with `figures=totals`, which sends ids, slugs, domains, states and every figure to anyone who opens the browser's network panel; a `figures=public` mode on the operator endpoint, which puts a read meant for anyone inside the handler that is to get the operator access check (decision 38).
 
 ## Known limits
 - Nothing is access-controlled; see decision 38.

@@ -44,7 +44,6 @@
   function start() {
     var App = window.App;
     var range = null;
-    var loaded = false;
 
     function count(value) {
       return value && value.small
@@ -56,16 +55,17 @@
       byId('list-message').hidden = !title;
       byId('projects').hidden = Boolean(title);
       byId('list-message').innerHTML = title ? App.emptyState(title, text, action) : '';
-      if (title) byId('caption').textContent = '';
+      byId('caption').textContent = '';
+      byId('stamp').textContent = '';
     }
 
     function paint(rows) {
-      byId('stamp').textContent = App.stamp();
       if (!rows.length) {
         listMessage('No project is listed yet', 'Projects appear here once they are active.');
         return;
       }
       listMessage('');
+      byId('stamp').textContent = App.stamp();
       var sorted = D.sortRows(rows, function (row) { return row.totals.visitors; }, true);
       byId('projects').innerHTML = '<thead><tr><th class="num rank">#</th><th>Project</th><th class="num" aria-sort="descending">Visitors</th><th class="num">Page views</th></tr></thead><tbody>' +
         sorted.map(function (row, index) {
@@ -79,14 +79,11 @@
 
     function render(days) {
       range = days;
-      if (!loaded) listMessage('Loading figures', 'Reading the last ' + days + ' days for every active project.');
+      listMessage('Loading figures', 'Reading the last ' + days + ' days for every active project.');
       D.loadPublic(days).then(function (rows) {
-        if (range !== days) return;
-        loaded = true;
-        paint(rows);
+        if (range === days) paint(rows);
       }, function (error) {
         if (range !== days) return;
-        loaded = false;
         listMessage('Figures are unavailable', App.escapeHtml(error.message || 'The figures could not be read.') + ' Nothing is shown in their place.',
           '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
         byId('retry').addEventListener('click', function () { render(days); });
