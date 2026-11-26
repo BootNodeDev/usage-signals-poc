@@ -23,8 +23,7 @@ export function publicRow(site, figures) {
 export async function handlePublicProjects(request) {
   if (request.method !== 'GET') return json(405, { error: 'Use GET.' }, { allow: 'GET' });
   const dayCount = rangeParam(request);
-  // One URL per range, so extra parameters cannot get past the shared cache to Umami.
-  if (!dayCount || new URL(request.url).search !== `?days=${dayCount}`) return badRange();
+  if (!dayCount || new URL(request.url).search !== `?days=${dayCount}`) return badRange(); // one URL per range, so extra parameters cannot skip the shared cache
   try {
     const sites = (await listSites()).filter((site) => site.state === 'active');
     const figures = await Promise.all(sites.map((site) => readFigures(site, dayCount, [])));

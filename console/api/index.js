@@ -1,5 +1,4 @@
-// The single Vercel function. vercel.json rewrites /api/* and /demo/* here; routes are matched
-// by path. Tenant and operator endpoints are separate so each can get its own access check.
+// Each audience has its own endpoints so each can get its own access check.
 import { handleDemoSite } from '../lib/demo-site.js';
 import { handleEvent } from '../lib/gateway.js';
 import { handleOperatorProjects } from '../lib/operator-api.js';
