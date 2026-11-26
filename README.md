@@ -19,7 +19,7 @@ records a demo.
 | 3.1 | OSI-approved license | Built | [`LICENSE`](LICENSE) |
 | 3.1 | One monorepo with infrastructure as code | Partial: Vercel and Docker files only | [`vercel.json`](console/vercel.json), [`docker-compose.yml`](console/docker-compose.yml) |
 | 3.1 | Operator API keys for metrics | Planned | |
-| 3.2 | Events only from frontend code, bot and inflation defense | Partial: Origin check, forged fields refused, Umami's bot check; no fingerprint check | [`gateway.js`](console/lib/gateway.js), [`gateway.test.mjs`](console/test/gateway.test.mjs) |
+| 3.2 | Events only from frontend code, bot and inflation defense | Partial: Origin check, forged fields refused, three flag rules (known bot, missing `Sec-Fetch-*` headers, many User-Agents from one network) with flagged traffic counted apart; no fingerprint check | [`gateway.js`](console/lib/gateway.js), [`flags.js`](console/lib/flags.js), [`gateway.test.mjs`](console/test/gateway.test.mjs) |
 | 3.2 | Low-friction install | Partial: one script tag, tried on static pages only | [`demo-site.js`](console/lib/demo-site.js) |
 | 3.2 | Tracker pinned to a version | Built | [`pin-tracker.mjs`](console/scripts/pin-tracker.mjs), [`gateway.test.mjs`](console/test/gateway.test.mjs) |
 | 3.2 | Supply-chain defense | Partial: pinned file with SRI, Umami rebuild in check 6 | [`manifest.json`](console/public/s/manifest.json), [check 6](checks/check-06/README.md) |

@@ -1,5 +1,6 @@
 // Web figures for one site, read from Umami's statistics API with the admin account. The
 // browser never talks to Umami: the tenant and operator endpoints call this module.
+import { FLAG_TAG_PATTERN, RULES, rulesOf } from './flags.js';
 import { umamiGet } from './umami-admin.js';
 
 const RANGES = [7, 30, 90];
@@ -7,6 +8,10 @@ const DAY_MS = 86_400_000;
 // Short shared cache: several viewers cost one read, and a new page view shows within seconds.
 const CACHE_CONTROL = 'public, max-age=0, s-maxage=10';
 const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'device', browsers: 'browser' };
+// Regex operators, because Umami's "set" and "not set" build no SQL on PostgreSQL.
+const COUNTED = `tag=${encodeURIComponent(`nre.${FLAG_TAG_PATTERN}`)}`;
+export const FLAGGED = `tag=${encodeURIComponent(`re.${FLAG_TAG_PATTERN}`)}`;
+export const BY_TAG = `fields=${encodeURIComponent('["tag"]')}`;
 /** Every breakdown readFigures() can read, and what it reads by default. */
 export const DIMENSIONS = Object.keys(BREAKDOWNS);
 
@@ -34,9 +39,9 @@ export function unavailable(error) {
 }
 
 /** A visitor is counted once per day, so a multi-day figure is the sum of the daily figures. */
-export function sumOfDaily(rows) {
+export function sumOfDaily(rows, column = 'visitors') {
   let total = 0;
-  for (const row of rows) total += row.visitors;
+  for (const row of rows) total += row[column];
   return total;
 }
 
@@ -44,15 +49,30 @@ function byDay(series) {
   return new Map(series.map((point) => [point.x.slice(0, 10), point.y]));
 }
 
-/** One row per day of the range; Umami only returns the days that have events. */
-export function dailyRows(days, pageviewSeries, sessionSeries) {
-  const pageviews = byDay(pageviewSeries.pageviews);
-  const visitors = byDay(sessionSeries.sessions);
+/** One row per day of the range, from the counted and flagged series; Umami only returns days with events. */
+export function dailyRows(days, counted, flagged) {
+  const pageviews = byDay(counted.pageviews);
+  const visitors = byDay(counted.sessions);
+  const flaggedPageviews = byDay(flagged.pageviews);
   return days.map((day) => ({
     day,
     pageviews: pageviews.get(day) ?? 0,
     visitors: visitors.get(day) ?? 0,
+    flagged: flaggedPageviews.get(day) ?? 0,
   }));
+}
+
+/**
+ * Flagged page views by rule, from Umami's page views by tag. An event that matched two rules counts under both.
+ * @example
+ *   flaggedByRule([{ tag: 'bot+no-sec-fetch', views: '2' }]) // { bot: 2, 'no-sec-fetch': 2, 'many-agents': 0 }
+ */
+export function flaggedByRule(byTag) {
+  const counts = Object.fromEntries(RULES.map((rule) => [rule, 0]));
+  for (const row of byTag) {
+    for (const rule of rulesOf(row.tag)) if (rule in counts) counts[rule] += Number(row.views);
+  }
+  return counts;
 }
 
 // The range is whole UTC days and ends now: the current day is included, incomplete.
@@ -75,22 +95,30 @@ function totalsOf(stats, visitors) {
   };
 }
 
-/** Exact figures of one site for the last `dayCount` UTC days, today included, with the breakdowns named in `dimensions`. */
+/**
+ * Exact figures of one site for the last `dayCount` UTC days, today included, with the breakdowns
+ * named in `dimensions`. Every figure is counted, which leaves flagged events out, except `flagged`
+ * and `flagged_by_rule`.
+ */
 export async function readFigures(site, dayCount, dimensions = DIMENSIONS) {
   const now = Date.now();
   const { days, startAt, endAt } = rangeOf(dayCount, now);
   const base = `/api/websites/${site.umamiWebsiteId}`;
   const range = `startAt=${startAt}&endAt=${endAt}`;
-  const [stats, series, ...metrics] = await Promise.all([
-    umamiGet(`${base}/stats?${range}`),
-    umamiGet(`${base}/pageviews?${range}&unit=day&timezone=UTC`),
-    ...dimensions.map((name) => umamiGet(`${base}/metrics?${range}&type=${BREAKDOWNS[name]}`)),
+  const series = `${base}/pageviews?${range}&unit=day&timezone=UTC`;
+  const [stats, counted, flagged, byTag, ...metrics] = await Promise.all([
+    umamiGet(`${base}/stats?${range}&${COUNTED}`),
+    umamiGet(`${series}&${COUNTED}`),
+    umamiGet(`${series}&${FLAGGED}`),
+    umamiGet(`${base}/breakdown?${range}&${BY_TAG}&${FLAGGED}`),
+    ...dimensions.map((name) => umamiGet(`${base}/metrics?${range}&type=${BREAKDOWNS[name]}&${COUNTED}`)),
   ]);
-  const daily = dailyRows(days, series, series);
+  const daily = dailyRows(days, counted, flagged);
   return {
     days: dayCount,
     through: new Date(now).toISOString(),
-    totals: totalsOf(stats, sumOfDaily(daily)),
+    totals: { ...totalsOf(stats, sumOfDaily(daily)), flagged: sumOfDaily(daily, 'flagged') },
+    flagged_by_rule: flaggedByRule(byTag),
     // Umami's comparison period; its visitor figure is not a sum of daily and is left out.
     prior: stats.comparison ? totalsOf(stats.comparison, null) : null,
     daily,

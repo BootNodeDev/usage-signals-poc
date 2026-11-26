@@ -1,7 +1,8 @@
 // The only public write path for web events. It decides who the visitor is (address, user
-// agent) from the connection and never from the body, then forwards to Umami.
+// agent) from the connection and never from the body, flags it (flags.js), then forwards to Umami.
 import { truncatedClientAddress } from './client-address.js';
-import { findSiteByWebsiteId, isDomainOfActiveTenant } from './db.js';
+import { countAgentsToday, findSiteByWebsiteId, isDomainOfActiveTenant } from './db.js';
+import { MAX_AGENTS_PER_ADDRESS, flagTag } from './flags.js';
 import { forwardToUmami } from './umami.js';
 
 // Every field Umami's /api/send reads from the payload to identify or date a visitor.
@@ -162,7 +163,9 @@ async function acceptEvent(request) {
   refuseForgedFields(body);
   const { userAgent, ...visitor } = visitorIdentity(request);
   const event = { website: body.payload.website, hostname, ...allowedEventFields(body.payload) };
-  const status = await forwardToUmami({ ...event, userAgent }, visitor);
+  const agentsToday = await countAgentsToday(visitor.address, userAgent, MAX_AGENTS_PER_ADDRESS + 1);
+  const tag = flagTag(request.headers, userAgent, agentsToday);
+  const status = await forwardToUmami({ ...event, userAgent, tag }, visitor);
   if (UPSTREAM_CONTENT_REJECTIONS.includes(status)) {
     throw new Refusal(400, 'The analytics store rejected the event as malformed.');
   }

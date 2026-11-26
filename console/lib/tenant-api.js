@@ -2,6 +2,7 @@
 // that one site only. This is addressing, not access control: anyone who knows a slug can read
 // its aggregates. With sign-in, `projectOf` is where the session replaces the path.
 import { findSiteBySlug } from './db.js';
+import { MAX_AGENTS_PER_ADDRESS } from './flags.js';
 import { isSlug } from './slug.js';
 import { TRACKER } from './tracker.generated.js';
 import { badRange, cached, json, rangeParam, readFigures, unavailable } from './web-read.js';
@@ -30,7 +31,11 @@ export function handleTenantWeb(request, slug) {
   const dayCount = rangeParam(request);
   if (request.method === 'GET' && !dayCount) return badRange();
   return answer(request, slug, async (site) =>
-    cached({ project: publicProject(site), ...(await readFigures(site, dayCount)) }),
+    cached({
+      project: publicProject(site),
+      max_agents_per_address: MAX_AGENTS_PER_ADDRESS,
+      ...(await readFigures(site, dayCount)),
+    }),
   );
 }
 

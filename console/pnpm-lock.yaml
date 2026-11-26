@@ -11,6 +11,9 @@ importers:
       '@vercel/functions':
         specifier: 3.11.3
         version: 3.11.3
+      isbot:
+        specifier: 5.2.2
+        version: 5.2.2
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -59,6 +62,10 @@ packages:
   is-stream@2.0.1:
     resolution: {integrity: sha512-hFoiJiTl63nn+kstHGBtewWSKnQLpyb155KHheA1l39uvtO9nWIop1p3udqPcUd/xbF1VLMO4n7OI6p7RbngDg==}
     engines: {node: '>=8'}
+
+  isbot@5.2.2:
+    resolution: {integrity: sha512-iQcBXcd+Rv/pkubRyGh2utW2j1oPG5hZY6TUhVPpqK4G+o3IbxpJNx04hgksjc/N7GK5pEorUxDeg31cFgEk/w==}
+    engines: {node: '>=18'}
 
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
@@ -222,6 +229,8 @@ snapshots:
   human-signals@2.1.0: {}
 
   is-stream@2.0.1: {}
+
+  isbot@5.2.2: {}
 
   isexe@2.0.0: {}
 

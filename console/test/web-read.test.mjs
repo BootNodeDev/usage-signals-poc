@@ -1,30 +1,33 @@
 // The read side: events go in through the gateway, figures come back from the read endpoints.
 // Figures are whole-day ranges, so every assertion compares the endpoint before and after,
-// with visitors that are new on every run (a unique user agent each).
+// with visitors that are new on every run (a unique user agent and network each).
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { truncateAddress } from '../lib/client-address.js';
 import { requireEnv } from '../lib/config.js';
 import { operatorRow, smallCount } from '../lib/operator-api.js';
-import { dailyRows, sumOfDaily } from '../lib/web-read.js';
-import { TENANTS } from '../scripts/fixtures.mjs';
+import { dailyRows, flaggedByRule, sumOfDaily } from '../lib/web-read.js';
+import { FETCH_METADATA, TENANTS } from '../scripts/fixtures.mjs';
 
 const CONSOLE_ROOT = path.resolve(import.meta.dirname, '..');
 const GATEWAY = requireEnv('GATEWAY_URL');
 const UMAMI = requireEnv('UMAMI_URL');
 const SITE = TENANTS[1].site;
 const RUN = `${Date.now() % 100_000}.${Math.floor(Math.random() * 1_000)}`;
+const RUN_NETWORK = 1 + Math.floor(Math.random() * 254);
 const CHROME = {
-  address: '8.8.8.8',
+  address: `8.34.${RUN_NETWORK}.8`,
   country: 'US',
   userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.${RUN} Safari/537.36`,
 };
 const FIREFOX = {
-  address: '200.45.191.35',
+  address: `200.46.${RUN_NETWORK}.35`,
   country: 'AR',
   userAgent: `Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.${RUN}`,
 };
+const SCRIPT = { address: `190.211.${RUN_NETWORK}.9`, country: 'UY', userAgent: `curl/8.${RUN}`, fetchMetadata: false };
 const spawned = [];
 
 async function readWeb(base, slug, days) {
@@ -38,29 +41,31 @@ async function figures(days = 7) {
   return body;
 }
 
+function visitorHeaders(visitor) {
+  return {
+    'content-type': 'application/json',
+    'user-agent': visitor.userAgent,
+    'x-forwarded-for': visitor.address,
+    'x-vercel-ip-country': visitor.country,
+    ...(visitor.fetchMetadata !== false && FETCH_METADATA),
+  };
+}
+
 async function sendThroughGateway(visitor, url, referrer = '') {
   const response = await fetch(`${GATEWAY}/api/e`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      origin: `http://${SITE.domain}`,
-      'user-agent': visitor.userAgent,
-      'x-forwarded-for': visitor.address,
-      'x-vercel-ip-country': visitor.country,
-    },
+    headers: { origin: `http://${SITE.domain}`, ...visitorHeaders(visitor) },
     body: JSON.stringify({ type: 'event', payload: { website: SITE.umamiWebsiteId, url, referrer } }),
   });
   assert.equal(response.status, 202);
 }
 
-// The gateway refuses timestamps, so the event of the previous day is written the only way
-// one can be: straight into Umami, which accepts a timestamp from anyone who reaches it.
-async function sendYesterdayToUmami(visitor, url) {
+async function sendStraightToUmami(visitor, url, fields) {
   const response = await fetch(`${UMAMI}/api/send`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'cf-connecting-ip': '8.8.8.0',
+      'cf-connecting-ip': truncateAddress(visitor.address),
       'cf-ipcountry': visitor.country,
     },
     body: JSON.stringify({
@@ -70,7 +75,7 @@ async function sendYesterdayToUmami(visitor, url) {
         hostname: 'localhost',
         url,
         userAgent: visitor.userAgent,
-        timestamp: Math.floor(Date.now() / 1000) - 86_400,
+        ...fields,
       },
     }),
   });
@@ -94,14 +99,23 @@ describe('sum of daily visitors', () => {
   it('lays the series of Umami over every day of the range, oldest first', () => {
     const rows = dailyRows(
       ['2026-11-16', '2026-11-17', '2026-11-18'],
-      { pageviews: [{ x: '2026-11-18T00:00:00Z', y: 7 }, { x: '2026-11-16T00:00:00Z', y: 1 }] },
-      { sessions: [{ x: '2026-11-18T00:00:00Z', y: 2 }] },
+      {
+        pageviews: [{ x: '2026-11-18T00:00:00Z', y: 7 }, { x: '2026-11-16T00:00:00Z', y: 1 }],
+        sessions: [{ x: '2026-11-18T00:00:00Z', y: 2 }],
+      },
+      { pageviews: [{ x: '2026-11-17T00:00:00Z', y: 4 }], sessions: [{ x: '2026-11-17T00:00:00Z', y: 1 }] },
     );
     assert.deepEqual(rows, [
-      { day: '2026-11-16', pageviews: 1, visitors: 0 },
-      { day: '2026-11-17', pageviews: 0, visitors: 0 },
-      { day: '2026-11-18', pageviews: 7, visitors: 2 },
+      { day: '2026-11-16', pageviews: 1, visitors: 0, flagged: 0 },
+      { day: '2026-11-17', pageviews: 0, visitors: 0, flagged: 4 },
+      { day: '2026-11-18', pageviews: 7, visitors: 2, flagged: 0 },
     ]);
+  });
+
+  it('counts flagged page views under every rule their tag names', () => {
+    const byTag = [{ tag: 'bot', views: '3' }, { tag: 'bot+no-sec-fetch', views: '2' }, { tag: 'many-agents', views: '1' }];
+    assert.deepEqual(flaggedByRule(byTag), { bot: 5, 'no-sec-fetch': 2, 'many-agents': 1 });
+    assert.deepEqual(flaggedByRule([]), { bot: 0, 'no-sec-fetch': 0, 'many-agents': 0 });
   });
 });
 
@@ -114,7 +128,8 @@ describe('GET /api/tenant/web', () => {
     await sendThroughGateway(CHROME, '/', 'https://stellar.org/learn');
     await sendThroughGateway(CHROME, '/pricing', '/');
     await sendThroughGateway(FIREFOX, '/');
-    await sendYesterdayToUmami(CHROME, '/yesterday');
+    await sendThroughGateway(SCRIPT, '/');
+    await sendStraightToUmami(CHROME, '/yesterday', { timestamp: Math.floor(Date.now() / 1000) - 86_400 });
     later = await figures();
   });
 
@@ -131,6 +146,17 @@ describe('GET /api/tenant/web', () => {
     assert.equal(delta('visitors'), 3);
     assert.equal(later.totals.visitors, sumOfDaily(later.daily));
     assert.ok(later.totals.total_seconds >= earlier.totals.total_seconds);
+  });
+
+  it('counts the flagged page view apart, under each rule it matched', () => {
+    assert.equal(later.totals.flagged - earlier.totals.flagged, 1);
+    assert.equal(later.daily.at(-1).flagged - earlier.daily.at(-1).flagged, 1);
+    const change = (rule) => later.flagged_by_rule[rule] - earlier.flagged_by_rule[rule];
+    assert.deepEqual(
+      { bot: change('bot'), 'no-sec-fetch': change('no-sec-fetch'), 'many-agents': change('many-agents') },
+      { bot: 1, 'no-sec-fetch': 1, 'many-agents': 0 },
+    );
+    assert.equal(valueOf(later.breakdowns.countries, 'UY'), valueOf(earlier.breakdowns.countries, 'UY'));
   });
 
   it('reports one row per day of the range with the page views and visitors of that day', () => {
@@ -155,6 +181,15 @@ describe('GET /api/tenant/web', () => {
     assert.equal(change('browsers', 'chrome'), chromeSessions);
     assert.equal(change('browsers', 'firefox'), 1);
     assert.equal(change('devices', 'desktop'), chromeSessions + 1);
+  });
+
+  it('counts an event whose tag is not made of rule codes, such as the demo sample', async () => {
+    const before = await figures();
+    await sendStraightToUmami(FIREFOX, '/sample', { tag: 'sample' });
+    const after = await figures();
+    assert.equal(after.totals.pageviews, before.totals.pageviews + 1);
+    assert.equal(after.totals.flagged, before.totals.flagged);
+    assert.deepEqual(after.flagged_by_rule, before.flagged_by_rule);
   });
 
   it('names the project and says through when the figures run', () => {
@@ -202,13 +237,7 @@ describe('GET /api/tenant/web', () => {
     const [mine, theirs] = [await read(SITE), await read(other)];
     const response = await fetch(`${GATEWAY}/api/e`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        origin: `https://${other.domain}`,
-        'user-agent': FIREFOX.userAgent,
-        'x-forwarded-for': FIREFOX.address,
-        'x-vercel-ip-country': 'AR',
-      },
+      headers: { origin: `https://${other.domain}`, ...visitorHeaders(FIREFOX) },
       body: JSON.stringify({ type: 'event', payload: { website: other.umamiWebsiteId, url: '/theirs' } }),
     });
     assert.equal(response.status, 202);
@@ -273,29 +302,33 @@ describe('small counts in the operator view', () => {
 
   const site = { id: 'site-id', name: 'Some project', domain: 'some.project.test', state: 'active' };
   const figures = (totals) => ({
-    totals: { pageviews: 0, visitors: 0, visits: 0, bounces: 0, total_seconds: 0, ...totals },
-    daily: [{ day: '2026-11-17', pageviews: 0, visitors: 0 }, { day: '2026-11-18', pageviews: 1, visitors: 1 },
-      { day: '2026-11-19', pageviews: 12, visitors: 9 }],
+    totals: { pageviews: 0, visitors: 0, visits: 0, bounces: 0, total_seconds: 0, flagged: 0, ...totals },
+    flagged_by_rule: { bot: 12, 'no-sec-fetch': 3, 'many-agents': 0 },
+    daily: [{ day: '2026-11-17', pageviews: 0, visitors: 0, flagged: 0 }, { day: '2026-11-18', pageviews: 1, visitors: 1, flagged: 15 },
+      { day: '2026-11-19', pageviews: 12, visitors: 9, flagged: 4 }],
     breakdowns: { referrers: [], countries: [{ label: 'AR', value: 11 }, { label: 'UY', value: 2 }], devices: [], browsers: [] },
   });
 
   it('never returns a count of 1 to 9, in the totals, the daily series or a breakdown', () => {
-    const row = operatorRow(site, figures({ pageviews: 13, visitors: 9, visits: 11, bounces: 1, total_seconds: 660 }));
+    const row = operatorRow(site, figures({ pageviews: 13, visitors: 9, visits: 11, bounces: 1, total_seconds: 660, flagged: 19 }));
     assert.deepEqual(row.totals, {
       pageviews: 13, visitors: SMALL, visits: 11, bounces: SMALL,
-      bounce_rate: 1 / 11, avg_visit_seconds: 60, flagged: null,
+      bounce_rate: 1 / 11, avg_visit_seconds: 60, flagged: 19,
     });
+    assert.deepEqual(row.flagged_by_rule, { bot: 12, 'no-sec-fetch': SMALL, 'many-agents': 0 });
     assert.deepEqual(row.daily, [
-      { day: '2026-11-17', pageviews: 0 }, { day: '2026-11-18', pageviews: SMALL }, { day: '2026-11-19', pageviews: 12 },
+      { day: '2026-11-17', pageviews: 0, flagged: 0 },
+      { day: '2026-11-18', pageviews: SMALL, flagged: 15 },
+      { day: '2026-11-19', pageviews: 12, flagged: SMALL },
     ]);
     assert.deepEqual(row.breakdowns.countries, [{ label: 'AR', value: 11 }, { label: 'UY', value: SMALL }]);
   });
 
   it('hides the rates that fewer than 10 visits would give away, and has none without visits', () => {
-    const few = operatorRow(site, figures({ pageviews: 9, visitors: 9, visits: 9, bounces: 3, total_seconds: 90 }));
+    const few = operatorRow(site, figures({ pageviews: 9, visitors: 9, visits: 9, bounces: 3, total_seconds: 90, flagged: 2 }));
     assert.deepEqual(few.totals, {
       pageviews: SMALL, visitors: SMALL, visits: SMALL, bounces: SMALL,
-      bounce_rate: SMALL, avg_visit_seconds: SMALL, flagged: null,
+      bounce_rate: SMALL, avg_visit_seconds: SMALL, flagged: SMALL,
     });
     const none = operatorRow(site, figures({})).totals;
     assert.deepEqual([none.pageviews, none.visits, none.bounce_rate, none.avg_visit_seconds], [0, 0, null, null]);
@@ -306,7 +339,7 @@ describe('small counts in the operator view', () => {
 
 describe('GET /api/operator/projects', () => {
   const [, siteB, , siteD] = TENANTS.map((tenant) => tenant.site);
-  const COUNT_KEYS = ['pageviews', 'visitors', 'visits', 'bounces'];
+  const COUNT_KEYS = ['pageviews', 'visitors', 'visits', 'bounces', 'flagged'];
 
   async function exact(site) {
     const response = await fetch(`${GATEWAY}/api/tenant/${site.slug}/web?days=7`);
@@ -323,13 +356,7 @@ describe('GET /api/operator/projects', () => {
     for (const site of [siteB, siteD, siteD]) {
       const response = await fetch(`${GATEWAY}/api/e`, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          origin: origin[site.id],
-          'user-agent': CHROME.userAgent,
-          'x-forwarded-for': CHROME.address,
-          'x-vercel-ip-country': 'US',
-        },
+        headers: { origin: origin[site.id], ...visitorHeaders(CHROME) },
         body: JSON.stringify({ type: 'event', payload: { website: site.umamiWebsiteId, url: '/list' } }),
       });
       assert.equal(response.status, 202);
@@ -348,8 +375,14 @@ describe('GET /api/operator/projects', () => {
         id: site.id, slug: site.slug, name: TENANTS.find((t) => t.site === site).name, domain: site.domain, state: 'active',
       });
       for (const key of COUNT_KEYS) assertShown(row.totals[key], web.totals[key], `${site.slug} ${key}`);
+      for (const [rule, count] of Object.entries(row.flagged_by_rule)) {
+        assertShown(count, web.flagged_by_rule[rule], `${site.slug} flagged by ${rule}`);
+      }
       assert.equal(row.daily.length, web.daily.length);
-      row.daily.forEach((day, index) => assertShown(day.pageviews, web.daily[index].pageviews, `${site.slug} ${day.day}`));
+      row.daily.forEach((day, index) => {
+        assertShown(day.pageviews, web.daily[index].pageviews, `${site.slug} ${day.day}`);
+        assertShown(day.flagged, web.daily[index].flagged, `${site.slug} ${day.day} flagged`);
+      });
       for (const dimension of ['referrers', 'countries', 'devices', 'browsers']) {
         row.breakdowns[dimension].forEach((entry, index) => {
           assert.equal(entry.label, web.breakdowns[dimension][index].label);

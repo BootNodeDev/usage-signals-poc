@@ -28,6 +28,7 @@ services:
       DATABASE_URL: postgresql://poc:poc-local-only@postgres:5432/poc
       APP_SECRET: local-only-umami-app-secret
       DISABLE_TELEMETRY: "1"
+      DISABLE_BOT_CHECK: "1"
     ports:
       - "127.0.0.1:3301:3000"
     healthcheck:
@@ -48,6 +49,7 @@ services:
       DATABASE_URL: postgresql://poc:poc-local-only@postgres:5432/poc
       APP_SECRET: local-only-umami-app-secret
       DISABLE_TELEMETRY: "1"
+      DISABLE_BOT_CHECK: "1"
       GEOLITE_DB_PATH: /nonexistent/GeoLite2-City.mmdb
     ports:
       - "127.0.0.1:3302:3000"

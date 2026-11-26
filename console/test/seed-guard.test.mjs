@@ -80,6 +80,23 @@ describe('seed as a build step', () => {
     }
   });
 
+  it('applies the schema and seeds no tenant in a preview build, through DATABASE_URL alone', async () => {
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+    await client.connect();
+    try {
+      await client.query('DROP TABLE IF EXISTS usage_signals.agent_sighting');
+      const { status, output } = runSeed({
+        VERCEL: '1', VERCEL_ENV: 'preview', DATABASE_URL_UNPOOLED: undefined, UMAMI_URL: undefined, UMAMI_ADMIN_PASSWORD: undefined,
+      });
+      assert.equal(status, 0, output);
+      assert.match(output, /Seeded 0 tenants with the preview profile/);
+      const table = await client.query(`SELECT to_regclass('usage_signals.agent_sighting') AS name`);
+      assert.equal(table.rows[0].name, 'usage_signals.agent_sighting');
+    } finally {
+      await client.end();
+    }
+  });
+
   it('fails with a database message when the database is unreachable', () => {
     const unreachable = 'postgresql://poc:hunter2-secret@127.0.0.1:1/poc';
     const { status, output } = runSeed({ DATABASE_URL_UNPOOLED: unreachable });
