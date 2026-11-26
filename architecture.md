@@ -66,7 +66,7 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 | `GET /api/tenant/<slug>/project` | `lib/tenant-api.js` | The project, its website id and the pinned tracker |
 | `GET /api/tenant/<slug>/web?days=7\|30\|90` | `lib/tenant-api.js` | Web figures of one site |
 | `GET /api/tenant/<slug>/api?days=7\|30\|90` | `lib/tenant-api.js`, `lib/api-read.js` | API figures of one project, per route and day |
-| `GET /api/operator/projects?days=7\|30\|90` | `lib/operator-api.js` | Web and API figures of every project, small counts masked |
+| `GET /api/operator/projects?days=7\|30\|90[&figures=all\|totals\|one[&project=<slug>]]` | `lib/operator-api.js` | Web and API figures of every site, small counts masked. The start page asks for `totals` (no breakdowns) or `one` (one project's figures and referrers, the rest listed without figures) |
 | `GET /api/cron/sample-traffic` | `lib/sample-traffic.js` | Vercel cron: sample page views and API rows for the demo sites |
 | `/s/<version>/...` | `public/s/` | Pinned tracker, served with immutable caching |
 
@@ -83,7 +83,7 @@ Write path:
 Read path:
 
 1. A page calls `LData`, which fetches `/api/tenant/...` or `/api/operator/projects`.
-2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account.
+2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account: six reads per site, two per site with `figures=totals`, three in all with `figures=one`.
 3. The operator endpoint replaces counts from 1 to 9 with `{ small: true, below: 10 }`.
 4. Answers are cached by the CDN for 10 seconds (`Cache-Control: public, max-age=0, s-maxage=10`).
 

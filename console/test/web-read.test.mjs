@@ -361,8 +361,33 @@ describe('GET /api/operator/projects', () => {
     assert.ok(smallSeen > 0, 'the local data has no small count, so the marker was not exercised');
   });
 
-  it('answers 400 for an unsupported range and 405 to anything but GET', async () => {
+  it('reads only the totals, or only one project, when the start page asks for less', async () => {
+    const read = async (query) => (await fetch(`${GATEWAY}/api/operator/projects?days=7${query}`)).json();
+    const listed = (await read('')).projects.map((row) => row.project);
+
+    const totals = await read('&figures=totals');
+    assert.deepEqual(totals.projects.map((row) => row.project), listed);
+    for (const row of totals.projects) {
+      assert.ok(row.totals, row.project.slug);
+      assert.equal(row.daily.length, 7, row.project.slug);
+      assert.deepEqual(row.breakdowns, {}, row.project.slug);
+    }
+
+    const firstActive = listed.find((project) => project.state === 'active');
+    for (const [query, slug] of [['&figures=one', firstActive.slug], [`&figures=one&project=${siteD.slug}`, siteD.slug]]) {
+      const one = await read(query);
+      assert.deepEqual(one.projects.map((row) => row.project), listed, query);
+      const withFigures = one.projects.filter((row) => row.totals);
+      assert.deepEqual(withFigures.map((row) => row.project.slug), [slug], query);
+      assert.deepEqual(Object.keys(withFigures[0].breakdowns), ['referrers'], query);
+    }
+  });
+
+  it('answers 400 for an unsupported range or figures, 404 for an unknown project and 405 to anything but GET', async () => {
     assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=14`)).status, 400);
+    assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=7&figures=some`)).status, 400);
+    assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=7&figures=totals&project=${siteD.slug}`)).status, 400);
+    assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=7&figures=one&project=no-such-project`)).status, 404);
     assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=7`, { method: 'POST' })).status, 405);
   });
 });

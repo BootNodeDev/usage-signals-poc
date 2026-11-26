@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import pg from 'pg';
 import { percentileMs } from '../lib/api-read.js';
-import { operatorApi } from '../lib/operator-api.js';
+import { apiBySite, operatorApi } from '../lib/operator-api.js';
 import { requireEnv } from '../lib/config.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
 
@@ -54,6 +54,25 @@ describe('API figures in the operator view', () => {
       p95_ms: 120,
       routes: [{ label: 'GET /a', value: 37 }, { label: 'GET /b', value: SMALL }],
     });
+  });
+
+  it('reads each tenant once, shows it on its first site, and gives null when a read fails', async () => {
+    const sites = [
+      { id: 's1', slug: 'one', tenantId: 't1' },
+      { id: 's2', slug: 'two', tenantId: 't1' },
+      { id: 's3', slug: 'three', tenantId: 't2' },
+    ];
+    const reads = [];
+    const read = async (site) => {
+      reads.push(site.id);
+      if (site.tenantId === 't2') throw new Error('database down');
+      return figure(40, 2, 120);
+    };
+    const shown = await apiBySite(sites, 7, read);
+    assert.deepEqual(reads, ['s1', 's3']);
+    assert.deepEqual(shown.get('s1'), operatorApi(figure(40, 2, 120)));
+    assert.equal(shown.has('s2'), false);
+    assert.equal(shown.get('s3'), null);
   });
 
   it('withholds the share and p95 under 10 requests, and has none without requests', () => {
