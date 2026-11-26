@@ -177,6 +177,22 @@
     }).join('') + '</tbody></table>';
   }
 
+  function csvCell(value) {
+    if (typeof value === 'number') return String(value);
+    var text = String(value);
+    var formula = /^[\s=+\-@]/.test(text); /* spreadsheets run such text as a formula (OWASP, CSV injection) */
+    return '"' + (formula ? "'" : '') + text.replace(/"/g, '""') + '"';
+  }
+
+  function downloadCsv(name, headers, rows) {
+    var text = [headers].concat(rows).map(function (row) { return row.map(csvCell).join(',') + '\r\n'; }).join('');
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob(['\uFEFF' + text], { type: 'text/csv;charset=utf-8' })); /* the byte order mark makes Excel read UTF-8 */
+    link.download = name;
+    link.click();
+    setTimeout(function () { URL.revokeObjectURL(link.href); }, 40000); /* some browsers start the download after click() returns; FileSaver.js waits 40 s */
+  }
+
   /* Chart or table: the same rows, so every value is reachable without hover. */
   function viewToggle(button, chartEl, tableEl) {
     button.addEventListener('click', function () {
@@ -343,7 +359,7 @@
     tenant: tenant, NOT_IN_PROTOTYPE: NOT_IN_PROTOTYPE, store: store,
     fmt: fmt, delta: delta, escapeHtml: escapeHtml, lowerFirst: lowerFirst, icon: icon,
     statePill: statePill, projectName: projectName, empty: empty, emptyState: emptyState, dash: dash,
-    qualityBar: qualityBar, barRows: barRows, barList: barList, dataTable: dataTable, viewToggle: viewToggle,
+    qualityBar: qualityBar, barRows: barRows, barList: barList, dataTable: dataTable, downloadCsv: downloadCsv, viewToggle: viewToggle,
     info: info, tabs: tabs, rangeControl: rangeControl, stamp: stamp, plotHeight: plotHeight
   };
 })();

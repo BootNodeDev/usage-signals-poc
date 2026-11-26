@@ -35,7 +35,8 @@
               <h2 id="chart-title">Page views per day</h2>
               <div class="block-tools">
                 <div class="legend" id="legend"></div>
-                <button class="btn btn-quiet btn-small" type="button" id="toggle">View table</button>
+                <button class="btn btn-small" type="button" id="toggle">View table</button>
+                <button class="btn btn-small" type="button" id="csv">Download CSV</button>
               </div>
             </div>
             <div class="chart" id="chart"></div>
@@ -189,6 +190,12 @@
       renderRules(result.byRule, t.flagged);
     }
 
+    function downloadDays() {
+      var rows = D.web(state.range).rows;
+      App.downloadCsv(project.slug + '-web-' + rows[0].day + '-to-' + rows[rows.length - 1].day + '.csv', ['Day', 'Page views', 'Visitors'],
+        rows.map(function (r) { return [r.day, r.pageviews, r.visitors]; }));
+    }
+
     function render(range) {
       state.range = range;
       message('Loading figures', 'Reading the last ' + range + ' days for ' + App.escapeHtml(project.domain) + '.');
@@ -213,6 +220,7 @@
       if (D.web(state.range).totals) renderBreakdown();
     });
     App.viewToggle(byId('toggle'), byId('chart'), byId('table'));
+    byId('csv').addEventListener('click', downloadDays);
     App.rangeControl(byId('range'), render);
   }
 

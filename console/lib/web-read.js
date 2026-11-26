@@ -12,6 +12,8 @@ const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'devi
 const COUNTED = `tag=${encodeURIComponent(`nre.${FLAG_TAG_PATTERN}`)}`;
 export const FLAGGED = `tag=${encodeURIComponent(`re.${FLAG_TAG_PATTERN}`)}`;
 export const BY_TAG = `fields=${encodeURIComponent('["tag"]')}`;
+/** Every breakdown readFigures() can read, and what it reads by default. */
+export const DIMENSIONS = Object.keys(BREAKDOWNS);
 
 export function json(status, body, headers = {}) {
   return Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } });
@@ -94,16 +96,16 @@ function totalsOf(stats, visitors) {
 }
 
 /**
- * Exact figures of one site for the last `dayCount` UTC days, today included. Every figure is
- * counted, which leaves flagged events out, except `flagged` and `flagged_by_rule`.
+ * Exact figures of one site for the last `dayCount` UTC days, today included, with the breakdowns
+ * named in `dimensions`. Every figure is counted, which leaves flagged events out, except `flagged`
+ * and `flagged_by_rule`.
  */
-export async function readFigures(site, dayCount) {
+export async function readFigures(site, dayCount, dimensions = DIMENSIONS) {
   const now = Date.now();
   const { days, startAt, endAt } = rangeOf(dayCount, now);
   const base = `/api/websites/${site.umamiWebsiteId}`;
   const range = `startAt=${startAt}&endAt=${endAt}`;
   const series = `${base}/pageviews?${range}&unit=day&timezone=UTC`;
-  const dimensions = Object.keys(BREAKDOWNS);
   const [stats, counted, flagged, byTag, ...metrics] = await Promise.all([
     umamiGet(`${base}/stats?${range}&${COUNTED}`),
     umamiGet(`${series}&${COUNTED}`),
@@ -112,10 +114,6 @@ export async function readFigures(site, dayCount) {
     ...dimensions.map((name) => umamiGet(`${base}/metrics?${range}&type=${BREAKDOWNS[name]}&${COUNTED}`)),
   ]);
   const daily = dailyRows(days, counted, flagged);
-  const breakdowns = {};
-  dimensions.forEach((name, index) => {
-    breakdowns[name] = metrics[index].map((row) => ({ label: row.x, value: row.y }));
-  });
   return {
     days: dayCount,
     through: new Date(now).toISOString(),
@@ -124,7 +122,9 @@ export async function readFigures(site, dayCount) {
     // Umami's comparison period; its visitor figure is not a sum of daily and is left out.
     prior: stats.comparison ? totalsOf(stats.comparison, null) : null,
     daily,
-    breakdowns,
+    breakdowns: Object.fromEntries(
+      dimensions.map((name, index) => [name, metrics[index].map((row) => ({ label: row.x, value: row.y }))]),
+    ),
   };
 }
 

@@ -41,13 +41,17 @@
 
    Operator console
    ----------------
-   loadOperator(rangeDays) -> Promise. One read for every project.
-   operatorRows() -> [{ project { id, slug, name, domain, state },
+   loadOperator(rangeDays, query) -> Promise of [OperatorRow]. One read for every project.
+     query (optional) = { figures: 'totals' } to leave out the breakdowns, or
+     { figures: 'one', project: slug | null } for one project and its referrers only (with
+     null: the first active one). The start page passes it; the operator console reads everything.
+   OperatorRow = { project { id, slug, name, domain, state },
        totals { pageviews, visitors, visits, bounces (each a Count),
                 bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
                 flagged Count },
        byRule [RuleCount with a Count value],
-       daily [{ day, pageviews Count, flagged Count }], breakdowns { dimension: [{ label, value Count }] } }]
+       daily [{ day, pageviews Count, flagged Count }], breakdowns { dimension: [{ label, value Count }] } }
+     A project that figures 'one' did not read has totals null, byRule [], daily [] and breakdowns {}.
      Count = number | Small.  Small = { small: true, below }: more than zero and fewer than
      `below`. The API never sends the exact number, so there is nothing to hide here.
    sortRows(rows, pick, descending) -> [row]
@@ -68,7 +72,6 @@
   var known = { project: null, tracker: null, smallCounts: null, maxAgents: null, state: 'ok', error: null, through: null };
   var webByRange = {};
   var latestWeb = null;
-  var operator = [];
 
   function getJson(url) {
     return fetch(url, { headers: { accept: 'application/json' } }).then(function (response) {
@@ -159,11 +162,15 @@
     return (rows || []).map(function (row) { return { label: label(dimension, row.label), value: row.value }; });
   }
 
-  function loadOperator(rangeDays) {
-    return getJson('/api/operator/projects?days=' + rangeDays).then(function (body) {
+  function loadOperator(rangeDays, query) {
+    var url = '/api/operator/projects?days=' + rangeDays;
+    Object.keys(query || {}).forEach(function (name) {
+      if (query[name]) url += '&' + name + '=' + encodeURIComponent(query[name]);
+    });
+    return getJson(url).then(function (body) {
       known.smallCounts = body.small_counts;
       known.through = body.through;
-      operator = body.projects.map(function (row) {
+      return body.projects.map(function (row) {
         var breakdowns = {};
         Object.keys(row.breakdowns).forEach(function (dimension) {
           breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension]);
@@ -202,7 +209,6 @@
     loadWeb: loadWeb,
     web: web,
     breakdown: function (dimension) { return labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]); },
-    loadOperator: loadOperator,
-    operatorRows: function () { return operator.slice(); }
+    loadOperator: loadOperator
   };
 })();

@@ -1,11 +1,7 @@
-// Decides what the seed creates from the environment it runs in: the local fixtures on a
-// developer machine, the demo tenants on the deployment's own hosts in a Vercel production build,
-// and only the schema in a preview build.
 import { RESERVED_SLUGS, isSlug } from '../lib/slug.js';
 import { TENANTS } from './fixtures.mjs';
 
-// One per host in DEMO_SITE_HOSTS, in order. Ids are fixed so a site keeps its history across
-// builds; the first kept its ids when it was renamed from "Usage Signals demo".
+// One per host in DEMO_SITE_HOSTS, in order; ids are fixed so a site keeps its history across builds.
 export const PRODUCTION_TENANTS = [
   {
     id: 'f0000000-0000-4000-8000-000000000001',
@@ -27,6 +23,20 @@ export const PRODUCTION_TENANTS = [
     slug: 'demo-site-c',
     siteId: 'f0000000-0000-4000-8000-0000000000f3',
     umamiWebsiteId: 'f0000000-0000-4000-8000-0000000003ff',
+  },
+];
+
+const LIVE_TENANTS = [
+  {
+    id: 'f0000000-0000-4000-8000-000000000004',
+    name: 'Strata Vault Kit',
+    status: 'active',
+    site: {
+      id: 'f0000000-0000-4000-8000-0000000000f4',
+      slug: 'strata-vault-kit',
+      domain: 'strata-vault-kit-app.vercel.app',
+      umamiWebsiteId: 'f0000000-0000-4000-8000-0000000004ff',
+    },
   },
 ];
 
@@ -78,25 +88,29 @@ export function parseDemoSiteHosts(value, consoleHost) {
 
 function productionTenants(env) {
   const hosts = parseDemoSiteHosts(env.DEMO_SITE_HOSTS, env.VERCEL_PROJECT_PRODUCTION_URL);
-  return hosts.map((domain, index) => {
+  const demoTenants = hosts.map((domain, index) => {
     const { id, name, slug, siteId, umamiWebsiteId } = PRODUCTION_TENANTS[index];
     return { id, name, status: 'active', site: { id: siteId, slug, domain, umamiWebsiteId } };
   });
+  return [...demoTenants, ...LIVE_TENANTS];
 }
 
 /**
  * Stops the seed when a site's slug cannot address a tenant console: wrong shape, a word the
- * routes already use, or the same slug twice.
+ * routes already use, or the same slug twice. Also stops it when two sites share a domain.
  */
-export function assertSlugs(tenants) {
-  const seen = new Set();
+export function assertSites(tenants) {
+  const slugs = new Set();
+  const domains = new Set();
   for (const { name, site } of tenants) {
     const problem =
       (!isSlug(site.slug) && 'must be lower-case letters, digits and single hyphens, at most 63 characters') ||
       (RESERVED_SLUGS.includes(site.slug) && `is reserved for a route of the console (${RESERVED_SLUGS.join(', ')})`) ||
-      (seen.has(site.slug) && 'is used by two sites');
+      (slugs.has(site.slug) && 'is used by two sites');
     if (problem) throw new Error(`The slug "${site.slug}" of "${name}" ${problem}.`);
-    seen.add(site.slug);
+    if (domains.has(site.domain)) throw new Error(`The domain "${site.domain}" of "${name}" is used by two sites.`);
+    slugs.add(site.slug);
+    domains.add(site.domain);
   }
 }
 
@@ -112,6 +126,6 @@ export function selectProfile(env) {
     tenants: name === 'production' ? productionTenants(env) : tenants,
     databaseVariable: name === 'preview' ? 'DATABASE_URL' : 'DATABASE_URL_UNPOOLED',
   };
-  assertSlugs(profile.tenants);
+  assertSites(profile.tenants);
   return profile;
 }
