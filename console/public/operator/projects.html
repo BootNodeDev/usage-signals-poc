@@ -321,10 +321,10 @@
     function render(range) {
       state.range = range;
       if (!loaded) listMessage('Loading figures', 'Reading the last ' + range + ' days for every project.');
-      D.loadOperator(range).then(function () {
+      D.loadOperator(range).then(function (rows) {
         if (state.range !== range) return;
         loaded = true;
-        all = D.operatorRows();
+        all = rows;
         paint();
       }, function (error) {
         if (state.range !== range) return;
