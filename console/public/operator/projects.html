@@ -46,7 +46,7 @@
             <h1>Compare</h1>
             <p class="title-sub" id="compare-summary"></p>
           </div>
-          <div class="controls" id="compare-controls"></div>
+          <div class="controls" id="compare-controls"><button class="btn" type="button" id="compare-csv">Download CSV</button></div>
         </div>
         <div id="compare"></div>
       </div>
@@ -111,17 +111,21 @@
     function hasData(r) { return r.totals.pageviews !== 0; }
     function isSmall(value) { return Boolean(value && value.small); }
     /* A count as text: exact, or "<10" when the API only says it is small. */
+    function countText(value) { return value === null ? '' : isSmall(value) ? '<' + value.below : value; }
     function count(value) {
       if (value === null) return App.dash();
       return isSmall(value)
-        ? '<span class="muted" title="More than zero and fewer than ' + value.below + '. The exact number is not shown.">&lt;' + value.below + '</span>'
+        ? '<span class="muted" title="More than zero and fewer than ' + value.below + '. The exact number is not shown.">' + esc(countText(value)) + '</span>'
         : fmt.int(value);
     }
     /* A rate as text; it is withheld when it rests on a small number of visits or requests. */
+    function rateText(value, format, base) {
+      if (value === null) return '';
+      return isSmall(value) ? 'Too few ' + (base || 'visits') : format(value);
+    }
     function rate(value, format, base) {
-      var what = base || 'visits';
       if (value === null) return App.dash();
-      return isSmall(value) ? '<span class="muted" title="Not shown for fewer than ' + value.below + ' ' + what + '">Too few ' + what + '</span>' : format(value);
+      return isSmall(value) ? '<span class="muted" title="Not shown for fewer than ' + value.below + ' ' + (base || 'visits') + '">' + rateText(value, format, base) + '</span>' : format(value);
     }
     /* For drawing only: a small count has no height, and the chart says so. */
     function drawn(value) { return isSmall(value) ? 0 : value; }
@@ -151,6 +155,7 @@
     }
 
     function renderTable() {
+      if (!loaded) return;
       var list = sorted(visible());
       var head = '<thead><tr>' + (state.comparing ? '<th class="col-check"><span class="sr-only">Select</span></th>' : '') +
         '<th>Project</th><th>State</th>' + columns.map(function (c, index) {
@@ -211,9 +216,31 @@
       picked.forEach(function (r, i) { byId('compare-breakdown-' + i).innerHTML = '<div class="bars">' + valueRows(r.breakdowns[state.compareTab]) + '</div>'; });
     }
 
+    function comparedRows() {
+      return state.compared.map(find).filter(function (r) { return r && hasData(r); });
+    }
+
+    function downloadCompare() {
+      var percent = function (value) { return parseFloat(fmt.pct(value)); };
+      var picked = comparedRows();
+      var days = picked[0].daily;
+      App.downloadCsv('compare-' + days[0].day + '-to-' + days[days.length - 1].day + '.csv',
+        ['Project', 'Domain', 'Page views', 'Visitors (sum of daily)', 'Visits', 'Bounce rate (%)', 'Visit duration (s)',
+          'API requests', 'Server errors (%)', 'API p50 (ms, estimate)', 'API p95 (ms, estimate)'],
+        picked.map(function (r) {
+          var t = r.totals;
+          var a = apiOf(r);
+          return [r.project.name, r.project.domain, countText(t.pageviews), countText(t.visitors), countText(t.visits),
+            rateText(t.bounce_rate, percent), rateText(t.avg_visit_seconds, Math.round),
+            countText(a.requests), rateText(a.error_rate, percent, 'requests'), rateText(a.p50_ms, Math.round, 'requests'),
+            rateText(a.p95_ms, Math.round, 'requests')];
+        }));
+    }
+
     function renderCompare() {
-      var picked = state.compared.map(find).filter(function (r) { return r && hasData(r); });
+      var picked = comparedRows();
       byId('compare-back').innerHTML = App.icon('back') + 'Projects';
+      byId('compare-csv').hidden = picked.length < 2;
       if (picked.length < 2) {
         byId('compare-summary').textContent = 'Same metrics, same period, same scale';
         byId('compare').innerHTML = App.emptyState('Nothing to compare yet', 'Select two or three projects with web data in the projects list.');
@@ -386,7 +413,8 @@
     byId('tray-cancel').addEventListener('click', function () { state.comparing = false; state.compared = []; renderTray(); renderTable(); });
     byId('tray-open').addEventListener('click', function () { showView('compare'); });
     byId('compare-back').addEventListener('click', function () { showView('list'); });
-    byId('drawer').addEventListener('close', function () { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list' && loaded) renderTable(); });
+    byId('compare-csv').addEventListener('click', downloadCompare);
+    byId('drawer').addEventListener('close', function () { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list') renderTable(); });
     App.rangeControl(byId('range'), render);
   }
 
