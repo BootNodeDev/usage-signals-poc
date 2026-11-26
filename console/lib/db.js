@@ -137,16 +137,16 @@ const BUCKET_SUMS = Array.from(
 ).join(', ');
 
 /**
- * API rows of the tenant in a range, summed per route, method and status class, with the
- * histogram buckets summed one by one.
+ * API rows of the tenant in a range, summed per service, route, method and status class, with
+ * the histogram buckets summed one by one.
  */
 export async function apiRouteSums(tenantId, startAt, endAt) {
   const { rows } = await getPool().query(
-    `SELECT route, method, status_code / 100 AS class, sum(request_count)::float8 AS requests,
-            ARRAY[${BUCKET_SUMS}] AS buckets
+    `SELECT service, route, method, status_code / 100 AS class,
+            sum(request_count)::float8 AS requests, ARRAY[${BUCKET_SUMS}] AS buckets
        FROM usage_signals.api_metric_minute
       WHERE tenant_id = $1 AND minute >= $2 AND minute < $3
-      GROUP BY route, method, class`,
+      GROUP BY service, route, method, class`,
     [tenantId, new Date(startAt), new Date(endAt)],
   );
   return rows;

@@ -43,7 +43,7 @@
      ApiDay = { day, requests }
      ApiFigure = { requests, statuses { '2xx', '3xx', '4xx', '5xx' }, p50_ms, p95_ms }
        p50_ms and p95_ms are estimated from histogram buckets; null when there is no request.
-     ApiRoute = ApiFigure + { method, route }, busiest first.
+     ApiRoute = ApiFigure + { service, method, route }, busiest first.
 
    Operator console
    ----------------
@@ -59,7 +59,8 @@
        api ApiRow | null }
      A project that figures 'one' did not read has totals null, daily [] and breakdowns {}.
      ApiRow = { requests Count, error_rate (share of 5xx: number | Small | null),
-       p95_ms (number | Small | null), routes [{ label ('GET /v1/…'), value Count }] }.
+       p50_ms, p95_ms (estimates: number | Small | null),
+       routes [{ label ('<service> · GET /v1/…'), value Count }] }.
      api is null when the API figures could not be read, and on every site of a project but
      its first: API figures belong to the project, not to one of its sites.
      Count = number | Small.  Small = { small: true, below }: more than zero and fewer than

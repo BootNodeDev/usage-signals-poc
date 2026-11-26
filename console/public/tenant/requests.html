@@ -85,7 +85,7 @@
     var state = { range: 30 };
     var series = [{ name: 'Requests', color: 'var(--data-filtered)' }];
     var retry = '<button class="btn btn-primary" type="button" id="retry">Try again</button>';
-    var LATENCY = '<p>Estimated from latency histograms: the bucket that holds the percentile, interpolated linearly.</p>';
+    var LATENCY = '<p>An estimate from latency histograms: the bucket that holds the percentile, interpolated linearly.</p>';
 
     function figure(label, value, note) {
       return '<div class="figure"><div class="figure-label">' + label + '</div>' +
@@ -102,8 +102,8 @@
         figure(App.info('errors', 'Server errors', '<p>Share of requests answered with a 5xx status.</p><p><b>' +
           fmt.int(t.statuses['5xx']) + '</b> of <b>' + fmt.int(t.requests) + '</b> requests.</p>'),
           fmt.pct(errorRate(t)), fmt.int(t.statuses['4xx']) + ' client errors (4xx)') +
-        figure(App.info('p50', 'Latency p50', LATENCY), fmt.ms(t.p50_ms), 'Half of the requests were faster') +
-        figure(App.info('p95', 'Latency p95', LATENCY), fmt.ms(t.p95_ms), '95% of the requests were faster');
+        figure(App.info('p50', 'Latency p50 (estimate)', LATENCY), fmt.ms(t.p50_ms), 'Half of the requests were faster') +
+        figure(App.info('p95', 'Latency p95 (estimate)', LATENCY), fmt.ms(t.p95_ms), '95% of the requests were faster');
     }
 
     function renderEmpty(range) {
@@ -132,8 +132,8 @@
       App.dataTable(byId('table'), ['Day', 'Requests'], rows.slice().reverse().map(function (r) {
         return [fmt.date(r.day), fmt.int(r.requests)];
       }));
-      App.dataTable(byId('routes'), ['Route', 'Requests', '2xx', '3xx', '4xx', '5xx', 'p50', 'p95'], result.routes.map(function (r) {
-        return [r.method + ' ' + r.route, fmt.int(r.requests), fmt.int(r.statuses['2xx']), fmt.int(r.statuses['3xx']),
+      App.dataTable(byId('routes'), ['Service · route', 'Requests', '2xx', '3xx', '4xx', '5xx', 'p50 (est.)', 'p95 (est.)'], result.routes.map(function (r) {
+        return [r.service + ' · ' + r.method + ' ' + r.route, fmt.int(r.requests), fmt.int(r.statuses['2xx']), fmt.int(r.statuses['3xx']),
           fmt.int(r.statuses['4xx']), fmt.int(r.statuses['5xx']), fmt.ms(r.p50_ms), fmt.ms(r.p95_ms)];
       }));
     }

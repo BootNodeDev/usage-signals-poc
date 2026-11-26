@@ -42,8 +42,8 @@ describe('API figures in the operator view', () => {
   const figure = (requests, errors, p95) => ({
     totals: { requests, statuses: { '2xx': requests - errors, '3xx': 0, '4xx': 0, '5xx': errors }, p50_ms: 1, p95_ms: p95 },
     routes: [
-      { method: 'GET', route: '/a', requests: requests - 3 },
-      { method: 'GET', route: '/b', requests: 3 },
+      { service: 'api', method: 'GET', route: '/a', requests: requests - 3 },
+      { service: 'api', method: 'GET', route: '/b', requests: 3 },
     ],
   });
 
@@ -51,8 +51,9 @@ describe('API figures in the operator view', () => {
     assert.deepEqual(operatorApi(figure(40, 2, 120)), {
       requests: 40,
       error_rate: 0.05,
+      p50_ms: 1,
       p95_ms: 120,
-      routes: [{ label: 'GET /a', value: 37 }, { label: 'GET /b', value: SMALL }],
+      routes: [{ label: 'api · GET /a', value: 37 }, { label: 'api · GET /b', value: SMALL }],
     });
   });
 
@@ -77,9 +78,9 @@ describe('API figures in the operator view', () => {
 
   it('withholds the share and p95 under 10 requests, and has none without requests', () => {
     const few = operatorApi(figure(9, 1, 80));
-    assert.deepEqual([few.requests, few.error_rate, few.p95_ms], [SMALL, SMALL, SMALL]);
+    assert.deepEqual([few.requests, few.error_rate, few.p50_ms, few.p95_ms], [SMALL, SMALL, SMALL, SMALL]);
     const none = operatorApi({ totals: { requests: 0, statuses: {}, p50_ms: null, p95_ms: null }, routes: [] });
-    assert.deepEqual(none, { requests: 0, error_rate: null, p95_ms: null, routes: [] });
+    assert.deepEqual(none, { requests: 0, error_rate: null, p50_ms: null, p95_ms: null, routes: [] });
   });
 });
 
@@ -128,6 +129,7 @@ describe('tenant API endpoint', () => {
     const ours = body.routes.filter((r) => r.route.startsWith('/test/'));
     assert.deepEqual(ours, [
       {
+        service: SERVICE,
         method: 'GET',
         route: '/test/accounts/{id}',
         requests: 20,
@@ -136,6 +138,7 @@ describe('tenant API endpoint', () => {
         p95_ms: percentileMs(buckets([[0, 2], [3, 18]]), 0.95),
       },
       {
+        service: SERVICE,
         method: 'POST',
         route: '/test/transactions',
         requests: 6,
@@ -156,7 +159,7 @@ describe('tenant API endpoint', () => {
     const row = (await response.json()).projects.find((r) => r.project.slug === TENANT.site.slug);
     const exact = (await readApi(TENANT.site.slug, 7)).body;
     assert.deepEqual(row.api.requests, exact.totals.requests);
-    assert.ok(row.api.routes.some((r) => r.label === 'GET /test/accounts/{id}' && r.value === 20));
+    assert.ok(row.api.routes.some((r) => r.label === `${SERVICE} · GET /test/accounts/{id}` && r.value === 20));
   });
 
   it('answers 400 for an unsupported range and 404 for an unknown project', async () => {

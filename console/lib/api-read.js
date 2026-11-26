@@ -54,9 +54,10 @@ export async function readApiFigures(site, dayCount) {
   const totals = emptyFigure();
   const routes = new Map();
   for (const row of sums) {
-    const key = `${row.method} ${row.route}`;
+    const key = `${row.service} ${row.method} ${row.route}`;
     if (!routes.has(key)) {
-      routes.set(key, { method: row.method, route: row.route, ...emptyFigure() });
+      const { service, method, route } = row;
+      routes.set(key, { service, method, route, ...emptyFigure() });
     }
     const name = CLASSES[row.class - 2];
     for (const figure of [routes.get(key), totals]) {

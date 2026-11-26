@@ -53,15 +53,16 @@ export function operatorRow(site, figures) {
   };
 }
 
-/** The API figures of one row: requests, the share of 5xx answers, p95 and requests per route. */
+/** The API figures of one row: requests, the share of 5xx answers, p50, p95 and per route. */
 export function operatorApi(api) {
-  const { requests, statuses, p95_ms } = api.totals;
+  const { requests, statuses, p50_ms, p95_ms } = api.totals;
   return {
     requests: smallCount(requests),
     error_rate: rateOver(requests, statuses['5xx'] / requests),
+    p50_ms: rateOver(requests, p50_ms),
     p95_ms: rateOver(requests, p95_ms),
     routes: api.routes.map((row) => ({
-      label: `${row.method} ${row.route}`,
+      label: `${row.service} · ${row.method} ${row.route}`,
       value: smallCount(row.requests),
     })),
   };
