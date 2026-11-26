@@ -19,18 +19,23 @@
    status() -> { state ('ok' | 'not_found' | 'error'), error | null, through | null }
      through = ISO time of the last figures read.
    meta() -> { product_name, tracker { version, path, integrity } | null,
-               small_counts { below } | null }   (set by loadOperator)
+               small_counts { below } | null   (set by loadOperator),
+               max_agents_per_address | null   (set by loadWeb) }
 
    Tenant web figures
    ------------------
    loadWeb(rangeDays) -> Promise. Reads the range for the current project and keeps it.
      Rejects with an Error whose message can be shown.
-   web(rangeDays) -> { rows [WebDay], totals WebTotals | null, prior WebTotals | null }
-     Answers from the last loadWeb() of that range; totals is null when there is no page view.
-     WebDay = { day, pageviews, visitors }
-     WebTotals = { pageviews, visitors (sum of daily; null in prior), visits, bounces,
-                   bounce_rate, avg_visit_seconds }
-     Traffic is not classified in this prototype, so there is no flagged or filtered figure.
+   web(rangeDays) -> { rows [WebDay], totals WebTotals | null, prior WebTotals | null,
+                       byRule [RuleCount] }
+     Answers from the last loadWeb() of that range; totals is null when there is no page view,
+     counted or flagged.
+     Every figure is counted: flagged page views are left out of it. Raw = pageviews + flagged.
+     WebDay = { day, pageviews, visitors, flagged }
+     WebTotals = { pageviews, flagged (undefined in prior), visitors (sum of daily; null in
+                   prior), visits, bounces, bounce_rate, avg_visit_seconds }
+     RuleCount = { label, value }: flagged page views that matched the rule, in the server's
+       order. An event that matched two rules counts under both.
    breakdown(dimension) -> [{ label, value }]   (distinct visitors in the period; [] when none)
      dimension = 'referrers' | 'countries' | 'devices' | 'browsers'
 
@@ -54,10 +59,11 @@
    OperatorRow = { project { id, slug, name, domain, state },
        totals { pageviews, visitors, visits, bounces (each a Count),
                 bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
-                flagged (always null: not classified) },
-       daily [{ day, pageviews Count }], breakdowns { dimension: [{ label, value Count }] },
+                flagged Count },
+       byRule [RuleCount with a Count value],
+       daily [{ day, pageviews Count, flagged Count }], breakdowns { dimension: [{ label, value Count }] },
        api ApiRow | null }
-     A project that figures 'one' did not read has totals null, daily [] and breakdowns {}.
+     A project that figures 'one' did not read has totals null, byRule [], daily [] and breakdowns {}.
      ApiRow = { requests Count, error_rate (share of 5xx: number | Small | null),
        p50_ms, p95_ms (estimates: number | Small | null),
        routes [{ label ('<service> · GET /v1/…'), value Count }] }.
@@ -76,8 +82,11 @@
     ios: 'Safari (iOS)', crios: 'Chrome (iOS)', fxios: 'Firefox (iOS)', 'edge-chromium': 'Edge',
     'chromium-webview': 'Android WebView', 'ios-webview': 'iOS WebView', samsung: 'Samsung Internet'
   };
+  var RULE_NAMES = {
+    bot: 'Known bot', 'no-sec-fetch': 'No browser fetch headers', 'many-agents': 'Many User-Agents on one network'
+  };
 
-  var known = { project: null, tracker: null, smallCounts: null, state: 'ok', error: null, through: null };
+  var known = { project: null, tracker: null, smallCounts: null, maxAgents: null, state: 'ok', error: null, through: null };
   var webByRange = {};
   var apiByRange = {};
   var latestWeb = null;
@@ -132,9 +141,9 @@
   }
 
   function totalsOf(t) {
-    if (!t || !t.pageviews) return null;
+    if (!t || !(t.pageviews || t.flagged)) return null;
     return {
-      pageviews: t.pageviews, visitors: t.visitors, visits: t.visits, bounces: t.bounces,
+      pageviews: t.pageviews, flagged: t.flagged, visitors: t.visitors, visits: t.visits, bounces: t.bounces,
       bounce_rate: t.visits ? t.bounces / t.visits : 0,
       avg_visit_seconds: t.visits ? t.total_seconds / t.visits : 0
     };
@@ -145,13 +154,18 @@
       webByRange[rangeDays] = body;
       latestWeb = body;
       known.through = body.through;
+      known.maxAgents = body.max_agents_per_address;
     });
+  }
+
+  function byRule(counts) {
+    return Object.keys(counts).map(function (rule) { return { label: RULE_NAMES[rule] || rule, value: counts[rule] }; });
   }
 
   function web(rangeDays) {
     var body = webByRange[rangeDays];
-    if (!body) return { rows: [], totals: null, prior: null };
-    return { rows: body.daily, totals: totalsOf(body.totals), prior: totalsOf(body.prior) };
+    if (!body) return { rows: [], totals: null, prior: null, byRule: [] };
+    return { rows: body.daily, totals: totalsOf(body.totals), prior: totalsOf(body.prior), byRule: byRule(body.flagged_by_rule) };
   }
 
   function loadApi(rangeDays) {
@@ -192,7 +206,7 @@
         Object.keys(row.breakdowns).forEach(function (dimension) {
           breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension]);
         });
-        return { project: row.project, totals: row.totals, daily: row.daily, breakdowns: breakdowns, api: row.api };
+        return { project: row.project, totals: row.totals, byRule: byRule(row.flagged_by_rule), daily: row.daily, breakdowns: breakdowns, api: row.api };
       });
     });
   }
@@ -220,7 +234,9 @@
     currentProjectSlug: currentProjectSlug,
     project: function () { return known.project; },
     status: function () { return { state: known.state, error: known.error, through: known.through }; },
-    meta: function () { return { product_name: PRODUCT_NAME, tracker: known.tracker, small_counts: known.smallCounts }; },
+    meta: function () {
+      return { product_name: PRODUCT_NAME, tracker: known.tracker, small_counts: known.smallCounts, max_agents_per_address: known.maxAgents };
+    },
     loadWeb: loadWeb,
     web: web,
     loadApi: loadApi,

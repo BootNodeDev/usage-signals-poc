@@ -1,5 +1,5 @@
 // Applies db/schema.sql, creates the Umami websites and upserts the tenants and sites of the
-// profile for this environment. Safe to run repeatedly. It is the
+// profile for this environment (none in a preview build). Safe to run repeatedly. It is the
 // Vercel build command (vercel.json), so its messages must never carry a connection string.
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -46,22 +46,20 @@ async function upsertTenant(client, tenant) {
   );
 }
 
-async function connectDatabase() {
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+async function connectDatabase(variable) {
+  const client = new pg.Client({ connectionString: process.env[variable] });
   try {
     await client.connect();
   } catch (error) {
     // Only the error code: the message of the driver can name the host.
-    throw new Error(
-      `cannot reach the database (${error.code ?? error.name}). Check DATABASE_URL_UNPOOLED.`,
-    );
+    throw new Error(`cannot reach the database (${error.code ?? error.name}). Check ${variable}.`);
   }
   return client;
 }
 
-async function seedTenants(tenants) {
-  const session = await umamiLogin();
-  const client = await connectDatabase();
+async function seed({ tenants, databaseVariable }) {
+  const session = tenants.length > 0 ? await umamiLogin() : null;
+  const client = await connectDatabase(databaseVariable);
   try {
     await client.query(await readFile(SCHEMA_FILE, 'utf8'));
     for (const tenant of tenants) {
@@ -83,7 +81,7 @@ async function main() {
     );
   }
   const profile = selectProfile(process.env);
-  if (profile.tenants.length > 0) await seedTenants(profile.tenants);
+  await seed(profile);
   const names = profile.tenants.map((tenant) => `${tenant.name} (${tenant.status})`).join(', ');
   console.log(`Seeded ${profile.tenants.length} tenants with the ${profile.name} profile: ${names}`);
 }

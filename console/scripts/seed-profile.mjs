@@ -58,7 +58,7 @@ export function missingInputs(env) {
   const required = {
     local: SEED_INPUTS,
     production: ['DEMO_SITE_HOSTS', ...SEED_INPUTS],
-    preview: [],
+    preview: ['DATABASE_URL'],
   }[profileName(env)];
   return required.filter((name) => !env[name]);
 }
@@ -114,11 +114,18 @@ export function assertSites(tenants) {
   }
 }
 
-/** Returns `{ name, tenants }`: the tenants to seed. Preview builds seed nothing. */
+/**
+ * Returns `{ name, tenants, databaseVariable }`: the tenants to seed, and the variable that holds
+ * the database the schema goes to. Preview builds seed no tenant and get no unpooled URL on Vercel.
+ */
 export function selectProfile(env) {
   const name = profileName(env);
   const tenants = { local: TENANTS, production: [], preview: [] }[name];
-  const profile = { name, tenants: name === 'production' ? productionTenants(env) : tenants };
+  const profile = {
+    name,
+    tenants: name === 'production' ? productionTenants(env) : tenants,
+    databaseVariable: name === 'preview' ? 'DATABASE_URL' : 'DATABASE_URL_UNPOOLED',
+  };
   assertSites(profile.tenants);
   return profile;
 }

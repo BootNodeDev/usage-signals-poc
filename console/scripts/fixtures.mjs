@@ -1,4 +1,7 @@
 // Seeded tenants and sites. Ids are fixed so the demo pages and the tests can name them.
+
+/** The Sec-Fetch headers a browser sends with the tracker's fetch(); a test visitor without them is flagged. */
+export const FETCH_METADATA = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
 export const TENANTS = [
   {
     id: 'a0000000-0000-4000-8000-000000000001',

@@ -45,10 +45,16 @@ export function operatorRow(site, figures) {
       bounces: smallCount(totals.bounces),
       bounce_rate: rateOver(totals.visits, totals.bounces / totals.visits),
       avg_visit_seconds: rateOver(totals.visits, totals.total_seconds / totals.visits),
-      // Traffic is not classified in this prototype: unknown, not zero.
-      flagged: null,
+      flagged: smallCount(totals.flagged),
     },
-    daily: figures.daily.map((row) => ({ day: row.day, pageviews: smallCount(row.pageviews) })),
+    flagged_by_rule: Object.fromEntries(
+      Object.entries(figures.flagged_by_rule).map(([rule, count]) => [rule, smallCount(count)]),
+    ),
+    daily: figures.daily.map((row) => ({
+      day: row.day,
+      pageviews: smallCount(row.pageviews),
+      flagged: smallCount(row.flagged),
+    })),
     breakdowns: shown,
   };
 }
@@ -127,7 +133,7 @@ export async function handleOperatorProjects(request) {
       projects: sites.map((site, index) => ({
         ...(figures[index]
           ? operatorRow(site, figures[index])
-          : { project: identity(site), totals: null, daily: [], breakdowns: {} }),
+          : { project: identity(site), totals: null, flagged_by_rule: {}, daily: [], breakdowns: {} }),
         api: api.get(site.id) ?? null,
       })),
     });
