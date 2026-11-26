@@ -43,7 +43,7 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 - **Gateway** (`lib/gateway.js`, `handleEvent`): the only public write path for web events. It takes the visitor's address and user agent from the connection, never from the body. It refuses events from an Origin that is not a registered domain of an active tenant, and events that carry `ip`, `userAgent`, `timestamp`, `id`, `salt`, `browser`, `os` or `device`. It truncates the address (IPv4 to /24, IPv6 to /48) and forwards the event to Umami.
 - **Read endpoints**: `lib/tenant-api.js` answers for one site, named by the slug in the path. `lib/operator-api.js` answers for every site at once and replaces small counts with a marker. Both get their figures from `readFigures()` in `lib/web-read.js`.
 - **Data seam** (`public/data.js`, `window.LData`): the only thing pages read. `currentProjectSlug()` is the one place that decides which project a tenant page shows.
-- **Seed profiles** (`scripts/seed-profile.mjs`): local runs seed the fixtures in `scripts/fixtures.mjs`; production builds seed Demo site A, B and C from `DEMO_SITE_HOSTS`; preview builds seed nothing.
+- **Seed profiles** (`scripts/seed-profile.mjs`): local runs seed the fixtures in `scripts/fixtures.mjs`; production builds seed Demo site A, B and C from `DEMO_SITE_HOSTS`, and Strata Vault Kit on its own host; preview builds seed nothing.
 - **Demo sites** (`lib/demo-site.js`): `/demo/` pages rendered for the host they are asked on, each tagged with that host's website id.
 - **Brand** (`landing.css`, `styles.css`, `demo.css`): the Pulse look of the start page, the consoles and the demo sites. Nunito Sans from `public/fonts/`, ink `#201d3a`, the gradient from `#5b2134` to `#064a8c`. Spacing scale 4 8 12 16 24 32 48 64; type scale 12 14 16 20 28 40. Hierarchy comes from size, weight and space: the `--tone` field groups things, borders do not.
 
@@ -65,7 +65,7 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 | `POST /api/e` | `lib/gateway.js` | Tracker events |
 | `GET /api/tenant/<slug>/project` | `lib/tenant-api.js` | The project, its website id and the pinned tracker |
 | `GET /api/tenant/<slug>/web?days=7\|30\|90` | `lib/tenant-api.js` | Web figures of one site |
-| `GET /api/operator/projects?days=7\|30\|90` | `lib/operator-api.js` | Figures of every site, small counts masked |
+| `GET /api/operator/projects?days=7\|30\|90[&figures=all\|totals\|one[&project=<slug>]]` | `lib/operator-api.js` | Figures of every site, small counts masked. The start page asks for `totals` (no breakdowns) or `one` (one project's figures and referrers, the rest listed without figures) |
 | `/s/<version>/...` | `public/s/` | Pinned tracker, served with immutable caching |
 
 ## Data Flow
@@ -81,7 +81,7 @@ Write path:
 Read path:
 
 1. A page calls `LData`, which fetches `/api/tenant/...` or `/api/operator/projects`.
-2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account.
+2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account: six reads per site, two per site with `figures=totals`, three in all with `figures=one`.
 3. The operator endpoint replaces counts from 1 to 9 with `{ small: true, below: 10 }`.
 4. Answers are cached by the CDN for 10 seconds (`Cache-Control: public, max-age=0, s-maxage=10`).
 

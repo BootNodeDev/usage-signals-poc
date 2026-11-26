@@ -38,7 +38,7 @@ records a demo.
 | 3.3 | Tenant and operator API dashboards | Planned | |
 | 5 | Automated test suite | Built | [`console/test/`](console/test/), [`checks/`](checks/README.md) |
 | 5 | Tenant screen-capture video | Built | [Demo video](https://vimeo.com/1248550588) |
-| 5 | Three SCF projects and one API project live | Planned: three demo sites stand in | |
+| 5 | Three SCF projects and one API project live | Partial: Strata Vault Kit is live; three demo sites stand in for the rest | [`seed-profile.mjs`](console/scripts/seed-profile.mjs) |
 | 5 | Runbooks, onboarding guide, monitoring, compliance statements | Planned | |
 
 > [!NOTE]
