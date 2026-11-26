@@ -33,7 +33,8 @@ Proof of concept of Pulse, a shared web and API analytics service for Stellar ec
 
 - Pages read data only through `window.LData` in `console/public/data.js`. In that file, `currentProjectSlug()` is the only code that reads the address. Tests enforce both.
 - Keep sample data out of `console/public/`. A test fails on the old sample strings, a link to a `.html` file, a hardcoded UUID, or a mention of Umami outside `index.html`.
-- The tenant console and the operator console never link to each other (`test/routes.test.mjs`).
+- The tenant console and the operator console never link to each other, and the public view links to neither (`test/routes.test.mjs`).
+- The public view reads only `GET /api/public/projects`, which sends each active project's name, page views and visitors and no other project detail (decision 57 in `DECISIONS.md`).
 - Treat `console/lib/tracker.generated.js` and `console/public/s/` (tracker and `manifest.json`) as generated. Regenerate them with `npm run pin-tracker`.
 - Keep Umami unmodified. Fetch it with `git submodule update --init`.
 - Qualify every SQL statement with its schema: ours is `usage_signals`, Umami's is `public`.

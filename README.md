@@ -1,7 +1,7 @@
 # Pulse proof of concept
 
 Pulse is a shared web and API analytics service for projects built on Stellar. This repository is
-a working prototype of its tenant and operator consoles. It tests the riskiest assumptions and
+a working prototype of its tenant and operator consoles and its public view. It tests the riskiest assumptions and
 records a demo.
 
 ## Quick start

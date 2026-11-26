@@ -23,6 +23,7 @@ console/                  Vercel project 1: gateway, read API, start page, conso
   public/                 Static files
     index.html            Start page (Pulse), with landing.css and landing.js
     tenant/, operator/    Console pages, served at /<slug>/web|requests|setup and /operator/*
+    public.html           Public view, served at /public
     data.js               The only data source of every page (window.LData)
     app.js, charts.js     Console shell, formatters and charts
     s/                    Pinned Umami tracker and its manifest (generated)
@@ -42,7 +43,7 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 
 - **Gateway** (`lib/gateway.js`, `handleEvent`): the only public write path for web events. It takes the visitor's address and user agent from the connection, never from the body. It refuses events from an Origin that is not a registered domain of an active tenant, and events that carry `ip`, `userAgent`, `timestamp`, `id`, `salt`, `browser`, `os` or `device`. It truncates the address (IPv4 to /24, IPv6 to /48), flags the event when it matches a rule, and forwards it to Umami.
 - **Flags** (`lib/flags.js`, `flagTag`): three rules. `bot`: `isbot` matches the User-Agent. `no-sec-fetch`: a `Sec-Fetch-Site`, `Sec-Fetch-Mode` or `Sec-Fetch-Dest` header is missing. `many-agents`: the truncated address has shown more than 10 User-Agents today (UTC). The codes of the rules that matched go in Umami's `tag` field, joined with `+`. A flagged event is stored, never dropped, and counted apart.
-- **Read endpoints**: `lib/tenant-api.js` answers for one site, named by the slug in the path. `lib/operator-api.js` answers for every site at once and replaces small counts with a marker. Both get their figures from `readFigures()` in `lib/web-read.js`.
+- **Read endpoints**: `lib/tenant-api.js` answers for one site, named by the slug in the path. `lib/operator-api.js` answers for every site at once and replaces small counts with a marker. `lib/public-api.js` answers for anyone with the name, page views and visitors of every active site, small counts masked the same way. All three get their figures from `readFigures()` in `lib/web-read.js`.
 - **Data seam** (`public/data.js`, `window.LData`): the only thing pages read. `currentProjectSlug()` is the one place that decides which project a tenant page shows.
 - **Seed profiles** (`scripts/seed-profile.mjs`): local runs seed the fixtures in `scripts/fixtures.mjs`; production builds seed Demo site A, B and C from `DEMO_SITE_HOSTS`, and Strata Vault Kit on its own host; preview builds apply only the schema, through `DATABASE_URL`.
 - **Demo sites** (`lib/demo-site.js`): `/demo/` pages rendered for the host they are asked on, each tagged with that host's website id.
@@ -63,12 +64,14 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 | `/` | `public/index.html`, `landing.js` | Start page: role picker and a preview of each console |
 | `/<slug>/web`, `/<slug>/requests`, `/<slug>/setup` | `public/tenant/*.html` | Tenant console of one project |
 | `/operator/projects`, `/operator/access` | `public/operator/*.html` | Operator console |
+| `/public` | `public/public.html` | Public view: totals per active project |
 | `/demo/`, `/demo/<page>` | `lib/demo-site.js` | Demo site of the host the request came to |
 | `POST /api/e` | `lib/gateway.js` | Tracker events |
 | `GET /api/tenant/<slug>/project` | `lib/tenant-api.js` | The project, its website id and the pinned tracker |
 | `GET /api/tenant/<slug>/web?days=7\|30\|90` | `lib/tenant-api.js` | Web figures of one site |
 | `GET /api/tenant/<slug>/api?days=7\|30\|90` | `lib/tenant-api.js`, `lib/api-read.js` | API figures of one project, per route and day |
 | `GET /api/operator/projects?days=7\|30\|90[&figures=all\|totals\|one[&project=<slug>]]` | `lib/operator-api.js` | Web and API figures of every site, small counts masked. The start page asks for `totals` (no breakdowns) or `one` (one project's figures and referrers, the rest listed without figures) |
+| `GET /api/public/projects?days=7\|30\|90` | `lib/public-api.js` | Name, page views and visitors of every active site, small counts masked. Read by the public view and the start page's public tab |
 | `GET /api/cron/sample-traffic` | `lib/sample-traffic.js` | Vercel cron: sample page views and API rows for the demo sites |
 | `/s/<version>/...` | `public/s/` | Pinned tracker, served with immutable caching |
 
@@ -85,9 +88,9 @@ Write path:
 
 Read path:
 
-1. A page calls `LData`, which fetches `/api/tenant/...` or `/api/operator/projects`.
+1. A page calls `LData`, which fetches `/api/tenant/...`, `/api/operator/projects` or `/api/public/projects`.
 2. The endpoint finds the site rows in `usage_signals.site` and reads Umami's statistics API with the admin account: counted figures with `tag=nre.<FLAG_TAG_PATTERN>` (no tag, or a tag that is not made of rule codes), flagged page views per day with `tag=re.<FLAG_TAG_PATTERN>`, and flagged page views by rule from `/breakdown?fields=["tag"]`. That is eight reads per site, four per site with `figures=totals`, five in all with `figures=one`.
-3. The operator endpoint replaces counts from 1 to 9 with `{ small: true, below: 10 }`.
+3. The operator and public endpoints replace counts from 1 to 9 with `{ small: true, below: 10 }`.
 4. Answers are cached by the CDN for 10 seconds (`Cache-Control: public, max-age=0, s-maxage=10`).
 
 ## Environment Variables
@@ -114,7 +117,7 @@ The scripts are in [`CONTRIBUTING.md`](CONTRIBUTING.md#scripts).
 
 ### Number / Precision Handling
 
-- **Small counts:** the operator endpoint never sends a count from 1 to 9. It sends `{ small: true, below: 10 }`, and the pages show `<10`. Zero stays zero; 10 and above are exact.
+- **Small counts:** the operator and public endpoints never send a count from 1 to 9. It sends `{ small: true, below: 10 }`, and the pages show `<10`. Zero stays zero; 10 and above are exact.
 - **Rates:** a bounce rate or visit duration over fewer than 10 visits is not sent; the pages show "Too few visits".
 - **Charts:** days with a small count are not drawn.
 - **Counted and flagged:** every figure leaves flagged page views out, except `flagged` and `flagged_by_rule`. Raw page views are counted plus flagged. A page view that matched two rules counts under both, so the rules can add up to more than `flagged`.
