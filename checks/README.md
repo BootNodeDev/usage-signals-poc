@@ -56,7 +56,7 @@ to confirm that each script fails when it should, and added cases the authors ha
 
 ## Limits
 
-Everything here ran in Docker on one machine, not on the hosted deployment and not across two
+Everything here ran on one machine (checks 1 to 7 in Docker), not on the hosted deployment and not across two
 locations.
 
 The forwarder relies on fields that Umami's source has but its documentation does not:
