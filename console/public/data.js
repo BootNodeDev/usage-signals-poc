@@ -39,6 +39,17 @@
    breakdown(dimension) -> [{ label, value }]   (distinct visitors in the period; [] when none)
      dimension = 'referrers' | 'countries' | 'devices' | 'browsers'
 
+   Tenant API figures
+   ------------------
+   loadApi(rangeDays) -> Promise. Reads the range for the current project and keeps it.
+     Rejects with an Error whose message can be shown.
+   api(rangeDays) -> { rows [ApiDay], totals ApiFigure | null, routes [ApiRoute] }
+     Answers from the last loadApi() of that range; totals is null when there is no request.
+     ApiDay = { day, requests }
+     ApiFigure = { requests, statuses { '2xx', '3xx', '4xx', '5xx' }, p50_ms, p95_ms }
+       p50_ms and p95_ms are estimated from histogram buckets; null when there is no request.
+     ApiRoute = ApiFigure + { service, method, route }, busiest first.
+
    Operator console
    ----------------
    loadOperator(rangeDays, query) -> Promise of [OperatorRow]. One read for every project.
@@ -50,8 +61,14 @@
                 bounce_rate, avg_visit_seconds (number | Small | null when there is no visit),
                 flagged Count },
        byRule [RuleCount with a Count value],
-       daily [{ day, pageviews Count, flagged Count }], breakdowns { dimension: [{ label, value Count }] } }
+       daily [{ day, pageviews Count, flagged Count }], breakdowns { dimension: [{ label, value Count }] },
+       api ApiRow | null }
      A project that figures 'one' did not read has totals null, byRule [], daily [] and breakdowns {}.
+     ApiRow = { requests Count, error_rate (share of 5xx: number | Small | null),
+       p50_ms, p95_ms (estimates: number | Small | null),
+       routes [{ label ('<service> · GET /v1/…'), value Count }] }.
+     api is null when the API figures could not be read, and on every site of a project but
+     its first: API figures belong to the project, not to one of its sites.
      Count = number | Small.  Small = { small: true, below }: more than zero and fewer than
      `below`. The API never sends the exact number, so there is nothing to hide here.
    sortRows(rows, pick, descending) -> [row]
@@ -71,6 +88,7 @@
 
   var known = { project: null, tracker: null, smallCounts: null, maxAgents: null, state: 'ok', error: null, through: null };
   var webByRange = {};
+  var apiByRange = {};
   var latestWeb = null;
 
   function getJson(url) {
@@ -150,6 +168,19 @@
     return { rows: body.daily, totals: totalsOf(body.totals), prior: totalsOf(body.prior), byRule: byRule(body.flagged_by_rule) };
   }
 
+  function loadApi(rangeDays) {
+    return getJson(tenantUrl('api?days=' + rangeDays)).then(function (body) {
+      apiByRange[rangeDays] = body;
+      known.through = body.through;
+    });
+  }
+
+  function api(rangeDays) {
+    var body = apiByRange[rangeDays];
+    if (!body) return { rows: [], totals: null, routes: [] };
+    return { rows: body.daily, totals: body.totals.requests ? body.totals : null, routes: body.routes };
+  }
+
   function label(dimension, value) {
     if (dimension === 'countries') {
       try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(value) || value; } catch (error) { return value; }
@@ -175,7 +206,7 @@
         Object.keys(row.breakdowns).forEach(function (dimension) {
           breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension]);
         });
-        return { project: row.project, totals: row.totals, byRule: byRule(row.flagged_by_rule), daily: row.daily, breakdowns: breakdowns };
+        return { project: row.project, totals: row.totals, byRule: byRule(row.flagged_by_rule), daily: row.daily, breakdowns: breakdowns, api: row.api };
       });
     });
   }
@@ -208,6 +239,8 @@
     },
     loadWeb: loadWeb,
     web: web,
+    loadApi: loadApi,
+    api: api,
     breakdown: function (dimension) { return labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]); },
     loadOperator: loadOperator
   };

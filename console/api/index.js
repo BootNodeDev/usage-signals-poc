@@ -4,10 +4,14 @@ import { handleDemoSite } from '../lib/demo-site.js';
 import { handleEvent } from '../lib/gateway.js';
 import { handleOperatorProjects } from '../lib/operator-api.js';
 import { handleSampleTraffic } from '../lib/sample-traffic.js';
-import { handleTenantProject, handleTenantWeb } from '../lib/tenant-api.js';
+import { handleTenantApi, handleTenantProject, handleTenantWeb } from '../lib/tenant-api.js';
 
-const TENANT_ROUTE = /^\/api\/tenant\/([^/]+)\/(web|project)$/;
-const TENANT_HANDLERS = { web: handleTenantWeb, project: handleTenantProject };
+const TENANT_ROUTE = /^\/api\/tenant\/([^/]+)\/(web|project|api)$/;
+const TENANT_HANDLERS = {
+  web: handleTenantWeb,
+  project: handleTenantProject,
+  api: handleTenantApi,
+};
 
 export default {
   fetch(request) {

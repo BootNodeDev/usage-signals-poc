@@ -22,7 +22,7 @@
         <div class="title-row">
           <div>
             <h1>Projects</h1>
-            <p class="title-sub"><span class="source">Observed by the tracker</span><span class="stamp" id="stamp"></span></p>
+            <p class="title-sub"><span class="source">Web: observed by the tracker</span><span class="source source-reported">API: reported by the project</span><span class="stamp" id="stamp"></span></p>
           </div>
           <div class="controls" id="controls"><div id="range"></div></div>
         </div>
@@ -91,7 +91,11 @@
       { key: 'visitors', label: 'Visitors (sum of daily)', value: function (r) { return r.totals.visitors; } },
       { key: 'visits', label: 'Visits', value: function (r) { return r.totals.visits; } },
       { key: 'bounce', label: 'Bounce rate', value: function (r) { return r.totals.bounce_rate; } },
-      { key: 'duration', label: 'Visit duration', value: function (r) { return r.totals.avg_visit_seconds; } }
+      { key: 'duration', label: 'Visit duration', value: function (r) { return r.totals.avg_visit_seconds; } },
+      { key: 'requests', label: 'API requests', value: function (r) { return apiOf(r).requests; } },
+      { key: 'errors', label: 'Server errors', value: function (r) { return apiOf(r).error_rate; } },
+      { key: 'p50', label: 'API p50 (est.)', value: function (r) { return apiOf(r).p50_ms; } },
+      { key: 'p95', label: 'API p95 (est.)', value: function (r) { return apiOf(r).p95_ms; } }
     ];
     var state = { range: 30, search: '', stateFilter: '', sort: 'pageviews', descending: true,
       comparing: false, compared: [], view: 'list', open: null, drawerTab: 'referrers', compareTab: 'referrers' };
@@ -99,24 +103,28 @@
     var loaded = false;
     var opener = null;
 
+    /* API figures are missing when they could not be read, and on all but a project's first site. */
+    var NO_API = { requests: null, error_rate: null, p50_ms: null, p95_ms: null, routes: [] };
+    function apiOf(r) { return r.api || NO_API; }
     function find(id) { return all.filter(function (r) { return r.project.id === id; })[0] || null; }
     function hasData(r) { return r.totals.pageviews !== 0 || r.totals.flagged !== 0; }
     function isSmall(value) { return Boolean(value && value.small); }
     /* A count as text: exact, or "<10" when the API only says it is small. */
-    function countText(value) { return isSmall(value) ? '<' + value.below : value; }
+    function countText(value) { return value === null ? '' : isSmall(value) ? '<' + value.below : value; }
     function count(value) {
+      if (value === null) return App.dash();
       return isSmall(value)
         ? '<span class="muted" title="More than zero and fewer than ' + value.below + '. The exact number is not shown.">' + esc(countText(value)) + '</span>'
         : fmt.int(value);
     }
-    /* A rate as text; it is withheld when it rests on a small number of visits. */
-    function rateText(value, format) {
+    /* A rate as text; it is withheld when it rests on a small number of visits or requests. */
+    function rateText(value, format, base) {
       if (value === null) return '';
-      return isSmall(value) ? 'Too few visits' : format(value);
+      return isSmall(value) ? 'Too few ' + (base || 'visits') : format(value);
     }
-    function rate(value, format) {
+    function rate(value, format, base) {
       if (value === null) return App.dash();
-      return isSmall(value) ? '<span class="muted" title="Not shown for fewer than ' + value.below + ' visits">' + rateText(value, format) + '</span>' : format(value);
+      return isSmall(value) ? '<span class="muted" title="Not shown for fewer than ' + value.below + ' ' + (base || 'visits') + '">' + rateText(value, format, base) + '</span>' : format(value);
     }
     /* For drawing only: a small count has no height, and the chart says so. */
     function drawn(value) { return isSmall(value) ? 0 : value; }
@@ -188,13 +196,15 @@
           count(t.pageviews) + '</span></td>' +
           '<td>' + flaggedShare(t) + '</td>' +
           '<td class="num">' + count(t.visitors) + '</td><td class="num">' + count(t.visits) + '</td>' +
-          '<td class="num">' + rate(t.bounce_rate, fmt.pct) + '</td><td class="num">' + rate(t.avg_visit_seconds, fmt.duration) + '</td></tr>';
+          '<td class="num">' + rate(t.bounce_rate, fmt.pct) + '</td><td class="num">' + rate(t.avg_visit_seconds, fmt.duration) + '</td>' +
+          '<td class="num">' + count(apiOf(r).requests) + '</td><td class="num">' + rate(apiOf(r).error_rate, fmt.pct, 'requests') + '</td>' +
+          '<td class="num">' + rate(apiOf(r).p50_ms, fmt.ms, 'requests') + '</td><td class="num">' + rate(apiOf(r).p95_ms, fmt.ms, 'requests') + '</td></tr>';
       }).join('');
-      if (!list.length) body = '<tr><td colspan="9" class="muted">No project matches this search.</td></tr>';
+      if (!list.length) body = '<tr><td colspan="13" class="muted">No project matches this search.</td></tr>';
       byId('projects').innerHTML = head + '<tbody>' + body + '</tbody>';
       var below = D.meta().small_counts.below;
       byId('caption').textContent = list.length + ' of ' + all.length + ' projects · Aggregates only. Counts of 1 to ' + (below - 1) +
-        ' show as <' + below + ' and rates need ' + below + ' visits, a placeholder threshold. Three flag rules in this prototype.';
+        ' show as <' + below + ' and rates need ' + below + ' visits or requests, a placeholder threshold. Three flag rules in this prototype.';
     }
 
     function renderTray() {
@@ -232,11 +242,15 @@
       var picked = comparedRows();
       var days = picked[0].daily;
       App.downloadCsv('compare-' + days[0].day + '-to-' + days[days.length - 1].day + '.csv',
-        ['Project', 'Domain', 'Page views', 'Visitors (sum of daily)', 'Visits', 'Bounce rate (%)', 'Visit duration (s)'],
+        ['Project', 'Domain', 'Page views', 'Visitors (sum of daily)', 'Visits', 'Bounce rate (%)', 'Visit duration (s)',
+          'API requests', 'Server errors (%)', 'API p50 (ms, estimate)', 'API p95 (ms, estimate)'],
         picked.map(function (r) {
           var t = r.totals;
+          var a = apiOf(r);
           return [r.project.name, r.project.domain, countText(t.pageviews), countText(t.visitors), countText(t.visits),
-            rateText(t.bounce_rate, percent), rateText(t.avg_visit_seconds, Math.round)];
+            rateText(t.bounce_rate, percent), rateText(t.avg_visit_seconds, Math.round),
+            countText(a.requests), rateText(a.error_rate, percent, 'requests'), rateText(a.p50_ms, Math.round, 'requests'),
+            rateText(a.p95_ms, Math.round, 'requests')];
         }));
     }
 
@@ -271,6 +285,11 @@
         cells('Visits', function (r) { return count(r.totals.visits); }, function (r) { return r.totals.visits; }) +
         cells('Bounce rate', function (r) { return rate(r.totals.bounce_rate, fmt.pct); }) +
         cells('Visit duration', function (r) { return rate(r.totals.avg_visit_seconds, fmt.duration); }) +
+        '<div class="compare-group">API <span class="source source-reported">Reported by the project</span></div>' +
+        cells('API requests', function (r) { return '<b>' + count(apiOf(r).requests) + '</b>'; }, function (r) { return apiOf(r).requests; }, true) +
+        cells('Server errors', function (r) { return rate(apiOf(r).error_rate, fmt.pct, 'requests'); }) +
+        cells('API p50 (estimate)', function (r) { return rate(apiOf(r).p50_ms, fmt.ms, 'requests'); }) +
+        cells('API p95 (estimate)', function (r) { return rate(apiOf(r).p95_ms, fmt.ms, 'requests'); }) +
         '<div class="compare-tabs"><div class="tabs" role="tablist" aria-label="Breakdown" id="compare-tabs">' +
         Object.keys(BREAKDOWNS).map(function (key) {
           return '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.compareTab) + '">' + BREAKDOWNS[key][0] + '</button>';
@@ -321,13 +340,18 @@
             return '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.drawerTab) + '" aria-controls="drawer-breakdown">' + BREAKDOWNS[key][0] + '</button>';
           }).join('') + '</div><div class="bars" id="drawer-breakdown" role="tabpanel"></div>'
         : App.empty('No page views in the last ' + state.range + ' days.');
+      var api = !r.api ? App.empty('No API figures for this site.') : r.api.requests
+        ? kv([['Requests', count(apiOf(r).requests)], ['Server errors', rate(apiOf(r).error_rate, fmt.pct, 'requests')],
+          ['Latency p50 (estimate)', rate(apiOf(r).p50_ms, fmt.ms, 'requests')],
+          ['Latency p95 (estimate)', rate(apiOf(r).p95_ms, fmt.ms, 'requests')]]) +
+          '<p class="caption">Busiest routes</p><div class="bars">' + valueRows(apiOf(r).routes) + '</div>'
+        : App.empty('No API requests in the last ' + state.range + ' days.');
       drawer.innerHTML =
         '<div class="drawer-head"><div><h2 id="drawer-title">' + App.projectName(p) + '</h2>' +
         '<p><span>' + esc(p.domain) + '</span>' + App.statePill(p.state) + '<span>Last ' + state.range + ' days</span></p></div>' +
         '<button class="icon-btn" type="button" id="drawer-close" aria-label="Close details">' + App.icon('close') + '</button></div>' +
         '<div class="drawer-body"><section class="drawer-section"><h3>Web <span class="source">Observed by the tracker</span></h3>' + web + '</section>' +
-        '<section class="drawer-section"><h3>API <span class="source source-reported">Reported by the project</span></h3>' +
-        '<p class="muted">No API metrics received. API ingestion is the next step of this prototype.</p></section></div>' +
+        '<section class="drawer-section"><h3>API <span class="source source-reported">Reported by the project</span></h3>' + api + '</section></div>' +
         '<div class="drawer-foot"><span class="muted">Approve, suspend and remove: ' + App.NOT_IN_PROTOTYPE.toLowerCase() + '.</span></div>';
       if (!drawer.open) drawer.showModal();
       byId('drawer-close').addEventListener('click', function () { drawer.close(); });

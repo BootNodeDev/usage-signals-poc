@@ -17,26 +17,53 @@
   <aside class="sidebar" id="sidebar"></aside>
   <div class="main">
     <main class="sheet">
+
       <div class="title-row">
         <div>
           <h1>API analytics</h1>
-          <p class="title-sub"><span class="source source-reported">Reported by the project</span></p>
+          <p class="title-sub"><span class="source source-reported">Reported by the project</span><span class="stamp" id="stamp"></span></p>
         </div>
+        <div class="controls"><div id="range"></div></div>
       </div>
-      <div id="content"></div>
+
+      <div id="content">
+        <section class="headline" aria-label="Headline figures" id="headline"></section>
+
+        <section class="block" aria-labelledby="chart-title">
+          <div class="block-head">
+            <h2 id="chart-title">Requests per day</h2>
+            <div class="block-tools">
+              <div class="legend" id="legend"></div>
+              <button class="btn btn-quiet btn-small" type="button" id="toggle">View table</button>
+            </div>
+          </div>
+          <div class="chart" id="chart"></div>
+          <div class="table-view" id="table" hidden></div>
+        </section>
+
+        <section class="block" aria-labelledby="routes-title">
+          <div class="block-head"><h2 id="routes-title">Routes</h2></div>
+          <div class="table-view" id="routes"></div>
+        </section>
+      </div>
+      <div id="empty" hidden></div>
+
     </main>
   </div>
 </div>
 
 <script src="/data.js"></script>
+<script src="/charts.js"></script>
 <script>
 (function () {
   'use strict';
   var D = window.LData;
-  var content = document.getElementById('content');
+  var byId = function (id) { return document.getElementById(id); };
 
   function message(title, text, action) {
-    content.innerHTML = '<div class="empty-state"><h2>' + title + '</h2><p>' + text + '</p>' + (action || '') + '</div>';
+    byId('content').hidden = true;
+    byId('empty').hidden = false;
+    byId('empty').innerHTML = '<div class="empty-state"><h2>' + title + '</h2><p>' + text + '</p>' + (action || '') + '</div>';
   }
 
   /* Shared by the three tenant pages: what to show when the address names no project. */
@@ -53,10 +80,80 @@
 
   function start() {
     var App = window.App;
-    if (!App.tenant) { projectMissing(message); return; }
-    message('No API metrics received',
-      'Nothing has been reported for ' + App.escapeHtml(App.tenant.name) + '. API ingestion is the next step of this prototype: ' +
-      'until it exists there are no requests, routes, status codes or latency to show.');
+    var fmt = App.fmt;
+    var project = App.tenant;
+    var state = { range: 30 };
+    var series = [{ name: 'Requests', color: 'var(--data-filtered)' }];
+    var retry = '<button class="btn btn-primary" type="button" id="retry">Try again</button>';
+    var LATENCY = '<p>An estimate from latency histograms: the bucket that holds the percentile, interpolated linearly.</p>';
+
+    function figure(label, value, note) {
+      return '<div class="figure"><div class="figure-label">' + label + '</div>' +
+        '<div class="figure-value">' + value + '</div><div class="figure-note">' + note + '</div></div>';
+    }
+
+    function errorRate(t) { return t.requests ? t.statuses['5xx'] / t.requests : 0; }
+
+    function renderHeadline(t) {
+      byId('headline').innerHTML =
+        '<div class="figure hero"><div class="figure-label">' +
+        App.info('requests', 'Requests', '<p>Every request the project\'s API reported, all routes and status codes.</p>') + '</div>' +
+        '<div class="figure-row"><div class="figure-value">' + fmt.int(t.requests) + '</div></div></div>' +
+        figure(App.info('errors', 'Server errors', '<p>Share of requests answered with a 5xx status.</p><p><b>' +
+          fmt.int(t.statuses['5xx']) + '</b> of <b>' + fmt.int(t.requests) + '</b> requests.</p>'),
+          fmt.pct(errorRate(t)), fmt.int(t.statuses['4xx']) + ' client errors (4xx)') +
+        figure(App.info('p50', 'Latency p50 (estimate)', LATENCY), fmt.ms(t.p50_ms), 'Half of the requests were faster') +
+        figure(App.info('p95', 'Latency p95 (estimate)', LATENCY), fmt.ms(t.p95_ms), '95% of the requests were faster');
+    }
+
+    function renderEmpty(range) {
+      message('No API requests in the last ' + range + ' days',
+        'API metrics appear here once ' + App.escapeHtml(project.name) + ' reports them.');
+    }
+
+    function paint(range) {
+      var result = D.api(range);
+      var t = result.totals;
+      var rows = result.rows;
+      byId('stamp').textContent = App.stamp();
+      if (!t) { renderEmpty(range); return; }
+      byId('content').hidden = false;
+      byId('empty').hidden = true;
+
+      renderHeadline(t);
+      byId('legend').innerHTML = Charts.legend(series);
+      series[0].values = rows.map(function (r) { return r.requests; });
+      Charts.columns(byId('chart'), {
+        label: 'Requests per day, last ' + range + ' days',
+        labels: rows.map(function (r) { return fmt.day(r.day); }),
+        series: series, height: App.plotHeight(560, 220, 380), format: fmt.int, tickFormat: fmt.tick, totalName: 'Requests',
+        annotations: [], emptyText: 'No requests in this period.'
+      });
+      App.dataTable(byId('table'), ['Day', 'Requests'], rows.slice().reverse().map(function (r) {
+        return [fmt.date(r.day), fmt.int(r.requests)];
+      }));
+      App.dataTable(byId('routes'), ['Service · route', 'Requests', '2xx', '3xx', '4xx', '5xx', 'p50 (est.)', 'p95 (est.)'], result.routes.map(function (r) {
+        return [r.service + ' · ' + r.method + ' ' + r.route, fmt.int(r.requests), fmt.int(r.statuses['2xx']), fmt.int(r.statuses['3xx']),
+          fmt.int(r.statuses['4xx']), fmt.int(r.statuses['5xx']), fmt.ms(r.p50_ms), fmt.ms(r.p95_ms)];
+      }));
+    }
+
+    function render(range) {
+      state.range = range;
+      message('Loading figures', 'Reading the last ' + range + ' days for ' + App.escapeHtml(project.name) + '.');
+      D.loadApi(range).then(function () {
+        if (state.range === range) paint(range);
+      }, function (error) {
+        if (state.range !== range) return;
+        message('Figures are unavailable', App.escapeHtml(error.message || 'The figures could not be read.') +
+          ' Nothing is shown in their place.', retry);
+        byId('retry').addEventListener('click', function () { render(range); });
+      });
+    }
+
+    if (!project) { projectMissing(message); return; }
+    App.viewToggle(byId('toggle'), byId('chart'), byId('table'));
+    App.rangeControl(byId('range'), render);
   }
 
   message('Loading', 'Reading the project.');
