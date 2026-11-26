@@ -1,4 +1,4 @@
-/* Start page: a role picker over a preview of each console, each read from the operator endpoint when first shown. */
+/* Start page: a role picker over a preview of each view, each read from the operator or public endpoint when first shown. */
 (function () {
   'use strict';
 
@@ -153,10 +153,11 @@
 
   function publicPreview() {
     var rows = D.sortRows(state.rows, function (row) { return row.totals.visitors; }, true);
-    return head('<h2>Totals per project</h2>', 'What anyone can see, last ' + RANGE_DAYS + ' days') +
+    return head('<h2>Totals per project</h2>', 'What anyone can see, last ' + RANGE_DAYS + ' days',
+      '<a class="button button-line" href="/public" target="_blank" rel="noopener">Open public page</a>') +
       '<div class="table-wrap"><table><thead><tr><th class="rank">#</th><th>Project</th><th class="num">Visitors</th><th class="num">Page views</th></tr></thead><tbody>' +
       rows.map(function (row, index) {
-        return '<tr><td class="rank">' + (index + 1) + '</td><td class="name"><b>' + escapeHtml(row.project.name) + '</b><span>' + escapeHtml(row.project.domain) + '</span></td>' +
+        return '<tr><td class="rank">' + (index + 1) + '</td><td class="name"><b>' + escapeHtml(row.project.name) + '</b></td>' +
           '<td class="num">' + count(row.totals.visitors) + '</td><td class="num">' + count(row.totals.pageviews) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
@@ -175,8 +176,13 @@
   }
 
   function viewKey() {
+    if (state.role === 'public') return 'public';
     var query = viewQuery();
     return query.figures + ':' + (query.project || '');
+  }
+
+  function readView() {
+    return state.role === 'public' ? D.loadPublic(RANGE_DAYS) : D.loadOperator(RANGE_DAYS, viewQuery());
   }
 
   function show() {
@@ -185,7 +191,7 @@
     preview.setAttribute('aria-labelledby', 'role-' + state.role);
     preview.innerHTML = LOADING;
     if (!views[key]) {
-      views[key] = D.loadOperator(RANGE_DAYS, viewQuery());
+      views[key] = readView();
       views[key].catch(function () { delete views[key]; });
     }
     return views[key].then(function (rows) {

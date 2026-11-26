@@ -308,6 +308,8 @@ table.data.data-compact td { height: 32px; padding-top: 2px; padding-bottom: 2px
 table.rows tbody tr { cursor: pointer; }
 table.rows tr.is-open td { background: var(--tone); }
 table.rows td.col-check, table.rows th.col-check { width: 36px; padding-right: 0; }
+.table-narrow { max-width: 720px; }
+table.data .rank { width: 40px; color: var(--muted); }
 .row-open { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
 .row-open:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
 .cell-trend { display: inline-flex; align-items: center; justify-content: flex-end; gap: 12px; }

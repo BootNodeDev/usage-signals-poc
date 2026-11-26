@@ -8,6 +8,7 @@
   var NOT_IN_PROTOTYPE = 'Not in this prototype';
   var TENANT_NAV = [['web', 'Web'], ['requests', 'API'], ['setup', 'Setup']];
   var OPERATOR_NAV = [['/operator/projects', 'projects', 'Projects'], ['/operator/access', 'access', 'Access']];
+  var PUBLIC_NAV = [['/public', 'projects', 'Projects']];
 
   /* Session storage is a convenience: every read and write may fail in a sandboxed viewer. */
   var store = {
@@ -323,8 +324,7 @@
     return '<a href="' + href + '"' + (active === name ? ' aria-current="page"' : '') + '>' + icon(name) + text + '</a>';
   }
 
-  /* The two consoles share nothing but this frame: each builds its navigation from its own
-     list, and neither links to the other. */
+  /* Each audience builds its navigation from its own list, and none links to another. */
   function tenantShell(active) {
     var slug = D.currentProjectSlug();
     var base = '/' + encodeURIComponent(slug || '');
@@ -345,10 +345,17 @@
       '<div class="sidebar-foot"><div class="account"><b>No sign-in</b>This prototype has no accounts: anyone with this address sees it.</div></div>';
   }
 
+  function publicShell(active) {
+    return '<a class="brand" href="/public">' + MARK + '<span>' + escapeHtml(META.product_name) + '</span></a>' +
+      '<div class="scope"><div class="scope-name">Stellar ecosystem</div><div class="scope-meta"><span>Public view, active projects</span></div></div>' +
+      '<nav class="nav" aria-label="Main">' + PUBLIC_NAV.map(function (item) { return navLink(item[0], item[1], item[2], active); }).join('') + '</nav>' +
+      '<div class="sidebar-foot"><div class="account"><b>Public</b>Anyone can open this page. It shows totals only.</div></div>';
+  }
+
+  var SHELLS = { tenant: tenantShell, operator: operatorShell, public: publicShell };
+
   function shell() {
-    var active = document.body.dataset.active;
-    var isOperator = document.body.dataset.audience === 'operator';
-    document.getElementById('sidebar').innerHTML = isOperator ? operatorShell(active) : tenantShell(active);
+    document.getElementById('sidebar').innerHTML = SHELLS[document.body.dataset.audience](document.body.dataset.active);
   }
 
   /* Pages load this file after their first read, when the document is already parsed. */
