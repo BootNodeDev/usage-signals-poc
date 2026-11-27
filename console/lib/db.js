@@ -255,11 +255,14 @@ export async function revokeIngestToken(prefix) {
   return changed > 0 ? 'revoked' : 'already revoked';
 }
 
-/** The tenant of a token with this hash that has not expired or been revoked, else null. */
+/** The tenant of a valid token with this hash, if the tenant is active; else null. */
 export async function tenantOfIngestToken(hash) {
   const { rows } = await getPool().query(
-    `SELECT tenant_id AS "tenantId" FROM usage_signals.ingest_token
-      WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()`,
+    `SELECT i.tenant_id AS "tenantId"
+       FROM usage_signals.ingest_token i
+       JOIN usage_signals.tenant t ON t.id = i.tenant_id
+      WHERE i.token_hash = $1 AND i.revoked_at IS NULL AND i.expires_at > now()
+        AND t.status = 'active'`,
     [hash],
   );
   return rows[0] ?? null;
