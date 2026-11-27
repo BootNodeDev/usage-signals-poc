@@ -150,19 +150,9 @@ function loadProject() {
   )
 }
 
-function loadScript(src, done) {
-  var script = document.createElement('script')
-  script.type = 'module'
-  script.src = src
-  script.onload = done
-  document.body.appendChild(script)
-}
-
 function boot(start) {
   var ready = document.body.dataset.audience === 'tenant' ? loadProject() : Promise.resolve()
-  ready.then(() => {
-    loadScript('/app.js', start)
-  })
+  ready.then(() => import('/app.js')).then(start)
 }
 
 function totalsOf(t) {
