@@ -1,5 +1,7 @@
 # Pulse proof of concept
 
+[![ci](https://github.com/BootNodeDev/usage-signals-poc/actions/workflows/ci.yml/badge.svg)](https://github.com/BootNodeDev/usage-signals-poc/actions/workflows/ci.yml)
+
 Pulse is a shared web and API analytics service for projects built on Stellar. This repository is
 a working prototype of its tenant and operator consoles and its public view. It tests the riskiest assumptions and
 records a demo.

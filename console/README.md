@@ -19,7 +19,7 @@ You need Docker, Node 24 or newer, and pnpm.
 1. Install the dependencies in `console/`.
 
    ```sh
-   pnpm install --ignore-scripts
+   pnpm install
    ```
 
 2. Start PostgreSQL 18 and Umami in Docker, seed them, and serve the pages. The command stays in
@@ -31,14 +31,14 @@ You need Docker, Node 24 or newer, and pnpm.
 
 3. Open the pages.
 
-   | Page | Address |
-   | --- | --- |
-   | Start page | http://localhost:4300/ |
-   | Tenant console of Aurora Wallet | http://localhost:4300/aurora-wallet/web |
-   | Operator console | http://localhost:4300/operator/projects |
-   | Public view | http://localhost:4300/public |
-   | Demo site of Aurora Wallet | http://localhost:4301/demo/ |
-   | Umami, login `admin` and password `umami` | http://localhost:3301 |
+   | Page                                      | Address                                 |
+   | ----------------------------------------- | --------------------------------------- |
+   | Start page                                | http://localhost:4300/                  |
+   | Tenant console of Aurora Wallet           | http://localhost:4300/aurora-wallet/web |
+   | Operator console                          | http://localhost:4300/operator/projects |
+   | Public view                               | http://localhost:4300/public            |
+   | Demo site of Aurora Wallet                | http://localhost:4301/demo/             |
+   | Umami, login `admin` and password `umami` | http://localhost:3301                   |
 
 ## Try the gateway checks
 

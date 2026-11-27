@@ -5,13 +5,13 @@
 | Category | Technology | Notes |
 |----------|-----------|-------|
 | Framework | None | One Vercel function and static files |
-| Language | JavaScript, ES modules | Node code in `console/lib/`, `scripts/`, `test/`; plain browser scripts in `console/public/` |
+| Language | JavaScript, ES modules | Node code in `console/lib/`, `scripts/`, `test/`; browser modules in `console/public/`, loaded by `<script type="module">` |
 | Data fetching | `fetch` in the browser through `window.LData` (`public/data.js`) | The server reads Umami's statistics API (`lib/web-read.js`) and PostgreSQL (`lib/db.js`) |
 | Database | PostgreSQL 18, `pg` 8.23.1 | Neon on Vercel. Umami's tables in `public`, ours in `usage_signals` |
 | Analytics engine | Umami 3.5.0, unmodified | Git submodule `umami/`, its own Vercel project, closed with Vercel Authentication |
 | UI primitives | Hand-written HTML and inline SVG charts | `public/charts.js` for the consoles, `public/landing.js` for the start page |
 | Styling | Plain CSS | `styles.css` (consoles), `landing.css` (start page), `demo.css` (demo sites) |
-| Testing | `node:test` | Runs against the local Docker stack |
+| Testing | `node:test` | Runs against the local Docker stack, on your machine and in CI |
 | Runtime | Vercel Node.js functions | `engines.node` is `>=24`, which Vercel runs as 26.x |
 
 ## Project Structure
@@ -33,6 +33,9 @@ console/                  Vercel project 1: gateway, read API, start page, conso
   test/                   node:test suites, run against the local stack
   dev.mjs                 Local stand-in for Vercel: static files, /api/*, demo sites on a second port
   docker-compose.yml      PostgreSQL 18 and Umami 3.5.0, plus an Umami without its geo database for tests
+  biome.json              Biome formatter and linter settings
+  .husky/                 Git hooks: lint-staged, commitlint, gitleaks
+.github/workflows/        ci.yml (Biome, tests, commitlint, gitleaks) and pr-assign.yml
 umami/                    Umami v3.5.0, unmodified git submodule; Vercel project 2
 checks/                   Architecture experiments, each with its own script and README
 DECISIONS.md              Every technical choice, its source and the alternative rejected
