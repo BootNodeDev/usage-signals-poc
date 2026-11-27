@@ -8,6 +8,23 @@ import { badRange, json, rangeParam, unavailable } from './web-read.js';
 // RFC 6750 section 3: a request with no key gets the bare challenge, a bad key `invalid_token`.
 const CHALLENGE = 'Bearer realm="pulse"';
 const INVALID = `${CHALLENGE}, error="invalid_token"`;
+// Requests a key may make in one minute. The product's limit is to be agreed with SCF.
+const DEFAULT_REQUESTS_PER_MINUTE = 60;
+
+function requestsPerMinute() {
+  const value = Number(process.env.API_KEY_REQUESTS_PER_MINUTE ?? DEFAULT_REQUESTS_PER_MINUTE);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error('API_KEY_REQUESTS_PER_MINUTE must be a whole number of 1 or more.');
+  }
+  return value;
+}
+
+function tooMany(limit) {
+  const wait = 60 - new Date().getUTCSeconds();
+  return json(429, { error: `This key may make ${limit} requests a minute. Retry later.` }, {
+    'retry-after': String(wait),
+  });
+}
 
 function bearer(request) {
   const match = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') ?? '');
@@ -26,6 +43,8 @@ export async function handleMetricsProjects(request) {
   try {
     const granted = await verifyKey(key);
     if (!granted) return refused(INVALID, 'The API key is unknown or revoked.');
+    const limit = requestsPerMinute();
+    if (granted.requests > limit) return tooMany(limit);
     const dayCount = rangeParam(request);
     if (!dayCount) return badRange();
     const sites = (await listSites()).filter(

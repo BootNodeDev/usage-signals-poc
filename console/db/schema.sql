@@ -93,3 +93,12 @@ CREATE TABLE IF NOT EXISTS usage_signals.operator_audit (
   subject  text        NOT NULL,
   detail   jsonb       NOT NULL DEFAULT '{}'
 );
+
+-- Requests per operator API key and minute, for the per-key limit. Only the current minute is
+-- needed; a key's older rows are deleted on its next request.
+CREATE TABLE IF NOT EXISTS usage_signals.operator_api_key_minute (
+  key_id    uuid        NOT NULL REFERENCES usage_signals.operator_api_key(id),
+  minute    timestamptz NOT NULL,
+  requests  integer     NOT NULL CHECK (requests > 0),
+  PRIMARY KEY (key_id, minute)
+);

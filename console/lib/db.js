@@ -266,14 +266,27 @@ export async function revokeApiKey(prefix, actor) {
 }
 
 /**
- * The key with this hash if it is not revoked, as `{ id, tenantId }`, recording the time of use;
- * null otherwise.
+ * The key with this hash if it is not revoked, as `{ id, tenantId, requests }`, where `requests`
+ * counts this one among the key's requests of the current minute. Records the time of use and
+ * drops the key's counts of earlier minutes. Null when no valid key has the hash.
  */
 export async function useApiKey(hash) {
   const { rows } = await getPool().query(
-    `UPDATE usage_signals.operator_api_key SET last_used_at = now()
-      WHERE key_hash = $1 AND revoked_at IS NULL
-      RETURNING id, tenant_id AS "tenantId"`,
+    `WITH k AS (
+       UPDATE usage_signals.operator_api_key SET last_used_at = now()
+        WHERE key_hash = $1 AND revoked_at IS NULL
+        RETURNING id, tenant_id
+     ), counted AS (
+       INSERT INTO usage_signals.operator_api_key_minute (key_id, minute, requests)
+       SELECT id, date_trunc('minute', now()), 1 FROM k
+       ON CONFLICT (key_id, minute)
+         DO UPDATE SET requests = usage_signals.operator_api_key_minute.requests + 1
+       RETURNING requests
+     ), expired AS (
+       DELETE FROM usage_signals.operator_api_key_minute
+        WHERE key_id = (SELECT id FROM k) AND minute < date_trunc('minute', now())
+     )
+     SELECT k.id, k.tenant_id AS "tenantId", counted.requests FROM k, counted`,
     [hash],
   );
   return rows[0] ?? null;

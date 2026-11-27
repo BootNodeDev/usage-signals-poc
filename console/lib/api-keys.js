@@ -44,7 +44,10 @@ export async function revokeKey(prefix, actor) {
   return key;
 }
 
-/** The key's `{ id, tenantId }` when it is valid and not revoked, else null. Records its use. */
+/**
+ * The key's `{ id, tenantId, requests }` when it is valid and not revoked, else null. Records its
+ * use; `requests` is how many requests the key has made this minute, this one included.
+ */
 export async function verifyKey(key) {
   if (typeof key !== 'string' || !KEY_FORMAT.test(key)) return null;
   return useApiKey(sha256(key));

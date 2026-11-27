@@ -1,6 +1,7 @@
 // GET /api/v1/projects: the operator figures for machine consumers, behind an operator API key.
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
+import pg from 'pg';
 import { createKey, revokeKey } from '../lib/api-keys.js';
 import { requireEnv } from '../lib/config.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
@@ -66,5 +67,26 @@ describe('GET /api/v1/projects', () => {
     const post = await read(`Bearer ${key}`, 'days=7', { method: 'POST' });
     assert.equal(post.status, 405);
     assert.equal(post.headers.get('allow'), 'GET');
+  });
+
+  it('answers 429 with Retry-After once a key has used its requests of the minute', async () => {
+    const pool = new pg.Pool({ connectionString: requireEnv('DATABASE_URL') });
+    after(() => pool.end());
+    const { key, prefix } = await createKey({ label: `${RUN} limited`, actor: 'tester' });
+    assert.equal((await read(`Bearer ${key}`)).status, 200);
+    // Fill this minute and the next, so the test holds across a minute boundary.
+    await pool.query(
+      `INSERT INTO usage_signals.operator_api_key_minute (key_id, minute, requests)
+       SELECT id, date_trunc('minute', now()) + make_interval(mins => n), 1000000
+         FROM usage_signals.operator_api_key, generate_series(0, 1) AS n
+        WHERE key_prefix = $1
+       ON CONFLICT (key_id, minute) DO UPDATE SET requests = EXCLUDED.requests`,
+      [prefix],
+    );
+    const limited = await read(`Bearer ${key}`);
+    assert.equal(limited.status, 429);
+    const wait = Number(limited.headers.get('retry-after'));
+    assert.ok(wait >= 1 && wait <= 60, `Retry-After ${wait}`);
+    assert.match((await limited.json()).error, /requests a minute/);
   });
 });
