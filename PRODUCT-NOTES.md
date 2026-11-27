@@ -1,6 +1,6 @@
 # Notes for the product
 
-What building this prototype taught us that the product should start from. Each entry says what we found, why it matters for the product, and where it came from. [`DECISIONS.md`](DECISIONS.md) records what the prototype chose; this file records what the product needs to know.
+What building this prototype taught us that the product should start from. Each entry says what we found, why it matters for the product, and where it came from. [`DECISIONS.md`](DECISIONS.md) records what the prototype chose; this file records what the product needs to know. The product will not run on the prototype's hosting, so each entry is written to hold on any platform.
 
 ## Reading from Umami
 
@@ -11,8 +11,8 @@ What building this prototype taught us that the product should start from. Each 
 
 ## Scheduled jobs
 
-- **A Vercel cron run can be delivered twice, or not at all.** Every job must be idempotent and reconcile against what is already stored, and two runs at once must be excluded with a lock (https://vercel.com/docs/cron-jobs/manage-cron-jobs#cron-job-delivery-and-idempotency). Found in PR #28.
-- **Session-level advisory locks do not work through Neon's pooled connection.** PgBouncer in transaction mode hands each transaction to any server connection; use `pg_try_advisory_xact_lock` inside a transaction (https://neon.com/docs/connect/connection-pooling). Found in PR #28.
+- **A scheduled run can arrive twice, or not at all.** Schedulers deliver at least once on a best-effort basis, so every job must be idempotent, reconcile against what is already stored, and exclude two runs at once with a lock. Found in PR #28.
+- **Session-level advisory locks do not work through a transaction-mode connection pooler.** PgBouncer in transaction mode hands each transaction to any server connection; take `pg_try_advisory_xact_lock` inside a transaction instead. Found in PR #28.
 - **Inputs that grow with time must be tested at the size production reaches.** The first sample job worked for an hour and would have broken after 30 days. Found in PR #28.
 - **Every job needs a bound per run and a count of what is left.** Without one, a backlog turns into one long run that holds the lock. Found in the review of PR #32.
 - **Time windows must start on a whole hour.** A window that starts mid-hour shifts every planned hour, and the next run writes the same hours again at other minutes. Found in PR #32.
@@ -32,13 +32,13 @@ What building this prototype taught us that the product should start from. Each 
 ## Metrics API and keys
 
 - **Key management needs sign-in before it gets a screen.** Without sign-in, a screen would let anyone make a key, so the prototype manages keys from the command line, which needs `DATABASE_URL`. The product puts the same create, list and revoke behind operator sign-in, and records the signed-in account as the actor in the audit log. Found in PR #40.
-- **Every keyed request writes to the database.** The prototype stores the last-used time and a per-minute count on each request, one write per read. At product volume, rate limiting belongs at the proxy, as the architecture document plans, and last-used times can be written in batches. Found in PR #40.
+- **Every keyed request writes to the database.** The prototype stores the last-used time and a per-minute count on each request, one write per read. At product volume, count requests outside the database (in memory or a shared cache) and write last-used times in batches. Found in PR #40.
 - **A contract test keeps the API description honest.** The prototype checks the real answers against its OpenAPI description with a small validator; the product can publish the same description and run a full JSON Schema validator in CI. Found in PR #40.
 - **The metrics API should read rollups, not Umami.** The prototype reads Umami live, so an Umami upgrade can change the answer; the product reads its own rollup tables, as the architecture document says. Found in PR #40.
 
-- **A configuration mistake in one feature must not stop ingestion.** The prototype serves the event gateway and every API from one function, so a setting that throws at start would stop event collection too. Validate settings per feature and fail that feature alone, or split ingestion into its own deployment, as the architecture document does. Found in the native review of PR #40.
+- **A configuration mistake in one feature must not stop ingestion.** The prototype serves the event gateway and every API from one process, so a setting that throws at start would stop event collection too. Validate settings per feature and fail that feature alone, and run ingestion apart from the read APIs, as the architecture document's separate components do. Found in the native review of PR #40.
 
 ## Platform
 
-- **Preview deployments share the production database and Umami.** A preview build applies its branch's schema to production, and preview tests write production data. The product needs a separate database per preview, such as a Neon branch per deployment. Found in PR #29, decision 55.
+- **Review environments must not share the production database and Umami.** In the prototype, building a branch for review applies its schema to production, and trying it writes production data. The product needs its own database and Umami per environment. Found in PR #29, decision 55.
 - **`pg` warns that `sslmode=require` will change meaning.** The production logs show the warning on several cron runs. The product should set `sslmode=verify-full` in its connection string. Found in the production logs after PR #28.
