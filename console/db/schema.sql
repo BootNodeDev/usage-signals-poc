@@ -70,3 +70,26 @@ CREATE TABLE IF NOT EXISTS usage_signals.api_metric_minute (
                           AND array_position(bucket_counts, NULL) IS NULL),
   PRIMARY KEY (tenant_id, minute, service, route, method, status_code)
 );
+
+-- Operator API keys. Only the SHA-256 of a key is kept; the key is shown once, when it is made.
+-- A key with no tenant reads every project, one with a tenant reads only that project.
+CREATE TABLE IF NOT EXISTS usage_signals.operator_api_key (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  label         text        NOT NULL CHECK (label <> ''),
+  tenant_id     uuid        REFERENCES usage_signals.tenant(id),
+  key_prefix    text        NOT NULL UNIQUE,
+  key_hash      bytea       NOT NULL UNIQUE CHECK (octet_length(key_hash) = 32),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  last_used_at  timestamptz,
+  revoked_at    timestamptz
+);
+
+-- Operator actions, newest last. `subject` names what the action was about, such as a key prefix.
+CREATE TABLE IF NOT EXISTS usage_signals.operator_audit (
+  id       bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  at       timestamptz NOT NULL DEFAULT now(),
+  actor    text        NOT NULL CHECK (actor <> ''),
+  action   text        NOT NULL,
+  subject  text        NOT NULL,
+  detail   jsonb       NOT NULL DEFAULT '{}'
+);
