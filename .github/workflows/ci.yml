@@ -1,0 +1,114 @@
+name: ci
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: 0
+
+defaults:
+  run:
+    working-directory: console
+
+jobs:
+  biome:
+    name: biome
+    runs-on: ubuntu-latest
+    if: github.event.action != 'edited'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: console/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: console/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec biome ci
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event.action != 'edited'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: console/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: console/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Start PostgreSQL and Umami
+        run: docker compose up -d --wait
+      - name: Seed
+        run: node --env-file=local.env scripts/seed.mjs
+      - name: Start the local server
+        run: node --env-file=local.env dev.mjs > dev.log 2>&1 &
+      - name: Wait for the local server
+        run: curl -fsS --retry 30 --retry-delay 1 --retry-all-errors -o /dev/null http://localhost:4300/
+      - run: pnpm test
+      - name: Show the logs
+        if: failure()
+        run: |
+          docker compose logs --no-color
+          cat dev.log
+
+  commitlint:
+    name: commitlint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: console/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: console/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Lint the pull request commits
+        if: github.event.action != 'edited'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm exec commitlint --verbose --from "$BASE_SHA" --to "$HEAD_SHA"
+      - name: Lint the pull request title
+        run: printf '%s' "$PR_TITLE" | pnpm exec commitlint --verbose
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    if: github.event.action != 'edited'
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Scan the git history for secrets
+        run: |
+          console/scripts/install-gitleaks.sh
+          console/bin/gitleaks git --redact --verbose --exit-code 1 .
