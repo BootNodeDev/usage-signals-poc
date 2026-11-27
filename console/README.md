@@ -116,5 +116,33 @@ more than 10 User-Agents from one network in a day. It stores the event and coun
 4. Open the tenant console of Aurora Wallet. It shows the flagged page views apart from the
    counted ones, and the rule behind each.
 
+## Read the figures with an API key
+
+Operators read every project's figures from their own tools with an API key. Keys are managed
+from the command line, as the console has no sign-in yet.
+
+1. Make a key. It is printed once; add `--project <slug>` to limit it to one project.
+
+   ```sh
+   npm run api-key -- create --label "my dashboard"
+   ```
+
+2. Read the figures of the last 7, 30 or 90 days with it.
+
+   ```sh
+   curl -H "Authorization: Bearer pls_..." 'http://localhost:4300/api/v1/projects?days=7'
+   ```
+
+3. List the keys, or revoke one by its prefix. A revoked key gets `401`.
+
+   ```sh
+   npm run api-key -- list
+   npm run api-key -- revoke pls_XXXXXXXX
+   ```
+
+The answer is described at `/api/v1/openapi.json`. To manage production keys, run the same
+command with the production `DATABASE_URL` set in the environment; it takes precedence over
+`local.env`.
+
 [`CONTRIBUTING.md`](../CONTRIBUTING.md) covers the tests and the other scripts.
 [`architecture.md`](../architecture.md) explains how the console works inside.

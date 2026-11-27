@@ -204,3 +204,114 @@ export async function apiDailySums(tenantId, startAt, endAt) {
   );
   return rows;
 }
+
+// A scoped key is named by its project's first site, or by the tenant id if it has none, so a
+// null project always means every project.
+const KEY_COLUMNS = `k.key_prefix AS prefix, k.label,
+  CASE WHEN k.tenant_id IS NULL THEN NULL ELSE coalesce(s.slug, k.tenant_id::text) END AS project,
+  k.created_at, k.last_used_at, k.revoked_at`;
+// The first site of a tenant names the project a key is scoped to.
+const KEY_PROJECT = `LEFT JOIN LATERAL (
+    SELECT slug FROM usage_signals.site
+     WHERE tenant_id = k.tenant_id ORDER BY created_at, id LIMIT 1
+  ) s ON true`;
+
+/** Stores a key's hash and writes its audit row in one statement. Returns the listed key. */
+export async function insertApiKey({ label, tenantId, prefix, hash, actor }) {
+  const { rows } = await getPool().query(
+    `WITH k AS (
+       INSERT INTO usage_signals.operator_api_key (label, tenant_id, key_prefix, key_hash)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *
+     ), audit AS (
+       INSERT INTO usage_signals.operator_audit (actor, action, subject, detail)
+       SELECT $5, 'api_key.create', key_prefix,
+              jsonb_build_object('label', label, 'tenant_id', tenant_id)
+         FROM k
+     )
+     SELECT ${KEY_COLUMNS} FROM k ${KEY_PROJECT}`,
+    [label, tenantId, prefix, hash, actor],
+  );
+  return rows[0];
+}
+
+/** Every key, oldest first, without its hash. */
+export async function listApiKeys() {
+  const { rows } = await getPool().query(
+    `SELECT ${KEY_COLUMNS} FROM usage_signals.operator_api_key k ${KEY_PROJECT}
+      ORDER BY k.created_at, k.key_prefix`,
+  );
+  return rows;
+}
+
+/**
+ * Revokes the key with this prefix and writes its audit row. Returns the key, or null when no
+ * key has the prefix; `revoked_at` is the earlier time when it was already revoked.
+ */
+export async function revokeApiKey(prefix, actor) {
+  const { rows } = await getPool().query(
+    `WITH found AS (
+       SELECT id FROM usage_signals.operator_api_key WHERE key_prefix = $1
+     ), k AS (
+       UPDATE usage_signals.operator_api_key SET revoked_at = now()
+        WHERE id = (SELECT id FROM found) AND revoked_at IS NULL
+        RETURNING *
+     ), audit AS (
+       INSERT INTO usage_signals.operator_audit (actor, action, subject)
+       SELECT $2, 'api_key.revoke', key_prefix FROM k
+     ), k_now AS (
+       -- The statement sees the table as it was, so the revoked row comes from the UPDATE.
+       SELECT * FROM k
+       UNION ALL
+       SELECT * FROM usage_signals.operator_api_key
+        WHERE id = (SELECT id FROM found) AND NOT EXISTS (SELECT 1 FROM k)
+     )
+     -- A revoke that changed nothing found the key revoked, perhaps by a run at the same time.
+     SELECT NOT EXISTS (SELECT 1 FROM k) AS was_revoked, ${KEY_COLUMNS}
+       FROM found JOIN k_now k ON k.id = found.id ${KEY_PROJECT}`,
+    [prefix, actor],
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * The key with this hash if it is not revoked, as `{ id, tenantId, requests, secondsLeft }`, where
+ * `requests` counts this one among the key's requests of the current minute, and is `limit + 1`
+ * when the key has used them all, and `secondsLeft` is the time until the next minute. An
+ * accepted request records the time of use and drops the key's counts of earlier minutes; a
+ * refused one writes nothing, so a client retrying in a loop locks no key row. Null when no
+ * valid key has the hash.
+ */
+export async function useApiKey(hash, limit) {
+  const { rows } = await getPool().query(
+    `WITH k AS (
+       SELECT id, tenant_id FROM usage_signals.operator_api_key
+        WHERE key_hash = $1 AND revoked_at IS NULL
+     ), counted AS (
+       INSERT INTO usage_signals.operator_api_key_minute AS m (key_id, minute, requests)
+       SELECT id, date_trunc('minute', now()), 1 FROM k
+       ON CONFLICT (key_id, minute)
+         DO UPDATE SET requests = m.requests + 1 WHERE m.requests < $2
+       RETURNING requests
+     ), used AS (
+       UPDATE usage_signals.operator_api_key SET last_used_at = now()
+        WHERE id = (SELECT id FROM k) AND EXISTS (SELECT 1 FROM counted)
+     ), expired AS (
+       DELETE FROM usage_signals.operator_api_key_minute
+        WHERE key_id = (SELECT id FROM k) AND minute < date_trunc('minute', now())
+     )
+     SELECT k.id, k.tenant_id AS "tenantId",
+            coalesce((SELECT requests FROM counted), $2 + 1) AS requests,
+            -- From the database clock, which also draws the minute buckets.
+            60 - floor(extract(second FROM now()))::int AS "secondsLeft"
+       FROM k`,
+    [hash, limit],
+  );
+  return rows[0] ?? null;
+}
+
+/** Ends the pool so a command-line script can exit. */
+export async function closePool() {
+  if (pool) await pool.end();
+  pool = undefined;
+}

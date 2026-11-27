@@ -72,6 +72,8 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 | `GET /api/tenant/<slug>/api?days=7\|30\|90` | `lib/tenant-api.js`, `lib/api-read.js` | API figures of one project, per route and day |
 | `GET /api/operator/projects?days=7\|30\|90[&figures=all\|totals\|one[&project=<slug>]]` | `lib/operator-api.js` | Web and API figures of every site, small counts masked. The start page asks for `totals` (no breakdowns) or `one` (one project's figures and referrers, the rest listed without figures) |
 | `GET /api/public/projects?days=7\|30\|90` | `lib/public-api.js` | Name, page views and visitors of every active site, small counts masked. Read by the public view and the start page's public tab |
+| `GET /api/v1/projects?days=7\|30\|90` | `lib/metrics-api.js`, `lib/api-keys.js` | The operator figures for machine consumers, behind an operator API key (`Authorization: Bearer`), limited per key and minute |
+| `GET /api/v1/openapi.json` | `lib/openapi.js` | OpenAPI 3.1 description of the metrics API |
 | `GET /api/cron/sample-traffic` | `lib/sample-traffic.js` | Vercel cron: sample page views and API rows for the demo sites |
 | `/s/<version>/...` | `public/s/` | Pinned tracker, served with immutable caching |
 
@@ -107,6 +109,7 @@ All server-side; there are no public variables. `console/local.env` holds the lo
 | `UMAMI_ADMIN_PASSWORD` | Password of that account |
 | `DEMO_SITE_HOSTS` | Production builds only: hosts of Demo site A, B and C, comma-separated, in that order |
 | `CRON_SECRET` | Secret Vercel Cron sends to `/api/cron/sample-traffic`; without it the route answers 401. Set by hand on Vercel |
+| `API_KEY_REQUESTS_PER_MINUTE` | Requests an operator API key may make in one minute. Defaults to 60 |
 | `UMAMI_NOGEO_URL` | Tests only: the Umami without its geo database |
 | `GATEWAY_PORT`, `DEMO_PORT`, `GATEWAY_URL`, `DEMO_URL` | Local server and tests only |
 
