@@ -120,6 +120,7 @@ async function claim(client, points) {
 async function addCounts(client, points) {
   const ordered = [...points].sort((a, b) => (rowKey(a) < rowKey(b) ? -1 : 1));
   const refused = [];
+  const notCounted = new Set();
   for (const point of ordered) {
     await client.query('SAVEPOINT one_point');
     try {
@@ -127,12 +128,12 @@ async function addCounts(client, points) {
     } catch (error) {
       if (isTemporary(error)) throw error;
       await client.query('ROLLBACK TO SAVEPOINT one_point');
+      notCounted.add(point);
       refused.push({ ...point, reason: `refused by the database (SQLSTATE ${error.code})` });
     }
   }
-  // A point that was not counted must not leave a key behind.
-  const refusedKeys = new Set(refused.map((point) => point.key));
-  const counted = new Set(points.filter((p) => !refusedKeys.has(p.key)).map((p) => p.key));
+  // A key stays while any point of its group was counted, so a redelivery is still caught.
+  const counted = new Set(points.filter((point) => !notCounted.has(point)).map((p) => p.key));
   const orphans = refused.filter((point) => !counted.has(point.key));
   if (orphans.length > 0) await client.query(FORGET_KEYS, columnsOf(orphans));
   return refused;

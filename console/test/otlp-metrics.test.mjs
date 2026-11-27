@@ -96,4 +96,49 @@ describe('reading an OTLP export request', () => {
     assert.throws(() => readRequest({}, TENANT), /resourceMetrics/);
     assert.throws(() => readRequest(null, TENANT), /resourceMetrics/);
   });
+
+  it('names a route that is not text (unmatched), and keeps the rest of the request', () => {
+    const shapes = [
+      { intValue: '5' },
+      { boolValue: true },
+      { doubleValue: 1.5 },
+      { arrayValue: { values: [{ stringValue: '/users/123' }] } },
+      { kvlistValue: { values: [] } },
+      { bytesValue: 'AAAA' },
+    ];
+    for (const value of shapes) {
+      const body = request({});
+      const [point] = body.resourceMetrics[0].scopeMetrics[0].metrics[0].histogram.dataPoints;
+      const swap = (a) => (a.key === 'http.route' ? { key: a.key, value } : a);
+      point.attributes = point.attributes.map(swap);
+      const { accepted } = readRequest(body, TENANT);
+      assert.equal(accepted[0]?.attributes['http.route'], '(unmatched)', JSON.stringify(value));
+    }
+  });
+
+  it('keeps only an integer status code and a text service name, as the collector does', () => {
+    const body = request({});
+    const [point] = body.resourceMetrics[0].scopeMetrics[0].metrics[0].histogram.dataPoints;
+    point.attributes = point.attributes.map((a) =>
+      a.key === 'http.response.status_code' ? { key: a.key, value: { doubleValue: 200 } } : a,
+    );
+    assert.deepEqual(reasons(readRequest(body, TENANT)), ['no valid status code']);
+    const numeric = request({ resource: { 'service.name': 7 } });
+    assert.equal(readRequest(numeric, TENANT).accepted[0].resource['service.name'], '(unknown)');
+  });
+
+  it('adds up points whose routes become the same, as the collector merges them', () => {
+    const body = request({ attrs: { ...ATTRS, 'http.route': '/users/1' } });
+    const [metric] = body.resourceMetrics[0].scopeMetrics[0].metrics;
+    const twin = structuredClone(metric.histogram.dataPoints[0]);
+    twin.attributes = twin.attributes.map((a) =>
+      a.key === 'http.route' ? { key: a.key, value: { stringValue: '/users/3' } } : a,
+    );
+    metric.histogram.dataPoints.push(twin);
+    const { accepted } = readRequest(body, TENANT);
+    assert.equal(accepted.length, 1);
+    assert.equal(accepted[0].attributes['http.route'], '/users/{id}');
+    assert.equal(accepted[0].count, 4);
+    assert.equal(accepted[0].bucketCounts.reduce((a, b) => a + b, 0), 4);
+  });
 });

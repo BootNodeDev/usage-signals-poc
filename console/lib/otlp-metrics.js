@@ -27,23 +27,37 @@ const today = () => Math.floor(Date.now() / DAY_MS);
 export const dateOf = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
 const dayOf = (timeUnixNano) => Number(BigInt(timeUnixNano) / 1_000_000n / BigInt(DAY_MS));
 
+// The value of an attribute and its OTLP type.
 function attributeValue(value) {
-  if (value.stringValue !== undefined) return value.stringValue;
-  if (value.intValue !== undefined) return Number(value.intValue);
-  if (value.doubleValue !== undefined) return value.doubleValue;
-  if (value.boolValue !== undefined) return value.boolValue;
-  return JSON.stringify(value);
+  if (value.stringValue !== undefined) return ['string', value.stringValue];
+  if (value.intValue !== undefined) return ['int', Number(value.intValue)];
+  if (value.doubleValue !== undefined) return ['double', value.doubleValue];
+  if (value.boolValue !== undefined) return ['bool', value.boolValue];
+  return ['other', JSON.stringify(value)];
 }
 
-/** The attributes as a map, and the keys that appear more than once. */
+/**
+ * The attributes the stored row needs, as the collector's allowlist keeps them: a name only as
+ * text and the status code only as an integer; any other type counts as not sent. Also the
+ * keys that appear more than once.
+ */
 function readAttributes(list) {
   const map = {};
+  const types = {};
   const duplicated = [];
   for (const { key, value } of list ?? []) {
     if (Object.hasOwn(map, key)) duplicated.push(key);
-    map[key] = attributeValue(value ?? {});
+    [types[key], map[key]] = attributeValue(value ?? {});
   }
-  return { map, duplicated };
+  const keep = (key, type) => (types[key] === type ? map[key] : undefined);
+  const kept = {
+    'service.name': keep('service.name', 'string'),
+    'service.instance.id': keep('service.instance.id', 'string'),
+    'http.route': keep('http.route', 'string'),
+    'http.request.method': keep('http.request.method', 'string'),
+    'http.response.status_code': keep('http.response.status_code', 'int'),
+  };
+  return { map: kept, duplicated };
 }
 
 function boundsMatchLayout(explicitBounds) {
@@ -154,7 +168,7 @@ function identify(point) {
   return { key, day: dateOf(dayOf(point.timeUnixNano)), numbers: numbers.readInt32BE(0) };
 }
 
-function readPoint(point, base, result) {
+function readPoint(point, base, result, pending) {
   const { map: attributes, duplicated } = readAttributes(point.attributes);
   attributes['http.route'] = normalizeRoute(attributes['http.route']);
   const numbers = readNumbers(point);
@@ -172,7 +186,41 @@ function readPoint(point, base, result) {
   const reason = pointRefusal(point, attributes, duplicated, numbers);
   if (reason) result.refused.push({ ...seen, reason });
   else if (numbers.count === 0) result.empty.push(seen);
-  else result.accepted.push({ ...seen, ...identify(seen) });
+  else pending.push(seen);
+}
+
+const identityOf = (point) =>
+  JSON.stringify([
+    point.resource['service.name'] ?? '(unknown)',
+    point.resource['service.instance.id'] ?? '',
+    point.attributes['http.route'],
+    point.attributes['http.request.method'],
+    point.attributes['http.response.status_code'],
+    String(point.startTimeUnixNano ?? '0'),
+    String(point.timeUnixNano),
+  ]);
+
+/**
+ * Adds up the points of one request that have the same identity once their routes are
+ * normalised, as the collector's merge does; otherwise /users/1 and /users/3 with equal numbers
+ * would look like one point sent twice.
+ */
+function mergeSame(points) {
+  const merged = new Map();
+  for (const point of points) {
+    const identity = identityOf(point);
+    const into = merged.get(identity);
+    if (!into) {
+      merged.set(identity, { ...point, bucketCounts: [...point.bucketCounts] });
+      continue;
+    }
+    into.count += point.count;
+    into.sum += point.sum;
+    into.bucketCounts = into.bucketCounts.map((count, i) => count + point.bucketCounts[i]);
+    into.min = Math.min(into.min ?? Infinity, point.min ?? Infinity);
+    into.max = Math.max(into.max ?? -Infinity, point.max ?? -Infinity);
+  }
+  return [...merged.values()];
 }
 
 /**
@@ -181,10 +229,12 @@ function readPoint(point, base, result) {
  */
 export function readRequest(body, tenantId) {
   const result = { accepted: [], empty: [], refused: [] };
+  const pending = [];
   if (!Array.isArray(body?.resourceMetrics)) throw new Error('resourceMetrics is not a list');
   for (const resourceMetrics of body.resourceMetrics) {
     const { map: sent, duplicated } = readAttributes(resourceMetrics.resource?.attributes);
-    const resource = { ...sent, 'tenant.id': tenantId };
+    const resource = { ...sent, 'service.name': sent['service.name'] ?? '(unknown)' };
+    resource['tenant.id'] = tenantId;
     const resourceReason = resourceRefusal(resource, duplicated);
     const metrics = (resourceMetrics.scopeMetrics ?? []).flatMap((scope) => scope.metrics ?? []);
     for (const metric of metrics) {
@@ -194,8 +244,11 @@ export function readRequest(body, tenantId) {
         result.refused.push({ ...base, reason: metricReason });
         continue;
       }
-      for (const point of metric.histogram.dataPoints ?? []) readPoint(point, base, result);
+      for (const point of metric.histogram.dataPoints ?? []) {
+        readPoint(point, base, result, pending);
+      }
     }
   }
+  result.accepted = mergeSame(pending).map((point) => ({ ...point, ...identify(point) }));
   return result;
 }

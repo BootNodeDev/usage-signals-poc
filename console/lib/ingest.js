@@ -21,12 +21,18 @@ function bearer(request) {
   return match ? match[1] : null;
 }
 
-/** The body as text, or null when it is larger than the limit. */
+/** The body as text, or null as soon as it grows past the limit. */
 async function bodyText(request) {
   const declared = Number(request.headers.get('content-length') ?? 0);
-  if (declared > MAX_BODY_BYTES) return null;
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  return bytes.byteLength > MAX_BODY_BYTES ? null : new TextDecoder().decode(bytes);
+  if (declared > MAX_BODY_BYTES || !request.body) return declared > MAX_BODY_BYTES ? null : '';
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request.body) {
+    size += chunk.byteLength;
+    if (size > MAX_BODY_BYTES) return null;
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 function partialSuccess(refused) {
@@ -42,8 +48,9 @@ export async function handleIngest(request) {
     return answer(401, { message: 'Send an ingest token.' }, { 'www-authenticate': CHALLENGE });
   }
   const type = (request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
-  if (type !== 'application/json') {
-    return answer(415, { message: 'Send OTLP/HTTP JSON (application/json).' });
+  const encoding = (request.headers.get('content-encoding') ?? 'identity').trim().toLowerCase();
+  if (type !== 'application/json' || encoding !== 'identity') {
+    return answer(415, { message: 'Send uncompressed OTLP/HTTP JSON (application/json).' });
   }
   try {
     const granted = await verifyIngestToken(token);

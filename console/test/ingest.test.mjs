@@ -126,4 +126,21 @@ describe('POST /v1/metrics', () => {
     assert.equal(get.status, 405);
     assert.equal(get.headers.get('allow'), 'POST');
   });
+
+  it('stores two points whose routes become the same, once however often sent', async () => {
+    const stamp = Date.now();
+    const payload = exportOf(
+      body({ route: `/merge${stamp}/1`, timeMs: NOW - 4000 }),
+      body({ route: `/merge${stamp}/3`, timeMs: NOW - 4000 }),
+    );
+    assert.equal((await send(payload)).status, 200);
+    assert.equal(await stored(`/merge${stamp}/{id}`), 4);
+    assert.equal((await send(payload)).status, 200);
+    assert.equal(await stored(`/merge${stamp}/{id}`), 4);
+  });
+
+  it('answers 415 to a compressed body, which is not supported yet', async () => {
+    const response = await send(exportOf(body({})), { 'content-encoding': 'gzip' });
+    assert.equal(response.status, 415);
+  });
 });
