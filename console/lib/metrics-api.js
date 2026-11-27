@@ -11,6 +11,9 @@ const INVALID = `${CHALLENGE}, error="invalid_token"`;
 // Requests a key may make in one minute. The product's limit is to be agreed with SCF.
 const DEFAULT_REQUESTS_PER_MINUTE = 60;
 
+// Read once, so a wrong value stops the function at start instead of failing every request.
+const REQUESTS_PER_MINUTE = requestsPerMinute();
+
 function requestsPerMinute() {
   const value = Number(process.env.API_KEY_REQUESTS_PER_MINUTE ?? DEFAULT_REQUESTS_PER_MINUTE);
   if (!Number.isInteger(value) || value < 1) {
@@ -43,8 +46,7 @@ export async function handleMetricsProjects(request) {
   try {
     const granted = await verifyKey(key);
     if (!granted) return refused(INVALID, 'The API key is unknown or revoked.');
-    const limit = requestsPerMinute();
-    if (granted.requests > limit) return tooMany(limit);
+    if (granted.requests > REQUESTS_PER_MINUTE) return tooMany(REQUESTS_PER_MINUTE);
     const dayCount = rangeParam(request);
     if (!dayCount) return badRange();
     const sites = (await listSites()).filter(

@@ -82,7 +82,9 @@ describe('operator API keys', () => {
 
   it('revokes a key once, refuses it afterwards, and audits the revocation', async () => {
     const created = await createKey({ label: `${RUN} revoked`, actor: 'tester' });
-    assert.equal((await revokeKey(created.prefix, 'auditor')).prefix, created.prefix);
+    const revoked = await revokeKey(created.prefix, 'auditor');
+    assert.equal(revoked.prefix, created.prefix);
+    assert.ok(revoked.revoked_at instanceof Date, 'revoked_at is the time of the revocation');
     assert.equal(await verifyKey(created.key), null);
     await assert.rejects(revokeKey(created.prefix, 'auditor'), /already revoked/);
     await assert.rejects(revokeKey('pls_nothing1', 'auditor'), /No key with prefix "pls_nothing1"/);
@@ -117,5 +119,7 @@ describe('npm run api-key', () => {
     const failsWith = (pattern) => (error) => error.code === 1 && pattern.test(error.stderr);
     await assert.rejects(cli('create'), failsWith(/--label is required/));
     await assert.rejects(cli('rotate'), failsWith(/Usage: api-key/));
+    const empty = cli('create', '--label', 'x', '--actor', '');
+    await assert.rejects(empty, failsWith(/^--actor must not be empty\.$/m));
   });
 });

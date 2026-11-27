@@ -26,6 +26,7 @@ async function main(argv) {
   });
   const [command, prefix] = positionals;
   const actor = values.actor ?? userInfo().username;
+  if (actor === '') throw new Error('--actor must not be empty.');
   if (command === 'create') {
     if (!values.label) throw new Error('--label is required.');
     const project = values.project ?? null;

@@ -6,6 +6,11 @@ import { createKey } from '../lib/api-keys.js';
 import { requireEnv } from '../lib/config.js';
 
 const GATEWAY = requireEnv('GATEWAY_URL');
+// Keywords `validate` checks, plus `description`, which only documents.
+const CHECKED = new Set([
+  '$ref', 'oneOf', 'type', 'enum', 'minimum', 'properties', 'required', 'additionalProperties',
+  'items', 'description',
+]);
 
 function typeOf(value) {
   if (value === null) return 'null';
@@ -86,6 +91,22 @@ describe('the metrics API description', () => {
     }
     const refused = await (await fetch(`${GATEWAY}/api/v1/projects?days=7`)).json();
     assert.deepEqual(validate({ $ref: '#/components/schemas/Error' }, refused, spec), []);
+  });
+
+  it('uses only the schema keywords the test can check', async () => {
+    const spec = await (await fetch(`${GATEWAY}/api/v1/openapi.json`)).json();
+    const unknown = new Set();
+    const walk = (schema) => {
+      if (!schema || typeof schema !== 'object') return;
+      for (const [name, child] of Object.entries(schema)) {
+        if (!CHECKED.has(name)) unknown.add(name);
+        if (name === 'properties') Object.values(child).forEach(walk);
+        else if (name === 'oneOf') child.forEach(walk);
+        else if (['items', 'additionalProperties'].includes(name)) walk(child);
+      }
+    };
+    Object.values(spec.components.schemas).forEach(walk);
+    assert.deepEqual([...unknown], []);
   });
 
   it('would catch an answer that drifts from the description', async () => {

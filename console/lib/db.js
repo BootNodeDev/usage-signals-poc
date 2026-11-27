@@ -257,9 +257,15 @@ export async function revokeApiKey(prefix, actor) {
      ), audit AS (
        INSERT INTO usage_signals.operator_audit (actor, action, subject)
        SELECT $2, 'api_key.revoke', key_prefix FROM k
+     ), k_now AS (
+       -- The statement sees the table as it was, so the revoked row comes from the UPDATE.
+       SELECT * FROM k
+       UNION ALL
+       SELECT * FROM usage_signals.operator_api_key
+        WHERE id = (SELECT id FROM found) AND NOT EXISTS (SELECT 1 FROM k)
      )
      SELECT found.was_revoked, ${KEY_COLUMNS}
-       FROM found JOIN usage_signals.operator_api_key k ON k.id = found.id ${KEY_PROJECT}`,
+       FROM found JOIN k_now k ON k.id = found.id ${KEY_PROJECT}`,
     [prefix, actor],
   );
   return rows[0] ?? null;

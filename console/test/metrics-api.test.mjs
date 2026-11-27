@@ -1,6 +1,9 @@
 // GET /api/v1/projects: the operator figures for machine consumers, behind an operator API key.
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import path from 'node:path';
 import { after, describe, it } from 'node:test';
+import { promisify } from 'node:util';
 import pg from 'pg';
 import { createKey, revokeKey } from '../lib/api-keys.js';
 import { requireEnv } from '../lib/config.js';
@@ -88,5 +91,18 @@ describe('GET /api/v1/projects', () => {
     const wait = Number(limited.headers.get('retry-after'));
     assert.ok(wait >= 1 && wait <= 60, `Retry-After ${wait}`);
     assert.match((await limited.json()).error, /requests a minute/);
+  });
+
+  it('refuses to start with a limit that is not a whole number of 1 or more', async () => {
+    const root = path.resolve(import.meta.dirname, '..');
+    const load = (value) =>
+      promisify(execFile)(process.execPath, ['-e', "await import('./lib/metrics-api.js')"], {
+        cwd: root,
+        env: { ...process.env, API_KEY_REQUESTS_PER_MINUTE: value },
+      });
+    for (const value of ['abc', '0', '1.5']) {
+      await assert.rejects(load(value), /API_KEY_REQUESTS_PER_MINUTE must be a whole number/, value);
+    }
+    await load('120');
   });
 });
