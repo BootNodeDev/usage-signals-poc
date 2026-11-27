@@ -69,6 +69,7 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 | `POST /api/e` | `lib/gateway.js` | Tracker events |
 | `GET /api/tenant/<slug>/project` | `lib/tenant-api.js` | The project, its website id and the pinned tracker |
 | `GET /api/tenant/<slug>/web?days=7\|30\|90` | `lib/tenant-api.js` | Web figures of one site |
+| `/demo/api/*` | `lib/demo-api.js` | Demo site A's demo API, which sends its request durations to `/v1/metrics` |
 | `POST /v1/metrics` | `lib/ingest.js`, `lib/otlp-metrics.js`, `lib/route-rules.js`, `lib/metrics-store.js` | OTLP/HTTP JSON API metrics with an ingest token (`Authorization: Bearer`) |
 | `GET /api/tenant/<slug>/api?days=7\|30\|90` | `lib/tenant-api.js`, `lib/api-read.js` | API figures of one project, per route and day |
 | `GET /api/operator/projects?days=7\|30\|90[&figures=all\|totals\|one[&project=<slug>]]` | `lib/operator-api.js` | Web and API figures of every site, small counts masked. The start page asks for `totals` (no breakdowns) or `one` (one project's figures and referrers, the rest listed without figures) |
@@ -107,6 +108,8 @@ All server-side; there are no public variables. `console/local.env` holds the lo
 | `UMAMI_ADMIN_USER` | Umami account for the seed, the tests and the read endpoints. Defaults to `admin` |
 | `UMAMI_ADMIN_PASSWORD` | Password of that account |
 | `DEMO_SITE_HOSTS` | Production builds only: hosts of Demo site A, B and C, comma-separated, in that order |
+| `CONSOLE_URL` | Base URL of this console. The demo API sends its metrics to its `/v1/metrics`, and the scheduled run calls the demo API there. Unset: no demo API calls or metrics |
+| `DEMO_API_INGEST_TOKEN` | Ingest token of Demo site A, for the demo API's metrics. Set by hand on Vercel |
 | `CRON_SECRET` | Secret Vercel Cron sends to `/api/cron/sample-traffic`; without it the route answers 401. Set by hand on Vercel |
 | `UMAMI_NOGEO_URL` | Tests only: the Umami without its geo database |
 | `GATEWAY_PORT`, `DEMO_PORT`, `GATEWAY_URL`, `DEMO_URL` | Local server and tests only |

@@ -38,10 +38,10 @@ export const SAMPLE_SITES = {
   'demo-site-c': { pageViewsPerDay: 15, pages: ['/demo/', '/demo/explorer', '/demo/status'] },
 };
 
-// The API service of each demo site and its requests a day. Each name is used only by the
+// The API service of each demo site and its requests a day. Demo site A has none: its API
+// figures come from the demo API through /v1/metrics (lib/demo-api.js). Each name is used only by the
 // sample, so the hours a service already holds are the hours the sample has filled.
 export const SAMPLE_API = {
-  'demo-site-a': { service: 'wallet-api', requestsPerDay: 2400 },
   'demo-site-b': { service: 'anchor-api', requestsPerDay: 900 },
   'demo-site-c': { service: 'explorer-api', requestsPerDay: 120 },
 };
@@ -323,13 +323,24 @@ export function fillSampleTraffic({
   sites = SAMPLE_SITES,
   apiSites = SAMPLE_API,
   first = FIRST_SAMPLE_HOUR,
+  demo = { base: process.env.CONSOLE_URL, calls: DEMO_API_CALLS },
 } = {}) {
   const start = sampleWindowStart(now, first);
   return withTransactionLock(RUN_LOCK_KEY, async () => ({
     ...(await settled('page views', fillHours(now, sites, start))),
     api: await settled('API rows', fillApiHours(now, apiSites, start)),
     keys: await settled('key purge', purgeKeys(now)),
+    demo: await settled('demo API calls', callDemo(demo)),
   }));
+}
+
+// Requests the run sends the demo API, so Demo site A's API figures keep growing.
+const DEMO_API_CALLS = 40;
+
+async function callDemo({ base, calls }) {
+  if (!base) return { skipped: 'CONSOLE_URL is not set' };
+  const { callDemoApi } = await import('./demo-api.js');
+  return { statuses: await callDemoApi(base, calls) };
 }
 
 /**
@@ -349,7 +360,7 @@ function settled(what, fill) {
   });
 }
 
-/** Writes the sample API rows of every complete hour that has none yet, at most MAX_API_HOURS_PER_RUN. */
+/** Writes the sample API rows of every complete hour that has none yet, up to the run's bound. */
 async function fillApiHours(now, apiSites, start) {
   const registered = (await listSites()).filter(
     (site) => site.state === 'active' && apiSites[site.slug],
@@ -417,7 +428,7 @@ export async function handleSampleTraffic(request) {
       return Response.json({ skipped: 'Another run is sending.' });
     }
     console.log(`sample traffic: ${JSON.stringify(report)}`);
-    if (report.error || report.api.error || report.keys.error) {
+    if (report.error || report.api.error || report.keys.error || report.demo.error) {
       return Response.json(report, { status: 503 });
     }
     return Response.json(report, { status: report.failedHours > 0 ? 502 : 200 });

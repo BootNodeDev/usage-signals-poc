@@ -22,6 +22,10 @@ export default {
     if (pathname === '/api/operator/projects') return handleOperatorProjects(request);
     if (pathname === '/api/public/projects') return handlePublicProjects(request);
     if (pathname === '/api/cron/sample-traffic') return handleSampleTraffic(request);
+    // Loaded on first use: the OpenTelemetry SDK would slow every other route's cold start.
+    if (pathname.startsWith('/demo/api/')) {
+      return import('../lib/demo-api.js').then((demo) => demo.handleDemoApi(request));
+    }
     if (pathname === '/demo' || pathname.startsWith('/demo/')) return handleDemoSite(request);
     const tenant = pathname.match(TENANT_ROUTE);
     if (tenant) return TENANT_HANDLERS[tenant[2]](request, tenant[1]);

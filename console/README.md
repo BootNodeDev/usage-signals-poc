@@ -73,6 +73,19 @@ exporter. Make an ingest token for the project, then point a second OTLP exporte
 The figures show on the project's API page. A refused point is answered with its reason in
 `partialSuccess`.
 
+### Sent versus stored
+
+Demo site A's demo API sends its own metrics this way. `npm run demo-api-check` calls it and
+compares what it answered with what `/v1/metrics` stored, per route and status:
+
+```text
+route status                 | sent | stored
+/demo/api/accounts/{id} 200  |   25 |     25
+/demo/api/accounts/{id} 404  |   25 |     25
+/demo/api/health 200         |   25 |     25
+/demo/api/prices 200         |   25 |     25
+```
+
 ## Try the gateway checks
 
 The gateway accepts an event only from a registered site. It refuses identity fields that only
