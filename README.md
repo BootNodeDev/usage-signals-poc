@@ -51,6 +51,7 @@ records a demo.
 - [`console/README.md`](console/README.md): what the prototype does and how to run it on your machine.
 - [`checks/README.md`](checks/README.md): the architecture checks and their results.
 - [`DECISIONS.md`](DECISIONS.md): each technical choice, its source, the alternative rejected and the known limits.
+- [`PRODUCT-NOTES.md`](PRODUCT-NOTES.md): what the prototype taught us that the product should start from.
 - [`architecture.md`](architecture.md): the code layout, the routes and the data flow.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): setting up the repository and running the tests.
 
