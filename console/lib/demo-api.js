@@ -17,6 +17,11 @@ export const DEMO_API_SERVICE = 'demo-api';
 // The boundaries the conventions advise; the SDK's defaults differ and /v1/metrics refuses them.
 const BOUNDS_S = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10];
 const KNOWN_ACCOUNTS = 1000;
+// An export that fails or hangs must not hold the answer: the exporter gives up after this long,
+// and the measurement is lost and logged.
+const EXPORT_TIMEOUT_MS = 2000;
+// ExportResultCode.SUCCESS of @opentelemetry/core, which is not a direct dependency.
+const EXPORT_SUCCESS = 0;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Work that takes a while, as a database or Horizon call would.
@@ -72,11 +77,25 @@ function instrumentsOf() {
     instruments = null;
     return instruments;
   }
-  const exporter = new OTLPMetricExporter({
+  const otlp = new OTLPMetricExporter({
     url: new URL('/v1/metrics', base).href,
     headers: { authorization: `Bearer ${token}` },
     temporalityPreference: AggregationTemporality.DELTA,
+    timeoutMillis: EXPORT_TIMEOUT_MS,
   });
+  // The SDK reports a failed export only to the exporter's callback, so it is logged here.
+  const exporter = {
+    export: (batch, done) =>
+      otlp.export(batch, (result) => {
+        if (result.code !== EXPORT_SUCCESS) {
+          console.error(`demo API: metrics not sent: ${result.error?.message ?? 'export failed'}`);
+        }
+        done(result);
+      }),
+    forceFlush: () => otlp.forceFlush(),
+    shutdown: () => otlp.shutdown(),
+    selectAggregationTemporality: (kind) => otlp.selectAggregationTemporality(kind),
+  };
   const provider = new MeterProvider({
     resource: resourceFromAttributes({
       'service.name': DEMO_API_SERVICE,
@@ -84,7 +103,13 @@ function instrumentsOf() {
       'service.instance.id': randomUUID(),
     }),
     // A function may stop between requests, so each request is exported when it ends.
-    readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 3_600_000 })],
+    readers: [
+      new PeriodicExportingMetricReader({
+        exporter,
+        exportIntervalMillis: 3_600_000,
+        exportTimeoutMillis: EXPORT_TIMEOUT_MS + 500,
+      }),
+    ],
   });
   const meter = provider.getMeter('pulse-demo-api');
   const duration = meter.createHistogram('http.server.request.duration', {

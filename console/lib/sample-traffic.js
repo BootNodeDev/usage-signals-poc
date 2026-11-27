@@ -14,7 +14,6 @@ import {
   purgeApiPointKeys,
   withTransactionLock,
 } from './db.js';
-import { callDemoApi } from './demo-api.js';
 import { KEY_DAYS, dateOf } from './otlp-metrics.js';
 import { umamiGet } from './umami-admin.js';
 import { forwardToUmami } from './umami.js';
@@ -340,6 +339,7 @@ const DEMO_API_CALLS = 40;
 
 async function callDemo({ base, calls }) {
   if (!base) return { skipped: 'CONSOLE_URL is not set' };
+  const { callDemoApi } = await import('./demo-api.js');
   return { statuses: await callDemoApi(base, calls) };
 }
 

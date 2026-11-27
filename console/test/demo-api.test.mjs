@@ -72,4 +72,31 @@ describe('demo API', () => {
     const expected = ['200', '201', '400', '404'];
     for (const status of Object.keys(statuses)) assert.ok(expected.includes(status), status);
   });
+
+  it('answers within seconds and logs it when its metrics cannot be sent', async () => {
+    const { createServer } = await import('node:http');
+    const hanging = createServer(() => {}).listen(0);
+    const failing = createServer((_, res) => res.writeHead(503).end()).listen(0);
+    const logged = [];
+    const original = console.error;
+    console.error = (...args) => logged.push(args.join(' '));
+    try {
+      for (const server of [hanging, failing]) {
+        process.env.CONSOLE_URL = `http://127.0.0.1:${server.address().port}`;
+        await resetDemoApi();
+        const started = Date.now();
+        const response = await call('/demo/api/prices');
+        assert.equal(response.status, 200);
+        assert.ok(Date.now() - started < 4000, `took ${Date.now() - started} ms`);
+      }
+    } finally {
+      console.error = original;
+      hanging.closeAllConnections();
+      hanging.close();
+      failing.close();
+      process.env.CONSOLE_URL = GATEWAY;
+      await resetDemoApi();
+    }
+    assert.equal(logged.filter((line) => line.includes('demo API: metrics not sent')).length, 2);
+  });
 });

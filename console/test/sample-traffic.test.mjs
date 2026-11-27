@@ -12,6 +12,7 @@ import {
   pageViewsInHour,
   planApiHour,
   planHour,
+  SAMPLE_API,
   sampleWindowStart,
 } from '../lib/sample-traffic.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
@@ -258,6 +259,14 @@ describe('sample traffic run against the local stack', () => {
     const called = await fillSampleTraffic({ ...quiet, demo });
     const total = Object.values(called.demo.statuses).reduce((sum, n) => sum + n, 0);
     assert.equal(total, 3);
+  });
+
+  it('samples API rows for Demo sites B and C only; a failed demo API call fails the run', async () => {
+    assert.deepEqual(Object.keys(SAMPLE_API), ['demo-site-b', 'demo-site-c']);
+    const report = await fillSampleTraffic({
+      sites: {}, apiSites: {}, first: hour, demo: { base: 'http://127.0.0.1:1', calls: 1 },
+    });
+    assert.equal(report.demo.error, 'fetch failed');
   });
 
   it('still reads single hours from Umami when the first sample hour is months back', async () => {
