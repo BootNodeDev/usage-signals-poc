@@ -1,0 +1,4 @@
+(cd console && pnpm exec lint-staged)
+
+. console/.husky/gitleaks.sh
+gitleaks git --redact --staged --verbose

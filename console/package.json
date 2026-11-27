@@ -5,8 +5,12 @@
   "engines": {
     "node": ">=24"
   },
+  "packageManager": "pnpm@12.20.0",
   "scripts": {
     "build": "node scripts/seed.mjs",
+    "lint": "biome check",
+    "lint:fix": "biome check --write",
+    "prepare": "cd .. && husky console/.husky",
     "up": "docker compose up -d --wait && node --env-file=local.env --env-file-if-exists=.env.local scripts/seed.mjs && node --env-file=local.env --env-file-if-exists=.env.local dev.mjs",
     "test": "node --env-file=local.env --env-file-if-exists=.env.local --test --test-concurrency=1 \"test/*.test.mjs\"",
     "pin-tracker": "node scripts/pin-tracker.mjs"
@@ -16,5 +20,12 @@
     "isbot": "5.2.2",
     "pg": "8.23.1"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8",
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.1"
+  }
 }
