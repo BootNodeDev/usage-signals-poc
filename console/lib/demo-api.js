@@ -17,6 +17,14 @@ export const DEMO_API_SERVICE = 'demo-api';
 // The boundaries the conventions advise; the SDK's defaults differ and /v1/metrics refuses them.
 const BOUNDS_S = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10];
 const KNOWN_ACCOUNTS = 1000;
+// The semantic conventions record any other method as _OTHER, so a caller cannot make a new
+// series per invented method (https://opentelemetry.io/docs/specs/semconv/http/http-spans/).
+const KNOWN_METHODS = new Set([
+  'CONNECT', 'DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'TRACE',
+]);
+// The scheduled run's calls: each gets this long, and the run stops calling after its budget.
+const CALL_TIMEOUT_MS = 5000;
+const RUN_BUDGET_MS = 60_000;
 // An export that fails or hangs must not hold the answer: the exporter gives up after this long,
 // and the measurement is lost and logged.
 const EXPORT_TIMEOUT_MS = 2000;
@@ -138,7 +146,7 @@ export async function handleDemoApi(request) {
   const sdk = instrumentsOf();
   if (sdk) {
     const attributes = {
-      'http.request.method': request.method,
+      'http.request.method': KNOWN_METHODS.has(request.method) ? request.method : '_OTHER',
       'http.response.status_code': status,
     };
     if (found) attributes['http.route'] = found.route;
@@ -168,18 +176,28 @@ function pickCall() {
   return CALLS[0][1]();
 }
 
-/** Calls the demo API `count` times at `base`; returns how many answers each status got. */
-export async function callDemoApi(base, count) {
+/**
+ * Calls the demo API up to `count` times at `base`, within `budgetMs`; returns how many answers
+ * each status got, and how many calls timed out. Throws when the demo API cannot be reached.
+ */
+export async function callDemoApi(base, count, budgetMs = RUN_BUDGET_MS) {
   const statuses = {};
-  for (let i = 0; i < count; i += 1) {
+  const started = Date.now();
+  for (let i = 0; i < count && Date.now() - started < budgetMs; i += 1) {
     const [method, path, valid] = pickCall();
     const init = { method };
     if (method === 'POST') {
       init.headers = { 'content-type': 'application/json' };
       init.body = JSON.stringify(valid ? { source: 'G...', amount: '10' } : {});
     }
-    const response = await fetch(new URL(path, base), init);
-    statuses[response.status] = (statuses[response.status] ?? 0) + 1;
+    init.signal = AbortSignal.timeout(CALL_TIMEOUT_MS);
+    try {
+      const response = await fetch(new URL(path, base), init);
+      statuses[response.status] = (statuses[response.status] ?? 0) + 1;
+    } catch (error) {
+      if (error.name !== 'TimeoutError') throw error;
+      statuses.timeout = (statuses.timeout ?? 0) + 1;
+    }
   }
   return statuses;
 }

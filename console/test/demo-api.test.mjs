@@ -99,4 +99,34 @@ describe('demo API', () => {
     }
     assert.equal(logged.filter((line) => line.includes('demo API: metrics not sent')).length, 2);
   });
+
+  it('records an unknown HTTP method as _OTHER', async () => {
+    const byMethod = async () => {
+      const { rows } = await pool.query(
+        `SELECT coalesce(sum(request_count) FILTER (WHERE method = '_OTHER'), 0)::int AS other,
+                coalesce(sum(request_count) FILTER (WHERE method = 'FROBNICATE'), 0)::int AS raw
+           FROM usage_signals.api_metric_minute WHERE tenant_id = $1 AND service = $2`,
+        [TENANT.id, DEMO_API_SERVICE],
+      );
+      return rows[0];
+    };
+    const before = await byMethod();
+    assert.equal((await call('/demo/api/prices', { method: 'FROBNICATE' })).status, 405);
+    assert.deepEqual(await byMethod(), { other: before.other + 1, raw: before.raw });
+  });
+
+  it('gives each scheduled call 5 seconds and stops calling after the run budget', async () => {
+    const { createServer } = await import('node:http');
+    const hanging = createServer(() => {}).listen(0);
+    try {
+      const started = Date.now();
+      const statuses = await callDemoApi(`http://127.0.0.1:${hanging.address().port}`, 3, 7000);
+      assert.ok(Date.now() - started < 12_000, `took ${Date.now() - started} ms`);
+      const timeouts = statuses.timeout ?? 0;
+      assert.ok(timeouts >= 1 && timeouts <= 2, JSON.stringify(statuses));
+    } finally {
+      hanging.closeAllConnections();
+      hanging.close();
+    }
+  });
 });
