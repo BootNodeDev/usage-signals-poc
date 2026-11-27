@@ -35,6 +35,7 @@ What building this prototype taught us that the product should start from. Each 
 - **The route rules now exist as a JavaScript module held to the check 5 vectors.** The product needs the same rules twice (collector and tracker); keeping one vector set that both implementations must pass is what keeps them equal. Found in PR for issue #21.
 - **The project must come from the token, never from the request.** The prototype replaces any `tenant.id` a client sends with the token's project, as the product's collector does. Found in PR for issue #21.
 - **A token checked in the database costs one query per export.** The prototype looks up the ingest token's hash on each request; the architecture document's signed token, checked against a local key, removes that query from the accept path at the price of key management and slower revocation. Found in PR for issue #21.
+- **Writing each point with its own round trip does not scale.** The prototype stores each point with a savepoint and an upsert inside one transaction, and bounds a request to 1,000 points. The product's writer should write a batch in one statement and keep per-point refusal for the rare database error. Found in the native review of the work on issue #21.
 - **Most refusals answer 200.** OTLP answers refused points with 200 and `partialSuccess`, so a project only sees them if it reads the response or the console shows the refusal counts. The product needs refusal counts on the project's screen. Found in check 5 and PR for issue #21.
 
 ## Metrics API and keys
