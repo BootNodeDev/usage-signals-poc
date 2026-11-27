@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="stylesheet" href="/styles.css">
 <script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  window.va = window.va || function () { window.vaq = window.vaq || []; window.vaq.push(arguments); };
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -34,12 +34,10 @@
   </div>
 </div>
 
-<script src="/data.js"></script>
-<script>
-(function () {
-  'use strict';
+<script type="module" src="/data.js"></script>
+<script type="module">
   var D = window.LData;
-  var byId = function (id) { return document.getElementById(id); };
+  var byId = (id) => document.getElementById(id);
 
   function start() {
     var App = window.App;
@@ -66,12 +64,10 @@
       }
       listMessage('');
       byId('stamp').textContent = App.stamp();
-      var sorted = D.sortRows(rows, function (row) { return row.totals.visitors; }, true);
+      var sorted = D.sortRows(rows, (row) => row.totals.visitors, true);
       byId('projects').innerHTML = '<thead><tr><th>Project</th><th class="num" aria-sort="descending">Visitors</th><th class="num">Page views</th></tr></thead><tbody>' +
-        sorted.map(function (row) {
-          return '<tr><td><b>' + App.projectName(row.project) + '</b></td>' +
-            '<td class="num">' + count(row.totals.visitors) + '</td><td class="num">' + count(row.totals.pageviews) + '</td></tr>';
-        }).join('') + '</tbody>';
+        sorted.map((row) => '<tr><td><b>' + App.projectName(row.project) + '</b></td>' +
+            '<td class="num">' + count(row.totals.visitors) + '</td><td class="num">' + count(row.totals.pageviews) + '</td></tr>').join('') + '</tbody>';
       var below = D.meta().small_counts.below;
       byId('caption').textContent = 'Active projects only, last ' + range + ' days. A visitor counts once a day. Counts of 1 to ' +
         (below - 1) + ' show as <' + below + ', a placeholder threshold.';
@@ -80,13 +76,13 @@
     function render(days) {
       range = days;
       listMessage('Loading figures', 'Reading the last ' + days + ' days for every active project.');
-      D.loadPublic(days).then(function (rows) {
+      D.loadPublic(days).then((rows) => {
         if (range === days) paint(rows);
-      }, function (error) {
+      }, (error) => {
         if (range !== days) return;
         listMessage('Figures are unavailable', App.escapeHtml(error.message || 'The figures could not be read.') + ' Nothing is shown in their place.',
           '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
-        byId('retry').addEventListener('click', function () { render(days); });
+        byId('retry').addEventListener('click', () => { render(days); });
       });
     }
 
@@ -94,7 +90,6 @@
   }
 
   D.boot(start);
-})();
 </script>
 </body>
 </html>
