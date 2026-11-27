@@ -10,9 +10,14 @@
     "up": "docker compose up -d --wait && node --env-file=local.env --env-file-if-exists=.env.local scripts/seed.mjs && node --env-file=local.env --env-file-if-exists=.env.local dev.mjs",
     "test": "node --env-file=local.env --env-file-if-exists=.env.local --test --test-concurrency=1 \"test/*.test.mjs\"",
     "pin-tracker": "node scripts/pin-tracker.mjs",
-    "ingest-token": "node --env-file=local.env --env-file-if-exists=.env.local scripts/ingest-token.mjs"
+    "ingest-token": "node --env-file=local.env --env-file-if-exists=.env.local scripts/ingest-token.mjs",
+    "demo-api-check": "node --env-file=local.env --env-file-if-exists=.env.local scripts/demo-api-check.mjs"
   },
   "dependencies": {
+    "@opentelemetry/api": "1.10.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "0.301.2",
+    "@opentelemetry/resources": "3.1.1",
+    "@opentelemetry/sdk-metrics": "3.1.1",
     "@vercel/functions": "3.11.3",
     "isbot": "5.2.2",
     "pg": "8.23.1"

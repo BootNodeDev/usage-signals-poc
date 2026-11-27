@@ -174,7 +174,7 @@ describe('sample traffic run against the local stack', () => {
   it('spends no run budget on hours whose plan has no page views', async () => {
     const quiet = { [site.slug]: { ...PROFILE, pageViewsPerDay: 0 } };
     const report = await fillSampleTraffic({ now: hour + HOUR + 60_000, sites: quiet, first: hour - 200 * HOUR });
-    const { keys: _, ...rest } = report;
+    const { keys: _, demo: __, ...rest } = report;
     assert.deepEqual(rest, {
       filled: 0,
       pageViews: 0,
@@ -248,6 +248,16 @@ describe('sample traffic run against the local stack', () => {
     );
     assert.deepEqual(rows.map((row) => row.key), [keys[1]]);
     await pool.query(`DELETE FROM usage_signals.api_point_key WHERE key = $1`, [keys[1]]);
+  });
+
+  it('calls the demo API when CONSOLE_URL is set, and says so when it is not', async () => {
+    const quiet = { sites: {}, apiSites: {}, first: hour };
+    const skipped = await fillSampleTraffic({ ...quiet, demo: { base: undefined, calls: 3 } });
+    assert.deepEqual(skipped.demo, { skipped: 'CONSOLE_URL is not set' });
+    const demo = { base: requireEnv('GATEWAY_URL'), calls: 3 };
+    const called = await fillSampleTraffic({ ...quiet, demo });
+    const total = Object.values(called.demo.statuses).reduce((sum, n) => sum + n, 0);
+    assert.equal(total, 3);
   });
 
   it('still reads single hours from Umami when the first sample hour is months back', async () => {
