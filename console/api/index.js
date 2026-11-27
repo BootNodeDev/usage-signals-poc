@@ -1,6 +1,7 @@
 // Each audience has its own endpoints so each can get its own access check.
 import { handleDemoSite } from '../lib/demo-site.js';
 import { handleEvent } from '../lib/gateway.js';
+import { handleMetricsProjects } from '../lib/metrics-api.js';
 import { handleOperatorProjects } from '../lib/operator-api.js';
 import { handlePublicProjects } from '../lib/public-api.js';
 import { handleSampleTraffic } from '../lib/sample-traffic.js';
@@ -18,6 +19,7 @@ export default {
     const { pathname } = new URL(request.url);
     if (pathname === '/api/e') return handleEvent(request);
     if (pathname === '/api/operator/projects') return handleOperatorProjects(request);
+    if (pathname === '/api/v1/projects') return handleMetricsProjects(request);
     if (pathname === '/api/public/projects') return handlePublicProjects(request);
     if (pathname === '/api/cron/sample-traffic') return handleSampleTraffic(request);
     if (pathname === '/demo' || pathname.startsWith('/demo/')) return handleDemoSite(request);

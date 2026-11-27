@@ -94,6 +94,33 @@ export async function apiBySite(sites, dayCount, read = readApiFigures) {
   return new Map(entries);
 }
 
+/**
+ * The operator answer for these sites: aggregates only, small counts hidden. `mode` picks the
+ * breakdowns read; with `shown`, only that site's figures are read and the others are listed.
+ * The metrics API (`/api/v1/projects`) sends the same answer with `mode` `all`.
+ */
+export async function operatorFigures(sites, dayCount, mode = 'all', shown = null) {
+  const readSite = (site) =>
+    shown && site !== shown ? null : readFigures(site, dayCount, BREAKDOWNS_READ[mode]);
+  // The start page modes show no API figures, so only `all` reads them.
+  const [figures, api] = await Promise.all([
+    Promise.all(sites.map(readSite)),
+    mode === 'all' ? apiBySite(sites, dayCount) : new Map(),
+  ]);
+  const unread = (site) => ({
+    project: identity(site), totals: null, flagged_by_rule: {}, daily: [], breakdowns: {},
+  });
+  return {
+    days: dayCount,
+    through: figures.find(Boolean)?.through ?? new Date().toISOString(),
+    small_counts: { below: SMALL_COUNT_BELOW },
+    projects: sites.map((site, index) => ({
+      ...(figures[index] ? operatorRow(site, figures[index]) : unread(site)),
+      api: api.get(site.id) ?? null,
+    })),
+  };
+}
+
 function previewed(sites, slug) {
   if (slug) return sites.find((site) => site.slug === slug);
   return sites.find((site) => site.state === 'active') ?? sites[0];
@@ -119,24 +146,7 @@ export async function handleOperatorProjects(request) {
     const sites = await listSites();
     const shown = mode === 'one' ? previewed(sites, slug) : null;
     if (slug && !shown) return json(404, { error: 'Project not found.' });
-    // The start page modes show no API figures, so only `all` reads them.
-    const [figures, api] = await Promise.all([
-      Promise.all(
-        sites.map((site) => (shown && site !== shown ? null : readFigures(site, dayCount, BREAKDOWNS_READ[mode]))),
-      ),
-      mode === 'all' ? apiBySite(sites, dayCount) : new Map(),
-    ]);
-    return cached({
-      days: dayCount,
-      through: figures.find(Boolean)?.through ?? new Date().toISOString(),
-      small_counts: { below: SMALL_COUNT_BELOW },
-      projects: sites.map((site, index) => ({
-        ...(figures[index]
-          ? operatorRow(site, figures[index])
-          : { project: identity(site), totals: null, flagged_by_rule: {}, daily: [], breakdowns: {} }),
-        api: api.get(site.id) ?? null,
-      })),
-    });
+    return cached(await operatorFigures(sites, dayCount, mode, shown));
   } catch (error) {
     return unavailable(error);
   }
