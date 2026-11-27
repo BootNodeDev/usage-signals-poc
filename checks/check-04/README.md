@@ -62,8 +62,9 @@ Three other lines need a matching edit:
 | 153 | "Removal revokes ingest tokens and keys" | add: "by deleting the service user, which deletes its keys; deleting the team alone leaves the user and a working key" | Rows in group 4. |
 | 156 | "It alone holds the Umami admin credential, which Umami requires to create users." | add: "and to reset a service user's password, the only way to rotate or revoke a key without storing that password" | Group 3. |
 
-Line 34 says keys exist "since v3.4.0". Not established here: the submodule is a shallow clone at
-v3.5.0, so the version that introduced them cannot be read from it. They exist at v3.5.0.
+Line 34 says keys exist "since v3.4.0". Not established here: the submodule was a shallow clone at
+v3.5.0, so the version that introduced them could not be read from it. They exist at v3.5.0.
+*Read later in the full history: the key routes and `src/lib/api-key.ts` first appear at v3.4.0.*
 
 ## 1. Provisioning steps
 
@@ -73,7 +74,7 @@ All calls are HTTP against Umami. `Bearer` is the admin login token unless state
 |---|---|---|---|
 | Admin session | `POST /api/auth/login` `{username, password}` | 200 `{token, user}` | `src/app/api/auth/login/route.ts:16-84` |
 | Create team | `POST /api/teams` `{name}` | 200 `[team, teamUser]`; the caller becomes `team-owner`; the team gets a join code `accessCode` | `src/app/api/teams/route.ts:32-95`, `src/queries/prisma/team.ts:144-164` |
-| Create service user | `POST /api/users` `{username, password, role: "view-only"}` | 200 `{id, username, role, createdAt}` | `src/app/api/users/route.ts:11-45`; admin only, `src/permissions/user.ts:3-5` |
+| Create service user | `POST /api/users` `{username, password, role: "view-only"}` | 200 `{id, username, role}` | `src/app/api/users/route.ts:11-45`; admin only, `src/permissions/user.ts:3-5` |
 | Add to team | `POST /api/teams/:teamId/users` `{userId, role: "team-view-only"}` | 200 team-user row | `src/app/api/teams/[teamId]/users/route.ts:54-83` |
 | Create team website | `POST /api/websites` `{name, domain, teamId}` | 200 website with `teamId` set and `userId` null | `src/app/api/websites/route.ts:31-97` |
 | Or move an existing one | `POST /api/websites/:id/transfer` `{teamId}` | 200 website with the new `teamId` | `src/app/api/websites/[websiteId]/transfer/route.ts:36-46` |
@@ -149,7 +150,7 @@ No service user password is ever stored.
 | `DELETE /api/users/:id` | 0 in every table |
 
 Outside Umami Cloud these are hard deletes (`src/queries/prisma/website.ts:292-339`,
-`src/queries/prisma/team.ts:180-266`, `src/queries/prisma/user.ts:121`). Deleting the team deletes
+`src/queries/prisma/team.ts:180-265`, `src/queries/prisma/user.ts:121`). Deleting the team deletes
 its websites itself (`team.ts:184-191`). The admin stays `team-owner` of every team it creates,
 which is the second team-user row.
 
@@ -193,6 +194,7 @@ PostgreSQL must refuse (row 27). What Umami stored: user role `view-only`, team 
   `passwordChangeRequired` and does not enforce it on the API.
 - Behaviour on Vercel and Neon. This ran on the Docker image only.
 - Whether keys date from v3.4.0 (see above).
+  *Read later: they do; see above.*
 
 ## Round two (2026-11-24)
 

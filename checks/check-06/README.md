@@ -149,14 +149,14 @@ No failure to explain on either image.
 
 Why a container and not ports 43106 and 43206 on the host: with the local server on those
 ports the control run gave 111 of 112. `serves the pinned tracker with the integrity value the
-demo page declares` (`console/test/gateway.test.mjs:422`) fetches the demo page, which is only
+demo page declares` (`console/test/gateway.test.mjs:453`) fetches the demo page, which is only
 served for the registered host `localhost:4301` (`console/scripts/fixtures.mjs`). That failure
 does not involve Umami and is the same on any image. Inside the container the server uses 4300
 and 4301 without touching the host, and the suite's fixed ports 4310 to 4321 cannot collide
 with another run.
 
 `COMPOSE_PROJECT_NAME` is needed because one test runs `docker compose -f
-console/docker-compose.yml exec postgres pg_dump` (`gateway.test.mjs:439`). The variable takes
+console/docker-compose.yml exec postgres pg_dump` (`gateway.test.mjs:470`). The variable takes
 precedence over the `name:` in that file
 (https://docs.docker.com/compose/how-tos/project-name/), so the command reads this check's
 database. Verified: under that variable `docker compose -f console/docker-compose.yml ps` lists

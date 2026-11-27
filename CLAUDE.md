@@ -31,7 +31,7 @@ Proof of concept of Pulse, a shared web and API analytics service for Stellar ec
 
 ## Working Rules
 
-- Pages read data only through `window.LData` in `console/public/data.js`. In that file, `currentProjectSlug()` is the only code that reads the address. Tests enforce both.
+- Pages read data only through `window.LData` in `console/public/data.js`. In that file, `currentProjectSlug()` is the only code that reads the address. `test/routes.test.mjs` enforces the second.
 - Keep sample data out of `console/public/`. A test fails on the old sample strings, a link to a `.html` file, a hardcoded UUID, or a mention of Umami outside `index.html`.
 - The tenant console and the operator console never link to each other, and the public view links to neither (`test/routes.test.mjs`).
 - The public view reads only `GET /api/public/projects`, which sends each active project's name, page views and visitors and no other project detail (decision 57 in `DECISIONS.md`).
@@ -50,7 +50,7 @@ See [`architecture.md`](architecture.md) for project structure, data flow, and k
 - **Framework:** `node:test` (`describe` and `it`) with `node:assert/strict`
 - **Run tests:** in `console/`, start the stack with `npm run up` (needs Docker), then run `npm test` in a second terminal. Test files run one at a time (`--test-concurrency=1`).
 - **What to test:** each endpoint against the running stack: gateway refusals and address truncation, the read endpoints and their small counts, routes, and the seed profiles
-- **Architecture checks:** each `checks/*/run.mjs` starts its own isolated stack. Results are in `checks/README.md`.
+- **Architecture checks:** each check's run script (`run.mjs`, or `run.sh` in check 6) starts its own isolated stack. Results are in `checks/README.md`.
 
 ## Commit Standards
 

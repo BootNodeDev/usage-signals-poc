@@ -30,8 +30,8 @@ npm run up
 The command starts PostgreSQL 18 and Umami in Docker and seeds them. It then serves the start
 page and the consoles on port 4300 and the demo sites on port 4301, and stays in the foreground.
 
-`local.env` holds the local values and documents every variable. Put your overrides in
-`.env.local`, which git ignores.
+`local.env` holds the local values. [`architecture.md`](architecture.md#environment-variables)
+lists every variable. Put your overrides in `.env.local`, which git ignores.
 
 ## Scripts
 

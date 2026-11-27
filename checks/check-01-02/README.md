@@ -216,7 +216,7 @@ node controls.mjs    # about twelve minutes; one unchanged run, then fourteen mu
 UMAMI_URL=... UMAMI_USERNAME=... UMAMI_PASSWORD=... node probe.mjs   # the probe on its own
 ```
 
-Docker and Node 24 or newer. No npm package. One new download: `libfaketime` 0.9.14-r0 from
+Docker and Node 24.2 or newer (`probe.mjs` on its own needs `import.meta.main`). No npm package. One new download: `libfaketime` 0.9.14-r0 from
 the Alpine 3.24 package mirror, fetched by a helper container on first start. It is needed
 because direct ingestion takes the event time from Umami's clock. The library is preloaded
 into a third process of the unmodified Umami image (`umami-clock`), and the script sets that

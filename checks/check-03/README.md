@@ -318,7 +318,7 @@ Not told apart: an IPv6 address followed by a port without brackets (`2001:db8::
 valid IPv6 address and is taken as one. IPv4 embedded in other IPv6 ranges (NAT64, 6to4) is
 left as IPv6.
 
-This corrects the round-one result quoted in `checks/README.md` ("one IPv6 address written
+This corrects the round-one result that an earlier version of `checks/README.md` quoted ("one IPv6 address written
 two ways counts twice"): with the normalisation it counts once. The zone is dropped, so one
 link-local address on two interfaces is one visitor; such addresses do not reach a public
 gateway.
