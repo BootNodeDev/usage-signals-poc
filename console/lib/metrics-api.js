@@ -11,19 +11,19 @@ const INVALID = `${CHALLENGE}, error="invalid_token"`;
 // Requests a key may make in one minute. The product's limit is to be agreed with SCF.
 const DEFAULT_REQUESTS_PER_MINUTE = 60;
 
-// Read once, so a wrong value stops the function at start instead of failing every request.
-const REQUESTS_PER_MINUTE = requestsPerMinute();
+// Read once at start. A wrong value is logged then and turns this endpoint alone into 503s:
+// the same function serves the event gateway, which must keep running.
+const LIMIT = requestsPerMinute(process.env.API_KEY_REQUESTS_PER_MINUTE);
+if (LIMIT.error) console.error(`metrics API: ${LIMIT.error}`);
 
-function requestsPerMinute() {
-  const value = Number(process.env.API_KEY_REQUESTS_PER_MINUTE ?? DEFAULT_REQUESTS_PER_MINUTE);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error('API_KEY_REQUESTS_PER_MINUTE must be a whole number of 1 or more.');
-  }
-  return value;
+function requestsPerMinute(text) {
+  if (text === undefined || text === '') return { value: DEFAULT_REQUESTS_PER_MINUTE };
+  const value = Number(text);
+  if (Number.isInteger(value) && value >= 1) return { value };
+  return { error: 'API_KEY_REQUESTS_PER_MINUTE must be a whole number of 1 or more.' };
 }
 
-function tooMany(limit) {
-  const wait = 60 - new Date().getUTCSeconds();
+function tooMany(limit, wait) {
   return json(429, { error: `This key may make ${limit} requests a minute. Retry later.` }, {
     'retry-after': String(wait),
   });
@@ -41,12 +41,13 @@ function refused(challenge, error) {
 /** GET /api/v1/projects?days=7|30|90 with `Authorization: Bearer <key>`. */
 export async function handleMetricsProjects(request) {
   if (request.method !== 'GET') return json(405, { error: 'Use GET.' }, { allow: 'GET' });
+  if (LIMIT.error) return json(503, { error: `The metrics API is not configured: ${LIMIT.error}` });
   const key = bearer(request);
   if (!key) return refused(CHALLENGE, 'Send an operator API key as a Bearer token.');
   try {
     const granted = await verifyKey(key);
     if (!granted) return refused(INVALID, 'The API key is unknown or revoked.');
-    if (granted.requests > REQUESTS_PER_MINUTE) return tooMany(REQUESTS_PER_MINUTE);
+    if (granted.requests > LIMIT.value) return tooMany(LIMIT.value, granted.secondsLeft);
     const dayCount = rangeParam(request);
     if (!dayCount) return badRange();
     const sites = (await listSites()).filter(

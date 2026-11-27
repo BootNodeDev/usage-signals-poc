@@ -93,16 +93,41 @@ describe('GET /api/v1/projects', () => {
     assert.match((await limited.json()).error, /requests a minute/);
   });
 
-  it('refuses to start with a limit that is not a whole number of 1 or more', async () => {
+  // Runs the handler in a child process with its own limit, so the test sees exact boundaries.
+  async function withLimit(value, script) {
     const root = path.resolve(import.meta.dirname, '..');
-    const load = (value) =>
-      promisify(execFile)(process.execPath, ['-e', "await import('./lib/metrics-api.js')"], {
-        cwd: root,
-        env: { ...process.env, API_KEY_REQUESTS_PER_MINUTE: value },
-      });
+    const args = ['--input-type=module', '-e', script];
+    const { stdout } = await promisify(execFile)(process.execPath, args, {
+      cwd: root,
+      env: { ...process.env, API_KEY_REQUESTS_PER_MINUTE: value },
+    });
+    return JSON.parse(stdout.trim().split('\n').at(-1));
+  }
+
+  const THREE_CALLS = `
+    import { createKey } from './lib/api-keys.js';
+    import { handleMetricsProjects } from './lib/metrics-api.js';
+    const { key } = await createKey({ label: 'limit ${'$'}{Date.now()}', actor: 'tester' });
+    const call = () => handleMetricsProjects(new Request('http://x/api/v1/projects?days=7', {
+      headers: { authorization: 'Bearer ' + key } }));
+    const answers = [await call(), await call(), await call()];
+    const shown = answers.map(async (a) => [a.status, (await a.json()).error ?? null]);
+    console.log(JSON.stringify(await Promise.all(shown)));
+    process.exit(0);`;
+
+  it('lets a key make exactly its limit of requests in a minute', async () => {
+    const answers = await withLimit('2', THREE_CALLS);
+    assert.deepEqual(answers.map(([status]) => status), [200, 200, 429]);
+  });
+
+  it('answers 503 on this API alone for a wrong limit, and takes empty as unset', async () => {
     for (const value of ['abc', '0', '1.5']) {
-      await assert.rejects(load(value), /API_KEY_REQUESTS_PER_MINUTE must be a whole number/, value);
+      const answers = await withLimit(value, THREE_CALLS);
+      const error = 'The metrics API is not configured: '
+        + 'API_KEY_REQUESTS_PER_MINUTE must be a whole number of 1 or more.';
+      assert.deepEqual(answers[0], [503, error], value);
     }
-    await load('120');
+    const answers = await withLimit('', THREE_CALLS);
+    assert.deepEqual(answers.map(([status]) => status), [200, 200, 200]);
   });
 });

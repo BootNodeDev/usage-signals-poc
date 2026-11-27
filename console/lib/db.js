@@ -248,8 +248,7 @@ export async function listApiKeys() {
 export async function revokeApiKey(prefix, actor) {
   const { rows } = await getPool().query(
     `WITH found AS (
-       SELECT id, revoked_at AS was_revoked
-         FROM usage_signals.operator_api_key WHERE key_prefix = $1
+       SELECT id FROM usage_signals.operator_api_key WHERE key_prefix = $1
      ), k AS (
        UPDATE usage_signals.operator_api_key SET revoked_at = now()
         WHERE id = (SELECT id FROM found) AND revoked_at IS NULL
@@ -264,7 +263,8 @@ export async function revokeApiKey(prefix, actor) {
        SELECT * FROM usage_signals.operator_api_key
         WHERE id = (SELECT id FROM found) AND NOT EXISTS (SELECT 1 FROM k)
      )
-     SELECT found.was_revoked, ${KEY_COLUMNS}
+     -- A revoke that changed nothing found the key revoked, perhaps by a run at the same time.
+     SELECT NOT EXISTS (SELECT 1 FROM k) AS was_revoked, ${KEY_COLUMNS}
        FROM found JOIN k_now k ON k.id = found.id ${KEY_PROJECT}`,
     [prefix, actor],
   );
@@ -272,8 +272,9 @@ export async function revokeApiKey(prefix, actor) {
 }
 
 /**
- * The key with this hash if it is not revoked, as `{ id, tenantId, requests }`, where `requests`
- * counts this one among the key's requests of the current minute. Records the time of use and
+ * The key with this hash if it is not revoked, as `{ id, tenantId, requests, secondsLeft }`, where
+ * `requests` counts this one among the key's requests of the current minute and `secondsLeft` is
+ * the time until the next minute. Records the time of use and
  * drops the key's counts of earlier minutes. Null when no valid key has the hash.
  */
 export async function useApiKey(hash) {
@@ -292,7 +293,10 @@ export async function useApiKey(hash) {
        DELETE FROM usage_signals.operator_api_key_minute
         WHERE key_id = (SELECT id FROM k) AND minute < date_trunc('minute', now())
      )
-     SELECT k.id, k.tenant_id AS "tenantId", counted.requests FROM k, counted`,
+     SELECT k.id, k.tenant_id AS "tenantId", counted.requests,
+            -- From the database clock, which also draws the minute buckets.
+            60 - floor(extract(second FROM now()))::int AS "secondsLeft"
+       FROM k, counted`,
     [hash],
   );
   return rows[0] ?? null;
