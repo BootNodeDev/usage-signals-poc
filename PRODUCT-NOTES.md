@@ -29,6 +29,14 @@ What building this prototype taught us that the product should start from. Each 
 
 - **Counting User-Agents per /24 network flags real people on shared networks.** Carrier NAT, offices and campuses pass 10 distinct User-Agents quickly, and their visits leave the counted figures for the rest of the day. The product needs a threshold measured on real traffic, or a key narrower than /24. Found in the review of PR #29.
 
+## API ingestion
+
+- **The OpenTelemetry JavaScript SDK does not use the advised bucket bounds by default, and exports cumulative by default.** A project must set the 14 bounds through `advice.explicitBucketBoundaries` (or a view) and ask for delta, or every point is refused. The product's writer can re-bucket other bounds conservatively, as the architecture document plans, and onboarding must say both settings. Found in PR for issue #21, checked with `@opentelemetry/exporter-metrics-otlp-http` 0.301.2.
+- **The route rules now exist as a JavaScript module held to the check 5 vectors.** The product needs the same rules twice (collector and tracker); keeping one vector set that both implementations must pass is what keeps them equal. Found in PR for issue #21.
+- **The project must come from the token, never from the request.** The prototype replaces any `tenant.id` a client sends with the token's project, as the product's collector does. Found in PR for issue #21.
+- **A token checked in the database costs one query per export.** The prototype looks up the ingest token's hash on each request; the architecture document's signed token, checked against a local key, removes that query from the accept path at the price of key management and slower revocation. Found in PR for issue #21.
+- **Most refusals answer 200.** OTLP answers refused points with 200 and `partialSuccess`, so a project only sees them if it reads the response or the console shows the refusal counts. The product needs refusal counts on the project's screen. Found in check 5 and PR for issue #21.
+
 ## Metrics API and keys
 
 - **Key management needs sign-in before it gets a screen.** Without sign-in, a screen would let anyone make a key, so the prototype manages keys from the command line, which needs `DATABASE_URL`. The product puts the same create, list and revoke behind operator sign-in, and records the signed-in account as the actor in the audit log. Found in PR #40.
