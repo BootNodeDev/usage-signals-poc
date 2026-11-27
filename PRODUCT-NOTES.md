@@ -29,6 +29,13 @@ What building this prototype taught us that the product should start from. Each 
 
 - **Counting User-Agents per /24 network flags real people on shared networks.** Carrier NAT, offices and campuses pass 10 distinct User-Agents quickly, and their visits leave the counted figures for the rest of the day. The product needs a threshold measured on real traffic, or a key narrower than /24. Found in the review of PR #29.
 
+## Metrics API and keys
+
+- **Key management needs sign-in before it gets a screen.** Without sign-in, a screen would let anyone make a key, so the prototype manages keys from the command line, which needs `DATABASE_URL`. The product puts the same create, list and revoke behind operator sign-in, and records the signed-in account as the actor in the audit log. Found in PR for issue #20.
+- **Every keyed request writes to the database.** The prototype stores the last-used time and a per-minute count on each request, one write per read. At product volume, rate limiting belongs at the proxy, as the architecture document plans, and last-used times can be written in batches. Found in PR for issue #20.
+- **A contract test keeps the API description honest.** The prototype checks the real answers against its OpenAPI description with a small validator; the product can publish the same description and run a full JSON Schema validator in CI. Found in PR for issue #20.
+- **The metrics API should read rollups, not Umami.** The prototype reads Umami live, so an Umami upgrade can change the answer; the product reads its own rollup tables, as the architecture document says. Found in PR for issue #20.
+
 ## Platform
 
 - **Preview deployments share the production database and Umami.** A preview build applies its branch's schema to production, and preview tests write production data. The product needs a separate database per preview, such as a Neon branch per deployment. Found in PR #29, decision 55.
