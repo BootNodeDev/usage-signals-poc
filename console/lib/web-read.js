@@ -1,65 +1,70 @@
 // Web figures for one site, read from Umami's statistics API with the admin account. The
 // browser never talks to Umami: the tenant and operator endpoints call this module.
-import { FLAG_TAG_PATTERN, RULES, rulesOf } from './flags.js';
-import { umamiGet } from './umami-admin.js';
+import { FLAG_TAG_PATTERN, RULES, rulesOf } from './flags.js'
+import { umamiGet } from './umami-admin.js'
 
-const RANGES = [7, 30, 90];
-const DAY_MS = 86_400_000;
+const RANGES = [7, 30, 90]
+const DAY_MS = 86_400_000
 // Short shared cache: several viewers cost one read, and a new page view shows within seconds.
-const CACHE_CONTROL = 'public, max-age=0, s-maxage=10';
-const BREAKDOWNS = { referrers: 'referrer', countries: 'country', devices: 'device', browsers: 'browser' };
+const CACHE_CONTROL = 'public, max-age=0, s-maxage=10'
+const BREAKDOWNS = {
+  referrers: 'referrer',
+  countries: 'country',
+  devices: 'device',
+  browsers: 'browser',
+}
 // Regex operators, because Umami's "set" and "not set" build no SQL on PostgreSQL.
-const COUNTED = `tag=${encodeURIComponent(`nre.${FLAG_TAG_PATTERN}`)}`;
-export const FLAGGED = `tag=${encodeURIComponent(`re.${FLAG_TAG_PATTERN}`)}`;
-export const BY_TAG = `fields=${encodeURIComponent('["tag"]')}`;
+const COUNTED = `tag=${encodeURIComponent(`nre.${FLAG_TAG_PATTERN}`)}`
+export const FLAGGED = `tag=${encodeURIComponent(`re.${FLAG_TAG_PATTERN}`)}`
+export const BY_TAG = `fields=${encodeURIComponent('["tag"]')}`
 /** Every breakdown readFigures() can read, and what it reads by default. */
-export const DIMENSIONS = Object.keys(BREAKDOWNS);
+export const DIMENSIONS = Object.keys(BREAKDOWNS)
 
 export function json(status, body, headers = {}) {
-  return Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } });
+  return Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } })
 }
 
 export function cached(body) {
-  return json(200, body, { 'cache-control': CACHE_CONTROL });
+  return json(200, body, { 'cache-control': CACHE_CONTROL })
 }
 
 /** Returns the number of days asked for, or null when it is not a supported range. */
 export function rangeParam(request) {
-  const dayCount = Number(new URL(request.url).searchParams.get('days'));
-  return RANGES.includes(dayCount) ? dayCount : null;
+  const dayCount = Number(new URL(request.url).searchParams.get('days'))
+  return RANGES.includes(dayCount) ? dayCount : null
 }
 
 export function badRange() {
-  return json(400, { error: `days must be one of ${RANGES.join(', ')}.` });
+  return json(400, { error: `days must be one of ${RANGES.join(', ')}.` })
 }
 
 export function unavailable(error) {
-  console.error(`read: figures unavailable: ${error.message}`);
-  return json(503, { error: 'Figures are unavailable right now. Retry later.' });
+  console.error(`read: figures unavailable: ${error.message}`)
+  return json(503, { error: 'Figures are unavailable right now. Retry later.' })
 }
 
 /** A visitor is counted once per day, so a multi-day figure is the sum of the daily figures. */
 export function sumOfDaily(rows, column = 'visitors') {
-  let total = 0;
-  for (const row of rows) total += row[column];
-  return total;
+  let total = 0
+  for (const row of rows) total += row[column]
+  return total
 }
 
 function byDay(series) {
-  return new Map(series.map((point) => [point.x.slice(0, 10), point.y]));
+  return new Map(series.map((point) => [point.x.slice(0, 10), point.y]))
 }
 
 /** One row per day of the range, from the counted and flagged series; Umami only returns days with events. */
 export function dailyRows(days, counted, flagged) {
-  const pageviews = byDay(counted.pageviews);
-  const visitors = byDay(counted.sessions);
-  const flaggedPageviews = byDay(flagged.pageviews);
+  const pageviews = byDay(counted.pageviews)
+  const visitors = byDay(counted.sessions)
+  const flaggedPageviews = byDay(flagged.pageviews)
   return days.map((day) => ({
     day,
     pageviews: pageviews.get(day) ?? 0,
     visitors: visitors.get(day) ?? 0,
     flagged: flaggedPageviews.get(day) ?? 0,
-  }));
+  }))
 }
 
 /**
@@ -68,21 +73,21 @@ export function dailyRows(days, counted, flagged) {
  *   flaggedByRule([{ tag: 'bot+no-sec-fetch', views: '2' }]) // { bot: 2, 'no-sec-fetch': 2, 'many-agents': 0 }
  */
 export function flaggedByRule(byTag) {
-  const counts = Object.fromEntries(RULES.map((rule) => [rule, 0]));
+  const counts = Object.fromEntries(RULES.map((rule) => [rule, 0]))
   for (const row of byTag) {
-    for (const rule of rulesOf(row.tag)) if (rule in counts) counts[rule] += Number(row.views);
+    for (const rule of rulesOf(row.tag)) if (rule in counts) counts[rule] += Number(row.views)
   }
-  return counts;
+  return counts
 }
 
 // The range is whole UTC days and ends now: the current day is included, incomplete.
 export function rangeOf(dayCount, now) {
-  const today = Math.floor(now / DAY_MS) * DAY_MS;
-  const days = [];
+  const today = Math.floor(now / DAY_MS) * DAY_MS
+  const days = []
   for (let offset = dayCount - 1; offset >= 0; offset -= 1) {
-    days.push(new Date(today - offset * DAY_MS).toISOString().slice(0, 10));
+    days.push(new Date(today - offset * DAY_MS).toISOString().slice(0, 10))
   }
-  return { days, startAt: today - (dayCount - 1) * DAY_MS, endAt: now };
+  return { days, startAt: today - (dayCount - 1) * DAY_MS, endAt: now }
 }
 
 function totalsOf(stats, visitors) {
@@ -92,7 +97,7 @@ function totalsOf(stats, visitors) {
     visits: stats.visits,
     bounces: stats.bounces,
     total_seconds: stats.totaltime,
-  };
+  }
 }
 
 /**
@@ -101,19 +106,21 @@ function totalsOf(stats, visitors) {
  * and `flagged_by_rule`.
  */
 export async function readFigures(site, dayCount, dimensions = DIMENSIONS) {
-  const now = Date.now();
-  const { days, startAt, endAt } = rangeOf(dayCount, now);
-  const base = `/api/websites/${site.umamiWebsiteId}`;
-  const range = `startAt=${startAt}&endAt=${endAt}`;
-  const series = `${base}/pageviews?${range}&unit=day&timezone=UTC`;
+  const now = Date.now()
+  const { days, startAt, endAt } = rangeOf(dayCount, now)
+  const base = `/api/websites/${site.umamiWebsiteId}`
+  const range = `startAt=${startAt}&endAt=${endAt}`
+  const series = `${base}/pageviews?${range}&unit=day&timezone=UTC`
   const [stats, counted, flagged, byTag, ...metrics] = await Promise.all([
     umamiGet(`${base}/stats?${range}&${COUNTED}`),
     umamiGet(`${series}&${COUNTED}`),
     umamiGet(`${series}&${FLAGGED}`),
     umamiGet(`${base}/breakdown?${range}&${BY_TAG}&${FLAGGED}`),
-    ...dimensions.map((name) => umamiGet(`${base}/metrics?${range}&type=${BREAKDOWNS[name]}&${COUNTED}`)),
-  ]);
-  const daily = dailyRows(days, counted, flagged);
+    ...dimensions.map((name) =>
+      umamiGet(`${base}/metrics?${range}&type=${BREAKDOWNS[name]}&${COUNTED}`),
+    ),
+  ])
+  const daily = dailyRows(days, counted, flagged)
   return {
     days: dayCount,
     through: new Date(now).toISOString(),
@@ -123,8 +130,10 @@ export async function readFigures(site, dayCount, dimensions = DIMENSIONS) {
     prior: stats.comparison ? totalsOf(stats.comparison, null) : null,
     daily,
     breakdowns: Object.fromEntries(
-      dimensions.map((name, index) => [name, metrics[index].map((row) => ({ label: row.x, value: row.y }))]),
+      dimensions.map((name, index) => [
+        name,
+        metrics[index].map((row) => ({ label: row.x, value: row.y })),
+      ]),
     ),
-  };
+  }
 }
-

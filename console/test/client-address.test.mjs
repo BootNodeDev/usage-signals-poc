@@ -1,6 +1,6 @@
-import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { truncateAddress, truncatedClientAddress } from '../lib/client-address.js';
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import { truncateAddress, truncatedClientAddress } from '../lib/client-address.js'
 
 describe('truncateAddress', () => {
   const cases = [
@@ -12,23 +12,26 @@ describe('truncateAddress', () => {
     ['::1', '0:0:0::'],
     ['fe80::1%en0', 'fe80:0:0::'],
     ['64:ff9b::203.0.113.57', '64:ff9b:0::'],
-  ];
+  ]
   for (const [address, expected] of cases) {
-    it(`${address} becomes ${expected}`, () => assert.equal(truncateAddress(address), expected));
+    it(`${address} becomes ${expected}`, () => assert.equal(truncateAddress(address), expected))
   }
 
   it('returns null for anything that is not an address', () => {
     for (const value of ['', 'localhost', '203.0.113', '203.0.113.57:8080', 'unknown']) {
-      assert.equal(truncateAddress(value), null, value);
+      assert.equal(truncateAddress(value), null, value)
     }
-  });
-});
+  })
+})
 
 describe('truncatedClientAddress', () => {
   it('reads only the header the platform sets', () => {
-    const fromPlatform = new Headers({ 'x-vercel-forwarded-for': '203.0.113.57, 10.0.0.1' });
-    assert.equal(truncatedClientAddress(fromPlatform), '203.0.113.0');
-    const fromCaller = new Headers({ 'x-forwarded-for': '203.0.113.57', 'x-real-ip': '203.0.113.57' });
-    assert.equal(truncatedClientAddress(fromCaller), null);
-  });
-});
+    const fromPlatform = new Headers({ 'x-vercel-forwarded-for': '203.0.113.57, 10.0.0.1' })
+    assert.equal(truncatedClientAddress(fromPlatform), '203.0.113.0')
+    const fromCaller = new Headers({
+      'x-forwarded-for': '203.0.113.57',
+      'x-real-ip': '203.0.113.57',
+    })
+    assert.equal(truncatedClientAddress(fromCaller), null)
+  })
+})

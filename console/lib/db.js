@@ -1,9 +1,9 @@
-import { createHash } from 'node:crypto';
-import { attachDatabasePool } from '@vercel/functions';
-import pg from 'pg';
-import { requireEnv } from './config.js';
+import { createHash } from 'node:crypto'
+import { attachDatabasePool } from '@vercel/functions'
+import pg from 'pg'
+import { requireEnv } from './config.js'
 
-let pool;
+let pool
 
 function getPool() {
   if (!pool) {
@@ -12,12 +12,12 @@ function getPool() {
       max: 5,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 3_000,
-    });
-    pool.on('error', (error) => console.error(`database: idle connection failed: ${error.message}`));
+    })
+    pool.on('error', (error) => console.error(`database: idle connection failed: ${error.message}`))
     // Lets Vercel close idle connections before it suspends the instance; a no-op elsewhere.
-    attachDatabasePool(pool);
+    attachDatabasePool(pool)
   }
-  return pool;
+  return pool
 }
 
 /** Returns `{ domain, tenantStatus }` for the site registered with this Umami website id. */
@@ -28,8 +28,8 @@ export async function findSiteByWebsiteId(websiteId) {
        JOIN usage_signals.tenant t ON t.id = s.tenant_id
       WHERE s.umami_website_id = $1`,
     [websiteId],
-  );
-  return rows[0] ?? null;
+  )
+  return rows[0] ?? null
 }
 
 export async function isDomainOfActiveTenant(domain) {
@@ -39,12 +39,12 @@ export async function isDomainOfActiveTenant(domain) {
        JOIN usage_signals.tenant t ON t.id = s.tenant_id
       WHERE s.domain = $1 AND t.status = 'active'`,
     [domain],
-  );
-  return rowCount > 0;
+  )
+  return rowCount > 0
 }
 
 function sha256(text) {
-  return createHash('sha256').update(text).digest();
+  return createHash('sha256').update(text).digest()
 }
 
 /**
@@ -78,13 +78,13 @@ export async function countAgentsToday(address, userAgent, upTo) {
      )
      SELECT (SELECT agents FROM seen) + (SELECT count(*)::int FROM added) AS agents`,
     [sha256(address), sha256(userAgent), upTo],
-  );
-  return rows[0].agents;
+  )
+  return rows[0].agents
 }
 
 const SITE_COLUMNS = `s.id, s.slug, t.id AS "tenantId", t.name, s.domain, t.status AS state,
-  s.umami_website_id AS "umamiWebsiteId"`;
-const SITE_ORDER = 's.created_at, s.id';
+  s.umami_website_id AS "umamiWebsiteId"`
+const SITE_ORDER = 's.created_at, s.id'
 
 /** Sites of every project that has not been removed, oldest first. */
 export async function listSites() {
@@ -94,8 +94,8 @@ export async function listSites() {
        JOIN usage_signals.tenant t ON t.id = s.tenant_id
       WHERE t.status <> 'removed'
       ORDER BY ${SITE_ORDER}`,
-  );
-  return rows;
+  )
+  return rows
 }
 
 export async function findSiteBySlug(slug) {
@@ -105,8 +105,8 @@ export async function findSiteBySlug(slug) {
        JOIN usage_signals.tenant t ON t.id = s.tenant_id
       WHERE s.slug = $1 AND t.status <> 'removed'`,
     [slug],
-  );
-  return rows[0] ?? null;
+  )
+  return rows[0] ?? null
 }
 
 /** The active site registered for this host, with its 0-based position among all sites. */
@@ -118,8 +118,8 @@ export async function findActiveSiteByDomain(domain) {
                JOIN usage_signals.tenant t ON t.id = s.tenant_id) ranked
       WHERE domain = $1 AND state = 'active'`,
     [domain],
-  );
-  return rows[0] ?? null;
+  )
+  return rows[0] ?? null
 }
 
 /**
@@ -128,18 +128,18 @@ export async function findActiveSiteByDomain(domain) {
  * hold through Neon's pooled connection, which hands each transaction to any server connection.
  */
 export async function withTransactionLock(key, task) {
-  const client = await getPool().connect();
-  let releaseError;
+  const client = await getPool().connect()
+  let releaseError
   try {
-    await client.query('BEGIN');
-    const { rows } = await client.query('SELECT pg_try_advisory_xact_lock($1) AS locked', [key]);
-    if (!rows[0].locked) return null;
-    return await task();
+    await client.query('BEGIN')
+    const { rows } = await client.query('SELECT pg_try_advisory_xact_lock($1) AS locked', [key])
+    if (!rows[0].locked) return null
+    return await task()
   } finally {
     await client.query('ROLLBACK').catch((error) => {
-      releaseError = error;
-    });
-    client.release(releaseError);
+      releaseError = error
+    })
+    client.release(releaseError)
   }
 }
 
@@ -149,8 +149,8 @@ export async function apiMinutesOf(tenantId, service, startAt, endAt) {
     `SELECT DISTINCT minute FROM usage_signals.api_metric_minute
       WHERE tenant_id = $1 AND service = $2 AND minute >= $3 AND minute < $4`,
     [tenantId, service, new Date(startAt), new Date(endAt)],
-  );
-  return new Set(rows.map((row) => row.minute.getTime()));
+  )
+  return new Set(rows.map((row) => row.minute.getTime()))
 }
 
 /**
@@ -168,13 +168,13 @@ export async function insertApiMinute(tenantId, minute, service, rows) {
               buckets bigint[])
      ON CONFLICT DO NOTHING`,
     [tenantId, new Date(minute), service, JSON.stringify(rows)],
-  );
+  )
 }
 
 const BUCKET_SUMS = Array.from(
   { length: 15 },
   (_, i) => `sum(bucket_counts[${i + 1}])::float8`,
-).join(', ');
+).join(', ')
 
 /**
  * API rows of the tenant in a range, summed per service, route, method and status class, with
@@ -188,8 +188,8 @@ export async function apiRouteSums(tenantId, startAt, endAt) {
       WHERE tenant_id = $1 AND minute >= $2 AND minute < $3
       GROUP BY service, route, method, class`,
     [tenantId, new Date(startAt), new Date(endAt)],
-  );
-  return rows;
+  )
+  return rows
 }
 
 /** API requests of the tenant per UTC day in a range, as `{ day: 'YYYY-MM-DD', requests }`. */
@@ -201,6 +201,6 @@ export async function apiDailySums(tenantId, startAt, endAt) {
       WHERE tenant_id = $1 AND minute >= $2 AND minute < $3
       GROUP BY day`,
     [tenantId, new Date(startAt), new Date(endAt)],
-  );
-  return rows;
+  )
+  return rows
 }
