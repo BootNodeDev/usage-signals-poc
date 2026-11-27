@@ -36,6 +36,8 @@ What building this prototype taught us that the product should start from. Each 
 - **A contract test keeps the API description honest.** The prototype checks the real answers against its OpenAPI description with a small validator; the product can publish the same description and run a full JSON Schema validator in CI. Found in PR for issue #20.
 - **The metrics API should read rollups, not Umami.** The prototype reads Umami live, so an Umami upgrade can change the answer; the product reads its own rollup tables, as the architecture document says. Found in PR for issue #20.
 
+- **A configuration mistake in one feature must not stop ingestion.** The prototype serves the event gateway and every API from one function, so a setting that throws at start would stop event collection too. Validate settings per feature and fail that feature alone, or split ingestion into its own deployment, as the architecture document does. Found in the native review of the work on issue #20.
+
 ## Platform
 
 - **Preview deployments share the production database and Umami.** A preview build applies its branch's schema to production, and preview tests write production data. The product needs a separate database per preview, such as a Neon branch per deployment. Found in PR #29, decision 55.
