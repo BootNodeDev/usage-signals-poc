@@ -31,12 +31,12 @@ What building this prototype taught us that the product should start from. Each 
 
 ## Metrics API and keys
 
-- **Key management needs sign-in before it gets a screen.** Without sign-in, a screen would let anyone make a key, so the prototype manages keys from the command line, which needs `DATABASE_URL`. The product puts the same create, list and revoke behind operator sign-in, and records the signed-in account as the actor in the audit log. Found in PR for issue #20.
-- **Every keyed request writes to the database.** The prototype stores the last-used time and a per-minute count on each request, one write per read. At product volume, rate limiting belongs at the proxy, as the architecture document plans, and last-used times can be written in batches. Found in PR for issue #20.
-- **A contract test keeps the API description honest.** The prototype checks the real answers against its OpenAPI description with a small validator; the product can publish the same description and run a full JSON Schema validator in CI. Found in PR for issue #20.
-- **The metrics API should read rollups, not Umami.** The prototype reads Umami live, so an Umami upgrade can change the answer; the product reads its own rollup tables, as the architecture document says. Found in PR for issue #20.
+- **Key management needs sign-in before it gets a screen.** Without sign-in, a screen would let anyone make a key, so the prototype manages keys from the command line, which needs `DATABASE_URL`. The product puts the same create, list and revoke behind operator sign-in, and records the signed-in account as the actor in the audit log. Found in PR #40.
+- **Every keyed request writes to the database.** The prototype stores the last-used time and a per-minute count on each request, one write per read. At product volume, rate limiting belongs at the proxy, as the architecture document plans, and last-used times can be written in batches. Found in PR #40.
+- **A contract test keeps the API description honest.** The prototype checks the real answers against its OpenAPI description with a small validator; the product can publish the same description and run a full JSON Schema validator in CI. Found in PR #40.
+- **The metrics API should read rollups, not Umami.** The prototype reads Umami live, so an Umami upgrade can change the answer; the product reads its own rollup tables, as the architecture document says. Found in PR #40.
 
-- **A configuration mistake in one feature must not stop ingestion.** The prototype serves the event gateway and every API from one function, so a setting that throws at start would stop event collection too. Validate settings per feature and fail that feature alone, or split ingestion into its own deployment, as the architecture document does. Found in the native review of the work on issue #20.
+- **A configuration mistake in one feature must not stop ingestion.** The prototype serves the event gateway and every API from one function, so a setting that throws at start would stop event collection too. Validate settings per feature and fail that feature alone, or split ingestion into its own deployment, as the architecture document does. Found in the native review of PR #40.
 
 ## Platform
 
