@@ -19,7 +19,7 @@ records a demo.
 | 3.1 | Self-service enrollment, removal, approval mode | Planned | |
 | 3.1 | OSI-approved license | Built | [`LICENSE`](LICENSE) |
 | 3.1 | One monorepo with infrastructure as code | Partial: Vercel and Docker files only | [`vercel.json`](console/vercel.json), [`docker-compose.yml`](console/docker-compose.yml) |
-| 3.1 | Operator API keys for metrics | Planned | |
+| 3.1 | Operator API keys for metrics | Partial: keys from the command line, no sign-in | [`api-keys.js`](console/lib/api-keys.js), [`metrics-api.js`](console/lib/metrics-api.js), [`metrics-api.test.mjs`](console/test/metrics-api.test.mjs) |
 | 3.2 | Events only from frontend code, bot and inflation defense | Partial: Origin check, forged fields refused, three flag rules (known bot, missing `Sec-Fetch-*` headers, many User-Agents from one network) with flagged traffic counted apart; no fingerprint check | [`gateway.js`](console/lib/gateway.js), [`flags.js`](console/lib/flags.js), [`gateway.test.mjs`](console/test/gateway.test.mjs) |
 | 3.2 | Low-friction install | Partial: one script tag, tried on static pages only | [`demo-site.js`](console/lib/demo-site.js) |
 | 3.2 | Tracker pinned to a version | Built | [`pin-tracker.mjs`](console/scripts/pin-tracker.mjs), [`gateway.test.mjs`](console/test/gateway.test.mjs) |
