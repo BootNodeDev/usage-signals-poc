@@ -8,6 +8,7 @@ import { after, before, describe, it } from 'node:test';
 import { truncateAddress } from '../lib/client-address.js';
 import { requireEnv } from '../lib/config.js';
 import { operatorRow, smallCount } from '../lib/operator-api.js';
+import { publicRow } from '../lib/public-api.js';
 import { dailyRows, flaggedByRule, sumOfDaily } from '../lib/web-read.js';
 import { FETCH_METADATA, TENANTS } from '../scripts/fixtures.mjs';
 
@@ -422,5 +423,47 @@ describe('GET /api/operator/projects', () => {
     assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=7&figures=totals&project=${siteD.slug}`)).status, 400);
     assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=7&figures=one&project=no-such-project`)).status, 404);
     assert.equal((await fetch(`${GATEWAY}/api/operator/projects?days=7`, { method: 'POST' })).status, 405);
+  });
+});
+
+describe('GET /api/public/projects', () => {
+  const active = TENANTS.filter((tenant) => tenant.status === 'active');
+
+  it('keeps only the name and two totals of a site, with small counts hidden', () => {
+    const site = { id: 'site-id', slug: 'some-project', name: 'Some project', domain: 'some.project.test', state: 'active' };
+    const row = publicRow(site, { totals: { pageviews: 13, visitors: 9, visits: 11, bounces: 1, total_seconds: 660, flagged: 19 } });
+    assert.deepEqual(row, { project: { name: 'Some project' }, totals: { pageviews: 13, visitors: SMALL } });
+  });
+
+  it('lists every active project by name with its page views and visitors, and nothing else', async () => {
+    const response = await fetch(`${GATEWAY}/api/public/projects?days=7`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=0, s-maxage=10');
+    const text = await response.text();
+    const body = JSON.parse(text);
+    assert.deepEqual(Object.keys(body), ['days', 'through', 'small_counts', 'projects']);
+    assert.deepEqual(body.small_counts, { below: 10 });
+    assert.deepEqual(body.projects.map((row) => row.project.name), active.map((tenant) => tenant.name));
+    for (const tenant of active) {
+      const row = body.projects.find((candidate) => candidate.project.name === tenant.name);
+      const web = await (await fetch(`${GATEWAY}/api/tenant/${tenant.site.slug}/web?days=7`)).json();
+      assert.deepEqual(row, {
+        project: { name: tenant.name },
+        totals: { pageviews: smallCount(web.totals.pageviews), visitors: smallCount(web.totals.visitors) },
+      });
+    }
+    for (const tenant of TENANTS) {
+      for (const detail of [tenant.id, tenant.site.id, tenant.site.slug, tenant.site.domain, tenant.site.umamiWebsiteId]) {
+        assert.ok(!text.includes(detail), `the answer carries ${detail}`);
+      }
+    }
+    assert.ok(!text.includes(TENANTS.find((tenant) => tenant.status === 'suspended').name), 'the answer lists a suspended project');
+  });
+
+  it('answers 400 for an unsupported range or any other spelling of a range, and 405 to anything but GET', async () => {
+    for (const query of ['?days=14', '', '?days=07', '?days=7&days=7', '?days=7&nocache=1', '?nocache=1&days=7']) {
+      assert.equal((await fetch(`${GATEWAY}/api/public/projects${query}`)).status, 400, query);
+    }
+    assert.equal((await fetch(`${GATEWAY}/api/public/projects?days=7`, { method: 'POST' })).status, 405);
   });
 });

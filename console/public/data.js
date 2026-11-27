@@ -4,8 +4,8 @@
 
    A network read is not synchronous, so every page loads first and reads afterwards:
    boot(start)  Loads what the page needs to know who it is for, then /app.js, then calls start().
-                On a tenant page that is the project named by the address; an operator page
-                needs nothing before it starts. Never rejects: a failure is in status().
+                On a tenant page that is the project named by the address; an operator or
+                public page needs nothing before it starts. Never rejects: a failure is in status().
 
    Who am I (tenant console)
    -------------------------
@@ -19,7 +19,7 @@
    status() -> { state ('ok' | 'not_found' | 'error'), error | null, through | null }
      through = ISO time of the last figures read.
    meta() -> { product_name, tracker { version, path, integrity } | null,
-               small_counts { below } | null   (set by loadOperator),
+               small_counts { below } | null   (set by loadOperator and loadPublic),
                max_agents_per_address | null   (set by loadWeb) }
 
    Tenant web figures
@@ -71,6 +71,12 @@
      its first: API figures belong to the project, not to one of its sites.
      Count = number | Small.  Small = { small: true, below }: more than zero and fewer than
      `below`. The API never sends the exact number, so there is nothing to hide here.
+
+   Public view
+   -----------
+   loadPublic(rangeDays) -> Promise of [PublicRow]. One read for every active project.
+   PublicRow = { project { name }, totals { pageviews, visitors (each a Count) } }
+
    sortRows(rows, pick, descending) -> [row]
      Sorts by pick(row), a Count or a rate. A Small sorts between zero and `below`; null
      sorts last; equal values stay in project-name order, so the order never jumps. */
@@ -211,6 +217,14 @@
     });
   }
 
+  function loadPublic(rangeDays) {
+    return getJson('/api/public/projects?days=' + rangeDays).then(function (body) {
+      known.smallCounts = body.small_counts;
+      known.through = body.through;
+      return body.projects;
+    });
+  }
+
   /* A small count is somewhere above zero and under its bound: half the bound, for ordering only. */
   function order(value) {
     return value && value.small ? value.below / 2 : value;
@@ -242,6 +256,7 @@
     loadApi: loadApi,
     api: api,
     breakdown: function (dimension) { return labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]); },
-    loadOperator: loadOperator
+    loadOperator: loadOperator,
+    loadPublic: loadPublic
   };
 })();

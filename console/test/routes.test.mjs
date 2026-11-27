@@ -81,6 +81,17 @@ describe('operator console', () => {
   }
 });
 
+describe('public view', () => {
+  it('serves /public and redirects /public.html to it with 308', async () => {
+    const answer = await get('/public');
+    assert.equal(answer.status, 200);
+    assert.match(answer.text, /<title>[^<]*Public · Pulse<\/title>/);
+    const old = await get('/public.html');
+    assert.equal(old.status, 308);
+    assert.equal(old.location, '/public');
+  });
+});
+
 describe('other paths', () => {
   it('shows the start page at /, linking the video and the source, with no third-party analytics', async () => {
     const root = await get('/');
@@ -91,11 +102,12 @@ describe('other paths', () => {
     assert.ok(!root.text.includes('/_vercel/insights'));
   });
 
-  it('builds the start page links to each site, its console and the operator view from the operator endpoint', async () => {
+  it('builds the start page links to each site, its console, the operator view and the public view', async () => {
     const script = (await get('/landing.js')).text;
     assert.ok(script.includes("'/' + encodeURIComponent(project.slug) + '/web'"), 'no link to a project console');
     assert.ok(script.includes("'//' + project.domain + '/demo/'"), 'no link to a sample site');
     assert.ok(script.includes('href="/operator/projects"'), 'no link to the operator view');
+    assert.ok(script.includes('href="/public"'), 'no link to the public view');
     const { projects } = await (await fetch(`${GATEWAY}/api/operator/projects?days=30`)).json();
     for (const tenant of TENANTS.filter((candidate) => candidate.status !== 'removed')) {
       const row = projects.find((candidate) => candidate.project.id === tenant.site.id);
@@ -207,7 +219,7 @@ describe('no sample data', () => {
     const files = await publicFiles();
     assert.deepEqual(
       files.filter((name) => name.endsWith('.html')).sort(),
-      ['index', 'operator/access', 'operator/projects', 'tenant/requests', 'tenant/setup', 'tenant/web'].map((s) => `${s}.html`),
+      ['index', 'operator/access', 'operator/projects', 'public', 'tenant/requests', 'tenant/setup', 'tenant/web'].map((s) => `${s}.html`),
     );
     for (const file of files) {
       const text = await readFile(path.join(PUBLIC_ROOT, file), 'utf8');
@@ -222,7 +234,7 @@ describe('no sample data', () => {
   });
 });
 
-describe('two separate consoles', () => {
+describe('two separate consoles and a public page', () => {
   it('keeps every operator path out of the tenant pages and every tenant path out of the operator pages', async () => {
     for (const screen of TENANT_SCREENS) {
       const text = await readFile(path.join(PUBLIC_ROOT, 'tenant', `${screen}.html`), 'utf8');
@@ -235,11 +247,20 @@ describe('two separate consoles', () => {
     }
   });
 
+  it('keeps both consoles and their endpoints out of the public page', async () => {
+    const text = await readFile(path.join(PUBLIC_ROOT, 'public.html'), 'utf8');
+    assert.ok(!text.includes('/operator'), 'the public page links to the operator console');
+    assert.ok(!/\/(web|requests|setup)\b/.test(text), 'the public page links to the tenant console');
+    assert.ok(!/loadOperator|loadWeb|loadApi/.test(text), 'the public page reads a console endpoint');
+  });
+
   it('builds each navigation from its own list only', async () => {
     const app = await readFile(path.join(PUBLIC_ROOT, 'app.js'), 'utf8');
     const tenantNav = app.match(/TENANT_NAV = \[([^\]]*)\]/)[1];
     const operatorNav = app.match(/OPERATOR_NAV = \[([^\]]*)\]/)[1];
+    const publicNav = app.match(/PUBLIC_NAV = \[([^\]]*)\]/)[1];
     assert.ok(!/operator/.test(tenantNav));
     assert.ok(!/'\/(web|requests|setup)'/.test(operatorNav));
+    assert.ok(!/operator|'\/(web|requests|setup)'/.test(publicNav));
   });
 });

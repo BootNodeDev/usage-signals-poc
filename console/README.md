@@ -1,8 +1,8 @@
 # Pulse console
 
 This folder holds the code of the [Pulse proof of concept](../README.md). It has the gateway that
-receives events, the read API, the start page, the tenant and operator consoles, and the demo
-sites. An unmodified Umami 3.5.0 stores and counts the events behind it.
+receives events, the read API, the start page, the tenant and operator consoles, the public view,
+and the demo sites. An unmodified Umami 3.5.0 stores and counts the events behind it.
 
 A demo site loads a pinned tracker, which posts each event to `/api/e`. The gateway checks the
 page's origin and refuses forged identity fields. It then truncates the visitor's address and
@@ -36,6 +36,7 @@ You need Docker, Node 24 or newer, and pnpm.
    | Start page | http://localhost:4300/ |
    | Tenant console of Aurora Wallet | http://localhost:4300/aurora-wallet/web |
    | Operator console | http://localhost:4300/operator/projects |
+   | Public view | http://localhost:4300/public |
    | Demo site of Aurora Wallet | http://localhost:4301/demo/ |
    | Umami, login `admin` and password `umami` | http://localhost:3301 |
 
