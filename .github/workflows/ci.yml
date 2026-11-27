@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: 0
+
+defaults:
+  run:
+    working-directory: console
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: pnpm exec biome ci
+      - name: Lint the pull request commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm exec commitlint --verbose --from "$BASE_SHA" --to "$HEAD_SHA"
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - name: Start PostgreSQL and Umami
+        run: docker compose up -d --wait
+      - name: Seed
+        run: node --env-file=local.env scripts/seed.mjs
+      - name: Start the local server
+        run: node --env-file=local.env dev.mjs > dev.log 2>&1 &
+      - name: Wait for the local server
+        run: curl -fsS --retry 30 --retry-delay 1 --retry-all-errors -o /dev/null http://localhost:4300/
+      - run: pnpm test
+      - name: Show the logs
+        if: failure()
+        run: |
+          docker compose logs --no-color
+          cat dev.log
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Scan the git history for secrets
+        run: scripts/install-gitleaks.sh && bin/gitleaks git --redact --verbose ..

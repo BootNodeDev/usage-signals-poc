@@ -1,40 +1,48 @@
 // Operator console endpoint: every site in one answer, aggregates only. A count from 1 to 9 is
 // never sent: it is replaced here, not in the page, by a marker. No access control yet:
 // anyone can read it.
-import { readApiFigures } from './api-read.js';
-import { listSites } from './db.js';
-import { DIMENSIONS, badRange, cached, json, rangeParam, readFigures, unavailable } from './web-read.js';
+import { readApiFigures } from './api-read.js'
+import { listSites } from './db.js'
+import {
+  badRange,
+  cached,
+  DIMENSIONS,
+  json,
+  rangeParam,
+  readFigures,
+  unavailable,
+} from './web-read.js'
 
 // Placeholder threshold, to be agreed with the program.
-export const SMALL_COUNT_BELOW = 10;
+export const SMALL_COUNT_BELOW = 10
 const BREAKDOWNS_READ = {
   all: DIMENSIONS,
   totals: [],
   one: ['referrers'], // the only breakdown the start page shows
-};
+}
 
 /** Zero and counts from the threshold up are exact; anything between is only "small". */
 export function smallCount(count) {
-  if (count > 0 && count < SMALL_COUNT_BELOW) return { small: true, below: SMALL_COUNT_BELOW };
-  return count;
+  if (count > 0 && count < SMALL_COUNT_BELOW) return { small: true, below: SMALL_COUNT_BELOW }
+  return count
 }
 
 // A rate over a small number of visits or requests would give the small count away.
 function rateOver(base, rate) {
-  if (!base) return null;
-  return base < SMALL_COUNT_BELOW ? smallCount(base) : rate;
+  if (!base) return null
+  return base < SMALL_COUNT_BELOW ? smallCount(base) : rate
 }
 
 function identity(site) {
-  return { id: site.id, slug: site.slug, name: site.name, domain: site.domain, state: site.state };
+  return { id: site.id, slug: site.slug, name: site.name, domain: site.domain, state: site.state }
 }
 
 /** One row of the operator list, from the exact figures of a site. */
 export function operatorRow(site, figures) {
-  const { totals, breakdowns } = figures;
-  const shown = {};
+  const { totals, breakdowns } = figures
+  const shown = {}
   for (const [dimension, rows] of Object.entries(breakdowns)) {
-    shown[dimension] = rows.map((row) => ({ label: row.label, value: smallCount(row.value) }));
+    shown[dimension] = rows.map((row) => ({ label: row.label, value: smallCount(row.value) }))
   }
   return {
     project: identity(site),
@@ -56,12 +64,12 @@ export function operatorRow(site, figures) {
       flagged: smallCount(row.flagged),
     })),
     breakdowns: shown,
-  };
+  }
 }
 
 /** The API figures of one row: requests, the share of 5xx answers, p50, p95 and per route. */
 export function operatorApi(api) {
-  const { requests, statuses, p50_ms, p95_ms } = api.totals;
+  const { requests, statuses, p50_ms, p95_ms } = api.totals
   return {
     requests: smallCount(requests),
     error_rate: rateOver(requests, statuses['5xx'] / requests),
@@ -71,7 +79,7 @@ export function operatorApi(api) {
       label: `${row.service} · ${row.method} ${row.route}`,
       value: smallCount(row.requests),
     })),
-  };
+  }
 }
 
 /**
@@ -79,24 +87,24 @@ export function operatorApi(api) {
  * its first site; its other sites get none. A failed read gives null, so the web figures stay.
  */
 export async function apiBySite(sites, dayCount, read = readApiFigures) {
-  const first = new Map();
-  for (const site of sites) if (!first.has(site.tenantId)) first.set(site.tenantId, site);
+  const first = new Map()
+  for (const site of sites) if (!first.has(site.tenantId)) first.set(site.tenantId, site)
   const entries = await Promise.all(
     [...first.values()].map(async (site) => {
       try {
-        return [site.id, operatorApi(await read(site, dayCount))];
+        return [site.id, operatorApi(await read(site, dayCount))]
       } catch (error) {
-        console.error(`operator: API figures of ${site.slug} unavailable: ${error.message}`);
-        return [site.id, null];
+        console.error(`operator: API figures of ${site.slug} unavailable: ${error.message}`)
+        return [site.id, null]
       }
     }),
-  );
-  return new Map(entries);
+  )
+  return new Map(entries)
 }
 
 function previewed(sites, slug) {
-  if (slug) return sites.find((site) => site.slug === slug);
-  return sites.find((site) => site.state === 'active') ?? sites[0];
+  if (slug) return sites.find((site) => site.slug === slug)
+  return sites.find((site) => site.state === 'active') ?? sites[0]
 }
 
 /**
@@ -105,27 +113,31 @@ function previewed(sites, slug) {
  * leaves out the breakdowns; `one` reads only the project named, or else the first active one, with its referrers.
  */
 export async function handleOperatorProjects(request) {
-  if (request.method !== 'GET') return json(405, { error: 'Use GET.' }, { allow: 'GET' });
-  const dayCount = rangeParam(request);
-  if (!dayCount) return badRange();
-  const params = new URL(request.url).searchParams;
-  const mode = params.get('figures') ?? 'all';
-  const slug = params.get('project');
+  if (request.method !== 'GET') return json(405, { error: 'Use GET.' }, { allow: 'GET' })
+  const dayCount = rangeParam(request)
+  if (!dayCount) return badRange()
+  const params = new URL(request.url).searchParams
+  const mode = params.get('figures') ?? 'all'
+  const slug = params.get('project')
   if (!Object.hasOwn(BREAKDOWNS_READ, mode)) {
-    return json(400, { error: `figures must be one of ${Object.keys(BREAKDOWNS_READ).join(', ')}.` });
+    return json(400, {
+      error: `figures must be one of ${Object.keys(BREAKDOWNS_READ).join(', ')}.`,
+    })
   }
-  if (slug !== null && mode !== 'one') return json(400, { error: 'project needs figures=one.' });
+  if (slug !== null && mode !== 'one') return json(400, { error: 'project needs figures=one.' })
   try {
-    const sites = await listSites();
-    const shown = mode === 'one' ? previewed(sites, slug) : null;
-    if (slug && !shown) return json(404, { error: 'Project not found.' });
+    const sites = await listSites()
+    const shown = mode === 'one' ? previewed(sites, slug) : null
+    if (slug && !shown) return json(404, { error: 'Project not found.' })
     // The start page modes show no API figures, so only `all` reads them.
     const [figures, api] = await Promise.all([
       Promise.all(
-        sites.map((site) => (shown && site !== shown ? null : readFigures(site, dayCount, BREAKDOWNS_READ[mode]))),
+        sites.map((site) =>
+          shown && site !== shown ? null : readFigures(site, dayCount, BREAKDOWNS_READ[mode]),
+        ),
       ),
       mode === 'all' ? apiBySite(sites, dayCount) : new Map(),
-    ]);
+    ])
     return cached({
       days: dayCount,
       through: figures.find(Boolean)?.through ?? new Date().toISOString(),
@@ -133,11 +145,17 @@ export async function handleOperatorProjects(request) {
       projects: sites.map((site, index) => ({
         ...(figures[index]
           ? operatorRow(site, figures[index])
-          : { project: identity(site), totals: null, flagged_by_rule: {}, daily: [], breakdowns: {} }),
+          : {
+              project: identity(site),
+              totals: null,
+              flagged_by_rule: {},
+              daily: [],
+              breakdowns: {},
+            }),
         api: api.get(site.id) ?? null,
       })),
-    });
+    })
   } catch (error) {
-    return unavailable(error);
+    return unavailable(error)
   }
 }

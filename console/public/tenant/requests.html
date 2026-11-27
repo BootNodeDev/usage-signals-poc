@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="stylesheet" href="/styles.css">
 <script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  window.va = window.va || function () { window.vaq = window.vaq || []; window.vaq.push(arguments); };
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -52,13 +52,11 @@
   </div>
 </div>
 
-<script src="/data.js"></script>
-<script src="/charts.js"></script>
-<script>
-(function () {
-  'use strict';
+<script type="module" src="/data.js"></script>
+<script type="module" src="/charts.js"></script>
+<script type="module">
   var D = window.LData;
-  var byId = function (id) { return document.getElementById(id); };
+  var byId = (id) => document.getElementById(id);
 
   function message(title, text, action) {
     byId('content').hidden = true;
@@ -72,7 +70,7 @@
     if (status.state === 'error') {
       message('The project could not be read', App.escapeHtml(status.error || '') + ' Nothing is shown in its place.',
         '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
-      document.getElementById('retry').addEventListener('click', function () { window.location.reload(); });
+      document.getElementById('retry').addEventListener('click', () => { window.location.reload(); });
     } else {
       message('Project not found', 'No project is registered at this address. The console is opened from a project\'s own address.');
     }
@@ -122,32 +120,28 @@
 
       renderHeadline(t);
       byId('legend').innerHTML = Charts.legend(series);
-      series[0].values = rows.map(function (r) { return r.requests; });
+      series[0].values = rows.map((r) => r.requests);
       Charts.columns(byId('chart'), {
         label: 'Requests per day, last ' + range + ' days',
-        labels: rows.map(function (r) { return fmt.day(r.day); }),
+        labels: rows.map((r) => fmt.day(r.day)),
         series: series, height: App.plotHeight(560, 220, 380), format: fmt.int, tickFormat: fmt.tick, totalName: 'Requests',
         annotations: [], emptyText: 'No requests in this period.'
       });
-      App.dataTable(byId('table'), ['Day', 'Requests'], rows.slice().reverse().map(function (r) {
-        return [fmt.date(r.day), fmt.int(r.requests)];
-      }));
-      App.dataTable(byId('routes'), ['Service · route', 'Requests', '2xx', '3xx', '4xx', '5xx', 'p50 (est.)', 'p95 (est.)'], result.routes.map(function (r) {
-        return [r.service + ' · ' + r.method + ' ' + r.route, fmt.int(r.requests), fmt.int(r.statuses['2xx']), fmt.int(r.statuses['3xx']),
-          fmt.int(r.statuses['4xx']), fmt.int(r.statuses['5xx']), fmt.ms(r.p50_ms), fmt.ms(r.p95_ms)];
-      }));
+      App.dataTable(byId('table'), ['Day', 'Requests'], rows.slice().reverse().map((r) => [fmt.date(r.day), fmt.int(r.requests)]));
+      App.dataTable(byId('routes'), ['Service · route', 'Requests', '2xx', '3xx', '4xx', '5xx', 'p50 (est.)', 'p95 (est.)'], result.routes.map((r) => [r.service + ' · ' + r.method + ' ' + r.route, fmt.int(r.requests), fmt.int(r.statuses['2xx']), fmt.int(r.statuses['3xx']),
+          fmt.int(r.statuses['4xx']), fmt.int(r.statuses['5xx']), fmt.ms(r.p50_ms), fmt.ms(r.p95_ms)]));
     }
 
     function render(range) {
       state.range = range;
       message('Loading figures', 'Reading the last ' + range + ' days for ' + App.escapeHtml(project.name) + '.');
-      D.loadApi(range).then(function () {
+      D.loadApi(range).then(() => {
         if (state.range === range) paint(range);
-      }, function (error) {
+      }, (error) => {
         if (state.range !== range) return;
         message('Figures are unavailable', App.escapeHtml(error.message || 'The figures could not be read.') +
           ' Nothing is shown in their place.', retry);
-        byId('retry').addEventListener('click', function () { render(range); });
+        byId('retry').addEventListener('click', () => { render(range); });
       });
     }
 
@@ -158,7 +152,6 @@
 
   message('Loading', 'Reading the project.');
   D.boot(start);
-})();
 </script>
 </body>
 </html>

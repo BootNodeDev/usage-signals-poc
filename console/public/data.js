@@ -80,183 +80,221 @@
    sortRows(rows, pick, descending) -> [row]
      Sorts by pick(row), a Count or a rate. A Small sorts between zero and `below`; null
      sorts last; equal values stay in project-name order, so the order never jumps. */
-(function () {
-  'use strict';
 
-  var PRODUCT_NAME = 'Pulse';
-  var BROWSER_NAMES = {
-    ios: 'Safari (iOS)', crios: 'Chrome (iOS)', fxios: 'Firefox (iOS)', 'edge-chromium': 'Edge',
-    'chromium-webview': 'Android WebView', 'ios-webview': 'iOS WebView', samsung: 'Samsung Internet'
-  };
-  var RULE_NAMES = {
-    bot: 'Known bot', 'no-sec-fetch': 'No browser fetch headers', 'many-agents': 'Many User-Agents on one network'
-  };
+var PRODUCT_NAME = 'Pulse'
+var BROWSER_NAMES = {
+  ios: 'Safari (iOS)',
+  crios: 'Chrome (iOS)',
+  fxios: 'Firefox (iOS)',
+  'edge-chromium': 'Edge',
+  'chromium-webview': 'Android WebView',
+  'ios-webview': 'iOS WebView',
+  samsung: 'Samsung Internet',
+}
+var RULE_NAMES = {
+  bot: 'Known bot',
+  'no-sec-fetch': 'No browser fetch headers',
+  'many-agents': 'Many User-Agents on one network',
+}
 
-  var known = { project: null, tracker: null, smallCounts: null, maxAgents: null, state: 'ok', error: null, through: null };
-  var webByRange = {};
-  var apiByRange = {};
-  var latestWeb = null;
+var known = {
+  project: null,
+  tracker: null,
+  smallCounts: null,
+  maxAgents: null,
+  state: 'ok',
+  error: null,
+  through: null,
+}
+var webByRange = {}
+var apiByRange = {}
+var latestWeb = null
 
-  function getJson(url) {
-    return fetch(url, { headers: { accept: 'application/json' } }).then(function (response) {
-      return response.json().then(function (body) {
-        if (!response.ok) {
-          var error = new Error(body.error || 'The server answered ' + response.status + '.');
-          error.status = response.status;
-          throw error;
-        }
-        return body;
-      });
-    });
+function getJson(url) {
+  return fetch(url, { headers: { accept: 'application/json' } }).then((response) =>
+    response.json().then((body) => {
+      if (!response.ok) {
+        const error = new Error(body.error || 'The server answered ' + response.status + '.')
+        error.status = response.status
+        throw error
+      }
+      return body
+    }),
+  )
+}
+
+/* Replace this body, and only this body, when a session says who the visitor is. */
+function currentProjectSlug() {
+  var first = window.location.pathname.split('/')[1] || ''
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(first) ? first : null
+}
+
+function tenantUrl(resource) {
+  return '/api/tenant/' + encodeURIComponent(currentProjectSlug()) + '/' + resource
+}
+
+function loadProject() {
+  if (!currentProjectSlug()) {
+    known.state = 'not_found'
+    return Promise.resolve()
   }
-
-  /* Replace this body, and only this body, when a session says who the visitor is. */
-  function currentProjectSlug() {
-    var first = window.location.pathname.split('/')[1] || '';
-    return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(first) ? first : null;
-  }
-
-  function tenantUrl(resource) {
-    return '/api/tenant/' + encodeURIComponent(currentProjectSlug()) + '/' + resource;
-  }
-
-  function loadProject() {
-    if (!currentProjectSlug()) {
-      known.state = 'not_found';
-      return Promise.resolve();
-    }
-    return getJson(tenantUrl('project')).then(function (body) {
-      known.project = body.project;
-      known.tracker = body.tracker;
-    }, function (error) {
-      known.state = error.status === 404 ? 'not_found' : 'error';
-      known.error = error.message;
-    });
-  }
-
-  function loadScript(src, done) {
-    var script = document.createElement('script');
-    script.src = src;
-    script.onload = done;
-    document.body.appendChild(script);
-  }
-
-  function boot(start) {
-    var ready = document.body.dataset.audience === 'tenant' ? loadProject() : Promise.resolve();
-    ready.then(function () { loadScript('/app.js', start); });
-  }
-
-  function totalsOf(t) {
-    if (!t || !(t.pageviews || t.flagged)) return null;
-    return {
-      pageviews: t.pageviews, flagged: t.flagged, visitors: t.visitors, visits: t.visits, bounces: t.bounces,
-      bounce_rate: t.visits ? t.bounces / t.visits : 0,
-      avg_visit_seconds: t.visits ? t.total_seconds / t.visits : 0
-    };
-  }
-
-  function loadWeb(rangeDays) {
-    return getJson(tenantUrl('web?days=' + rangeDays)).then(function (body) {
-      webByRange[rangeDays] = body;
-      latestWeb = body;
-      known.through = body.through;
-      known.maxAgents = body.max_agents_per_address;
-    });
-  }
-
-  function byRule(counts) {
-    return Object.keys(counts).map(function (rule) { return { label: RULE_NAMES[rule] || rule, value: counts[rule] }; });
-  }
-
-  function web(rangeDays) {
-    var body = webByRange[rangeDays];
-    if (!body) return { rows: [], totals: null, prior: null, byRule: [] };
-    return { rows: body.daily, totals: totalsOf(body.totals), prior: totalsOf(body.prior), byRule: byRule(body.flagged_by_rule) };
-  }
-
-  function loadApi(rangeDays) {
-    return getJson(tenantUrl('api?days=' + rangeDays)).then(function (body) {
-      apiByRange[rangeDays] = body;
-      known.through = body.through;
-    });
-  }
-
-  function api(rangeDays) {
-    var body = apiByRange[rangeDays];
-    if (!body) return { rows: [], totals: null, routes: [] };
-    return { rows: body.daily, totals: body.totals.requests ? body.totals : null, routes: body.routes };
-  }
-
-  function label(dimension, value) {
-    if (dimension === 'countries') {
-      try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(value) || value; } catch (error) { return value; }
-    }
-    if (dimension === 'referrers') return value;
-    return BROWSER_NAMES[value] || value.charAt(0).toUpperCase() + value.slice(1);
-  }
-
-  function labelled(dimension, rows) {
-    return (rows || []).map(function (row) { return { label: label(dimension, row.label), value: row.value }; });
-  }
-
-  function loadOperator(rangeDays, query) {
-    var url = '/api/operator/projects?days=' + rangeDays;
-    Object.keys(query || {}).forEach(function (name) {
-      if (query[name]) url += '&' + name + '=' + encodeURIComponent(query[name]);
-    });
-    return getJson(url).then(function (body) {
-      known.smallCounts = body.small_counts;
-      known.through = body.through;
-      return body.projects.map(function (row) {
-        var breakdowns = {};
-        Object.keys(row.breakdowns).forEach(function (dimension) {
-          breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension]);
-        });
-        return { project: row.project, totals: row.totals, byRule: byRule(row.flagged_by_rule), daily: row.daily, breakdowns: breakdowns, api: row.api };
-      });
-    });
-  }
-
-  function loadPublic(rangeDays) {
-    return getJson('/api/public/projects?days=' + rangeDays).then(function (body) {
-      known.smallCounts = body.small_counts;
-      known.through = body.through;
-      return body.projects;
-    });
-  }
-
-  /* A small count is somewhere above zero and under its bound: half the bound, for ordering only. */
-  function order(value) {
-    return value && value.small ? value.below / 2 : value;
-  }
-
-  function sortRows(rows, pick, descending) {
-    return rows.slice().sort(function (a, b) {
-      var x = order(pick(a));
-      var y = order(pick(b));
-      var byName = a.project.name < b.project.name ? -1 : a.project.name > b.project.name ? 1 : 0;
-      if (x === null || x === undefined) return y === null || y === undefined ? byName : 1;
-      if (y === null || y === undefined) return -1;
-      if (x === y) return byName;
-      return (x < y ? -1 : 1) * (descending ? -1 : 1);
-    });
-  }
-
-  window.LData = {
-    boot: boot,
-    sortRows: sortRows,
-    currentProjectSlug: currentProjectSlug,
-    project: function () { return known.project; },
-    status: function () { return { state: known.state, error: known.error, through: known.through }; },
-    meta: function () {
-      return { product_name: PRODUCT_NAME, tracker: known.tracker, small_counts: known.smallCounts, max_agents_per_address: known.maxAgents };
+  return getJson(tenantUrl('project')).then(
+    (body) => {
+      known.project = body.project
+      known.tracker = body.tracker
     },
-    loadWeb: loadWeb,
-    web: web,
-    loadApi: loadApi,
-    api: api,
-    breakdown: function (dimension) { return labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]); },
-    loadOperator: loadOperator,
-    loadPublic: loadPublic
-  };
-})();
+    (error) => {
+      known.state = error.status === 404 ? 'not_found' : 'error'
+      known.error = error.message
+    },
+  )
+}
+
+function boot(start) {
+  var ready = document.body.dataset.audience === 'tenant' ? loadProject() : Promise.resolve()
+  ready.then(() => import('/app.js')).then(start)
+}
+
+function totalsOf(t) {
+  if (!t || !(t.pageviews || t.flagged)) return null
+  return {
+    pageviews: t.pageviews,
+    flagged: t.flagged,
+    visitors: t.visitors,
+    visits: t.visits,
+    bounces: t.bounces,
+    bounce_rate: t.visits ? t.bounces / t.visits : 0,
+    avg_visit_seconds: t.visits ? t.total_seconds / t.visits : 0,
+  }
+}
+
+function loadWeb(rangeDays) {
+  return getJson(tenantUrl('web?days=' + rangeDays)).then((body) => {
+    webByRange[rangeDays] = body
+    latestWeb = body
+    known.through = body.through
+    known.maxAgents = body.max_agents_per_address
+  })
+}
+
+function byRule(counts) {
+  return Object.keys(counts).map((rule) => ({
+    label: RULE_NAMES[rule] || rule,
+    value: counts[rule],
+  }))
+}
+
+function web(rangeDays) {
+  var body = webByRange[rangeDays]
+  if (!body) return { rows: [], totals: null, prior: null, byRule: [] }
+  return {
+    rows: body.daily,
+    totals: totalsOf(body.totals),
+    prior: totalsOf(body.prior),
+    byRule: byRule(body.flagged_by_rule),
+  }
+}
+
+function loadApi(rangeDays) {
+  return getJson(tenantUrl('api?days=' + rangeDays)).then((body) => {
+    apiByRange[rangeDays] = body
+    known.through = body.through
+  })
+}
+
+function api(rangeDays) {
+  var body = apiByRange[rangeDays]
+  if (!body) return { rows: [], totals: null, routes: [] }
+  return {
+    rows: body.daily,
+    totals: body.totals.requests ? body.totals : null,
+    routes: body.routes,
+  }
+}
+
+function label(dimension, value) {
+  if (dimension === 'countries') {
+    try {
+      return new Intl.DisplayNames(['en'], { type: 'region' }).of(value) || value
+    } catch (error) {
+      return value
+    }
+  }
+  if (dimension === 'referrers') return value
+  return BROWSER_NAMES[value] || value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function labelled(dimension, rows) {
+  return (rows || []).map((row) => ({ label: label(dimension, row.label), value: row.value }))
+}
+
+function loadOperator(rangeDays, query) {
+  var url = '/api/operator/projects?days=' + rangeDays
+  Object.keys(query || {}).forEach((name) => {
+    if (query[name]) url += '&' + name + '=' + encodeURIComponent(query[name])
+  })
+  return getJson(url).then((body) => {
+    known.smallCounts = body.small_counts
+    known.through = body.through
+    return body.projects.map((row) => {
+      var breakdowns = {}
+      Object.keys(row.breakdowns).forEach((dimension) => {
+        breakdowns[dimension] = labelled(dimension, row.breakdowns[dimension])
+      })
+      return {
+        project: row.project,
+        totals: row.totals,
+        byRule: byRule(row.flagged_by_rule),
+        daily: row.daily,
+        breakdowns: breakdowns,
+        api: row.api,
+      }
+    })
+  })
+}
+
+function loadPublic(rangeDays) {
+  return getJson('/api/public/projects?days=' + rangeDays).then((body) => {
+    known.smallCounts = body.small_counts
+    known.through = body.through
+    return body.projects
+  })
+}
+
+/* A small count is somewhere above zero and under its bound: half the bound, for ordering only. */
+function order(value) {
+  return value && value.small ? value.below / 2 : value
+}
+
+function sortRows(rows, pick, descending) {
+  return rows.slice().sort((a, b) => {
+    var x = order(pick(a))
+    var y = order(pick(b))
+    var byName = a.project.name < b.project.name ? -1 : a.project.name > b.project.name ? 1 : 0
+    if (x === null || x === undefined) return y === null || y === undefined ? byName : 1
+    if (y === null || y === undefined) return -1
+    if (x === y) return byName
+    return (x < y ? -1 : 1) * (descending ? -1 : 1)
+  })
+}
+
+window.LData = {
+  boot: boot,
+  sortRows: sortRows,
+  currentProjectSlug: currentProjectSlug,
+  project: () => known.project,
+  status: () => ({ state: known.state, error: known.error, through: known.through }),
+  meta: () => ({
+    product_name: PRODUCT_NAME,
+    tracker: known.tracker,
+    small_counts: known.smallCounts,
+    max_agents_per_address: known.maxAgents,
+  }),
+  loadWeb: loadWeb,
+  web: web,
+  loadApi: loadApi,
+  api: api,
+  breakdown: (dimension) => labelled(dimension, latestWeb && latestWeb.breakdowns[dimension]),
+  loadOperator: loadOperator,
+  loadPublic: loadPublic,
+}

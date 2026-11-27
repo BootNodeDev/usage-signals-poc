@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="stylesheet" href="/styles.css">
 <script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  window.va = window.va || function () { window.vaq = window.vaq || []; window.vaq.push(arguments); };
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -65,13 +65,11 @@
 
 <dialog class="drawer" id="drawer" aria-labelledby="drawer-title"></dialog>
 
-<script src="/data.js"></script>
-<script src="/charts.js"></script>
-<script>
-(function () {
-  'use strict';
+<script type="module" src="/data.js"></script>
+<script type="module" src="/charts.js"></script>
+<script type="module">
   var D = window.LData;
-  var byId = function (id) { return document.getElementById(id); };
+  var byId = (id) => document.getElementById(id);
 
   function start() {
     var App = window.App;
@@ -87,15 +85,15 @@
       browsers: ['Browsers', 'Visitors in the period by browser']
     };
     var columns = [
-      { key: 'pageviews', label: 'Page views', value: function (r) { return r.totals.pageviews; } },
-      { key: 'visitors', label: 'Visitors (sum of daily)', value: function (r) { return r.totals.visitors; } },
-      { key: 'visits', label: 'Visits', value: function (r) { return r.totals.visits; } },
-      { key: 'bounce', label: 'Bounce rate', value: function (r) { return r.totals.bounce_rate; } },
-      { key: 'duration', label: 'Visit duration', value: function (r) { return r.totals.avg_visit_seconds; } },
-      { key: 'requests', label: 'API requests', value: function (r) { return apiOf(r).requests; } },
-      { key: 'errors', label: 'Server errors', value: function (r) { return apiOf(r).error_rate; } },
-      { key: 'p50', label: 'API p50 (est.)', value: function (r) { return apiOf(r).p50_ms; } },
-      { key: 'p95', label: 'API p95 (est.)', value: function (r) { return apiOf(r).p95_ms; } }
+      { key: 'pageviews', label: 'Page views', value: (r) => r.totals.pageviews },
+      { key: 'visitors', label: 'Visitors (sum of daily)', value: (r) => r.totals.visitors },
+      { key: 'visits', label: 'Visits', value: (r) => r.totals.visits },
+      { key: 'bounce', label: 'Bounce rate', value: (r) => r.totals.bounce_rate },
+      { key: 'duration', label: 'Visit duration', value: (r) => r.totals.avg_visit_seconds },
+      { key: 'requests', label: 'API requests', value: (r) => apiOf(r).requests },
+      { key: 'errors', label: 'Server errors', value: (r) => apiOf(r).error_rate },
+      { key: 'p50', label: 'API p50 (est.)', value: (r) => apiOf(r).p50_ms },
+      { key: 'p95', label: 'API p95 (est.)', value: (r) => apiOf(r).p95_ms }
     ];
     var state = { range: 30, search: '', stateFilter: '', sort: 'pageviews', descending: true,
       comparing: false, compared: [], view: 'list', open: null, drawerTab: 'referrers', compareTab: 'referrers' };
@@ -106,7 +104,7 @@
     /* API figures are missing when they could not be read, and on all but a project's first site. */
     var NO_API = { requests: null, error_rate: null, p50_ms: null, p95_ms: null, routes: [] };
     function apiOf(r) { return r.api || NO_API; }
-    function find(id) { return all.filter(function (r) { return r.project.id === id; })[0] || null; }
+    function find(id) { return all.filter((r) => r.project.id === id)[0] || null; }
     function hasData(r) { return r.totals.pageviews !== 0 || r.totals.flagged !== 0; }
     function isSmall(value) { return Boolean(value && value.small); }
     /* A count as text: exact, or "<10" when the API only says it is small. */
@@ -128,20 +126,20 @@
     }
     /* For drawing only: a small count has no height, and the chart says so. */
     function drawn(value) { return isSmall(value) ? 0 : value; }
-    function hasSmallDay(r) { return r.daily.some(function (d) { return isSmall(d.pageviews) || isSmall(d.flagged); }); }
+    function hasSmallDay(r) { return r.daily.some((d) => isSmall(d.pageviews) || isSmall(d.flagged)); }
     function chartNote(r) {
       return hasSmallDay(r) ? '<p class="caption">Counts under ' + D.meta().small_counts.below + ' are not drawn.</p>' : '';
     }
     function chartCount(value) { return value === null ? '<' + D.meta().small_counts.below : fmt.int(value); }
     /* A small count is null in the chart: not drawn, "<10" in the tip, and no raw total for its day. */
     function dailyChart(el, r, height, max) {
-      var exact = function (value) { return isSmall(value) ? null : value; };
+      var exact = (value) => isSmall(value) ? null : value;
       Charts.columns(el, {
-        label: r.project.name + ': page views per day, counted and flagged', labels: r.daily.map(function (d) { return fmt.day(d.day); }),
+        label: r.project.name + ': page views per day, counted and flagged', labels: r.daily.map((d) => fmt.day(d.day)),
         height: height, max: max, format: chartCount, tickFormat: fmt.tick, totalName: 'Raw',
         series: [
-          { name: 'Counted', color: 'var(--data-filtered)', values: r.daily.map(function (d) { return exact(d.pageviews); }) },
-          { name: 'Flagged', color: 'var(--data-flagged)', hatch: true, values: r.daily.map(function (d) { return exact(d.flagged); }) }
+          { name: 'Counted', color: 'var(--data-filtered)', values: r.daily.map((d) => exact(d.pageviews)) },
+          { name: 'Flagged', color: 'var(--data-flagged)', hatch: true, values: r.daily.map((d) => exact(d.flagged)) }
         ]
       });
     }
@@ -153,7 +151,7 @@
 
     function visible() {
       var needle = state.search.trim().toLowerCase();
-      return all.filter(function (r) {
+      return all.filter((r) => {
         var p = r.project;
         if (needle && (p.name + ' ' + p.domain).toLowerCase().indexOf(needle) < 0) return false;
         return !state.stateFilter || p.state === state.stateFilter;
@@ -161,7 +159,7 @@
     }
 
     function sorted(list) {
-      var column = columns.filter(function (c) { return c.key === state.sort; })[0] || columns[0];
+      var column = columns.filter((c) => c.key === state.sort)[0] || columns[0];
       return D.sortRows(list, column.value, state.descending);
     }
 
@@ -175,12 +173,12 @@
       if (!loaded) return;
       var list = sorted(visible());
       var head = '<thead><tr>' + (state.comparing ? '<th class="col-check"><span class="sr-only">Select</span></th>' : '') +
-        '<th>Project</th><th>State</th>' + columns.map(function (c, index) {
+        '<th>Project</th><th>State</th>' + columns.map((c, index) => {
           var sort = state.sort === c.key ? ' aria-sort="' + (state.descending ? 'descending' : 'ascending') + '"' : '';
           return '<th class="num"' + sort + '><button type="button" data-sort="' + c.key + '">' + c.label + '</button></th>' +
             (index === 0 ? '<th>Flagged</th>' : '');
         }).join('') + '</tr></thead>';
-      var body = list.map(function (r) {
+      var body = list.map((r) => {
         var p = r.project;
         var t = r.totals;
         var picked = state.compared.indexOf(p.id) >= 0;
@@ -192,7 +190,7 @@
         return '<tr data-id="' + p.id + '"' + (state.open === p.id || (state.comparing && picked) ? ' class="is-open"' : '') + '>' + check +
           '<td><button class="row-open" type="button" data-open="' + p.id + '">' + App.projectName(p) + '</button><span class="sub">' + esc(p.domain) + '</span></td>' +
           '<td>' + App.statePill(p.state) + '</td>' +
-          '<td class="num"><span class="cell-trend">' + Charts.spark(r.daily.map(function (d) { return drawn(d.pageviews); }), 'Page views per day, last ' + state.range + ' days') +
+          '<td class="num"><span class="cell-trend">' + Charts.spark(r.daily.map((d) => drawn(d.pageviews)), 'Page views per day, last ' + state.range + ' days') +
           count(t.pageviews) + '</span></td>' +
           '<td>' + flaggedShare(t) + '</td>' +
           '<td class="num">' + count(t.visitors) + '</td><td class="num">' + count(t.visits) + '</td>' +
@@ -211,7 +209,7 @@
       var picked = state.compared.map(find).filter(Boolean);
       byId('tray').setAttribute('aria-hidden', String(!(state.comparing && state.view === 'list')));
       byId('tray-text').textContent = picked.length ? picked.length + ' of ' + MAX_COMPARED + ' selected' : 'Select two or three projects to compare';
-      byId('tray-picked').innerHTML = picked.map(function (r) { return '<span class="pill">' + esc(r.project.name) + '</span>'; }).join('');
+      byId('tray-picked').innerHTML = picked.map((r) => '<span class="pill">' + esc(r.project.name) + '</span>').join('');
       byId('tray-open').disabled = picked.length < 2;
       byId('compare-toggle').setAttribute('aria-pressed', String(state.comparing));
     }
@@ -220,31 +218,29 @@
     function valueRows(rows) {
       if (!rows || !rows.length) return App.empty('No data in this period.');
       var list = rows.slice(0, 5);
-      var max = Math.max.apply(null, list.map(function (r) { return drawn(r.value); }));
-      return list.map(function (r) {
-        return '<div class="bar-row is-share"><span class="bar-label">' + esc(r.label) + '</span>' +
+      var max = Math.max.apply(null, list.map((r) => drawn(r.value)));
+      return list.map((r) => '<div class="bar-row is-share"><span class="bar-label">' + esc(r.label) + '</span>' +
           '<span class="bar-value">' + count(r.value) + '</span>' +
-          '<span class="bar-track"><span class="bar-fill" style="width:' + (max ? drawn(r.value) / max * 100 : 0) + '%"></span></span></div>';
-      }).join('');
+          '<span class="bar-track"><span class="bar-fill" style="width:' + (max ? drawn(r.value) / max * 100 : 0) + '%"></span></span></div>').join('');
     }
 
     function renderCompareBreakdown(picked) {
       byId('compare-breakdown-label').textContent = BREAKDOWNS[state.compareTab][1];
-      picked.forEach(function (r, i) { byId('compare-breakdown-' + i).innerHTML = '<div class="bars">' + valueRows(r.breakdowns[state.compareTab]) + '</div>'; });
+      picked.forEach((r, i) => { byId('compare-breakdown-' + i).innerHTML = '<div class="bars">' + valueRows(r.breakdowns[state.compareTab]) + '</div>'; });
     }
 
     function comparedRows() {
-      return state.compared.map(find).filter(function (r) { return r && hasData(r); });
+      return state.compared.map(find).filter((r) => r && hasData(r));
     }
 
     function downloadCompare() {
-      var percent = function (value) { return parseFloat(fmt.pct(value)); };
+      var percent = (value) => parseFloat(fmt.pct(value));
       var picked = comparedRows();
       var days = picked[0].daily;
       App.downloadCsv('compare-' + days[0].day + '-to-' + days[days.length - 1].day + '.csv',
         ['Project', 'Domain', 'Page views', 'Visitors (sum of daily)', 'Visits', 'Bounce rate (%)', 'Visit duration (s)',
           'API requests', 'Server errors (%)', 'API p50 (ms, estimate)', 'API p95 (ms, estimate)'],
-        picked.map(function (r) {
+        picked.map((r) => {
           var t = r.totals;
           var a = apiOf(r);
           return [r.project.name, r.project.domain, countText(t.pageviews), countText(t.visitors), countText(t.visits),
@@ -264,45 +260,35 @@
         return;
       }
       byId('compare-summary').textContent = picked.length + ' projects, last ' + state.range + ' days, one scale';
-      var cells = function (label, cell, bar, first) {
-        var max = bar ? Math.max.apply(null, picked.map(function (r) { return drawn(bar(r)); })) : 0;
-        return '<div class="compare-label' + (first ? ' compare-first' : '') + '">' + label + '</div>' + picked.map(function (r) {
+      var cells = (label, cell, bar, first) => {
+        var max = bar ? Math.max.apply(null, picked.map((r) => drawn(bar(r)))) : 0;
+        return '<div class="compare-label' + (first ? ' compare-first' : '') + '">' + label + '</div>' + picked.map((r) => {
           var track = bar && max ? '<span class="bar-track"><span class="bar-fill" style="width:' + (drawn(bar(r)) / max * 100) + '%"></span></span>' : '';
           return '<div' + (first ? ' class="compare-first"' : '') + '>' + cell(r) + track + '</div>';
         }).join('');
       };
       byId('compare').innerHTML = '<div class="compare" style="grid-template-columns:200px repeat(' + picked.length + ', minmax(0, 1fr))">' +
-        '<div class="compare-head"></div>' + picked.map(function (r) {
-          return '<div class="compare-head"><button class="row-open" type="button" data-open="' + r.project.id + '">' + App.projectName(r.project) + '</button></div>';
-        }).join('') +
-        '<div class="compare-chart compare-label">Page views per day</div>' + picked.map(function (r, i) {
-          return '<div class="compare-chart"><div class="chart" id="multiple-' + i + '"></div>' + chartNote(r) + '</div>';
-        }).join('') +
+        '<div class="compare-head"></div>' + picked.map((r) => '<div class="compare-head"><button class="row-open" type="button" data-open="' + r.project.id + '">' + App.projectName(r.project) + '</button></div>').join('') +
+        '<div class="compare-chart compare-label">Page views per day</div>' + picked.map((r, i) => '<div class="compare-chart"><div class="chart" id="multiple-' + i + '"></div>' + chartNote(r) + '</div>').join('') +
         '<div class="compare-group">Web <span class="source">Observed by the tracker</span></div>' +
-        cells('Page views', function (r) { return '<b>' + count(r.totals.pageviews) + '</b>'; }, function (r) { return r.totals.pageviews; }, true) +
-        cells('Flagged share', function (r) { return flaggedShare(r.totals); }) +
-        cells('Visitors (sum of daily)', function (r) { return count(r.totals.visitors); }, function (r) { return r.totals.visitors; }) +
-        cells('Visits', function (r) { return count(r.totals.visits); }, function (r) { return r.totals.visits; }) +
-        cells('Bounce rate', function (r) { return rate(r.totals.bounce_rate, fmt.pct); }) +
-        cells('Visit duration', function (r) { return rate(r.totals.avg_visit_seconds, fmt.duration); }) +
+        cells('Page views', (r) => '<b>' + count(r.totals.pageviews) + '</b>', (r) => r.totals.pageviews, true) +
+        cells('Flagged share', (r) => flaggedShare(r.totals)) +
+        cells('Visitors (sum of daily)', (r) => count(r.totals.visitors), (r) => r.totals.visitors) +
+        cells('Visits', (r) => count(r.totals.visits), (r) => r.totals.visits) +
+        cells('Bounce rate', (r) => rate(r.totals.bounce_rate, fmt.pct)) +
+        cells('Visit duration', (r) => rate(r.totals.avg_visit_seconds, fmt.duration)) +
         '<div class="compare-group">API <span class="source source-reported">Reported by the project</span></div>' +
-        cells('API requests', function (r) { return '<b>' + count(apiOf(r).requests) + '</b>'; }, function (r) { return apiOf(r).requests; }, true) +
-        cells('Server errors', function (r) { return rate(apiOf(r).error_rate, fmt.pct, 'requests'); }) +
-        cells('API p50 (estimate)', function (r) { return rate(apiOf(r).p50_ms, fmt.ms, 'requests'); }) +
-        cells('API p95 (estimate)', function (r) { return rate(apiOf(r).p95_ms, fmt.ms, 'requests'); }) +
+        cells('API requests', (r) => '<b>' + count(apiOf(r).requests) + '</b>', (r) => apiOf(r).requests, true) +
+        cells('Server errors', (r) => rate(apiOf(r).error_rate, fmt.pct, 'requests')) +
+        cells('API p50 (estimate)', (r) => rate(apiOf(r).p50_ms, fmt.ms, 'requests')) +
+        cells('API p95 (estimate)', (r) => rate(apiOf(r).p95_ms, fmt.ms, 'requests')) +
         '<div class="compare-tabs"><div class="tabs" role="tablist" aria-label="Breakdown" id="compare-tabs">' +
-        Object.keys(BREAKDOWNS).map(function (key) {
-          return '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.compareTab) + '">' + BREAKDOWNS[key][0] + '</button>';
-        }).join('') + '</div></div>' +
-        '<div class="compare-label compare-first" id="compare-breakdown-label"></div>' + picked.map(function (r, i) {
-          return '<div class="compare-first" id="compare-breakdown-' + i + '"></div>';
-        }).join('') + '</div>';
-      App.tabs(byId('compare-tabs'), function (tab) { state.compareTab = tab; renderCompareBreakdown(picked); });
+        Object.keys(BREAKDOWNS).map((key) => '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.compareTab) + '">' + BREAKDOWNS[key][0] + '</button>').join('') + '</div></div>' +
+        '<div class="compare-label compare-first" id="compare-breakdown-label"></div>' + picked.map((r, i) => '<div class="compare-first" id="compare-breakdown-' + i + '"></div>').join('') + '</div>';
+      App.tabs(byId('compare-tabs'), (tab) => { state.compareTab = tab; renderCompareBreakdown(picked); });
       renderCompareBreakdown(picked);
-      var max = Math.max.apply(null, picked.map(function (r) {
-        return Math.max.apply(null, r.daily.map(function (d) { return drawn(d.pageviews) + drawn(d.flagged); }).concat([0]));
-      }));
-      picked.forEach(function (r, i) { dailyChart(byId('multiple-' + i), r, 180, max); });
+      var max = Math.max.apply(null, picked.map((r) => Math.max.apply(null, r.daily.map((d) => drawn(d.pageviews) + drawn(d.flagged)).concat([0]))));
+      picked.forEach((r, i) => { dailyChart(byId('multiple-' + i), r, 180, max); });
     }
 
     function showView(view) {
@@ -316,7 +302,7 @@
     }
 
     function kv(pairs) {
-      return '<dl class="kv">' + pairs.map(function (pair) { return '<dt>' + pair[0] + '</dt><dd>' + pair[1] + '</dd>'; }).join('') + '</dl>';
+      return '<dl class="kv">' + pairs.map((pair) => '<dt>' + pair[0] + '</dt><dd>' + pair[1] + '</dd>').join('') + '</dl>';
     }
 
     function openDrawer(id, from) {
@@ -330,15 +316,13 @@
       var web = hasData(r)
         ? '<div class="drawer-hero"><b>' + count(t.pageviews) + '</b><span class="muted">page views, ' + count(t.flagged) + ' flagged</span></div>' +
           '<div class="chart" id="drawer-chart" style="margin-top:16px"></div>' + chartNote(r) + '</section>' +
-          '<section class="drawer-section"><h3>Flagged page views by rule</h3>' + kv(r.byRule.map(function (rule) { return [esc(rule.label), count(rule.value)]; })) + '</section>' +
+          '<section class="drawer-section"><h3>Flagged page views by rule</h3>' + kv(r.byRule.map((rule) => [esc(rule.label), count(rule.value)])) + '</section>' +
           '<section class="drawer-section">' + kv([
             ['Visitors (sum of daily)', count(t.visitors)], ['Visits', count(t.visits)],
             ['Bounce rate', rate(t.bounce_rate, fmt.pct)], ['Visit duration', rate(t.avg_visit_seconds, fmt.duration)]
           ]) + '</section>' +
           '<section class="drawer-section"><div class="tabs" role="tablist" aria-label="Breakdown" id="drawer-tabs">' +
-          Object.keys(BREAKDOWNS).map(function (key) {
-            return '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.drawerTab) + '" aria-controls="drawer-breakdown">' + BREAKDOWNS[key][0] + '</button>';
-          }).join('') + '</div><div class="bars" id="drawer-breakdown" role="tabpanel"></div>'
+          Object.keys(BREAKDOWNS).map((key) => '<button type="button" role="tab" data-tab="' + key + '" aria-selected="' + (key === state.drawerTab) + '" aria-controls="drawer-breakdown">' + BREAKDOWNS[key][0] + '</button>').join('') + '</div><div class="bars" id="drawer-breakdown" role="tabpanel"></div>'
         : App.empty('No page views in the last ' + state.range + ' days.');
       var api = !r.api ? App.empty('No API figures for this site.') : r.api.requests
         ? kv([['Requests', count(apiOf(r).requests)], ['Server errors', rate(apiOf(r).error_rate, fmt.pct, 'requests')],
@@ -354,18 +338,18 @@
         '<section class="drawer-section"><h3>API <span class="source source-reported">Reported by the project</span></h3>' + api + '</section></div>' +
         '<div class="drawer-foot"><span class="muted">Approve, suspend and remove: ' + App.NOT_IN_PROTOTYPE.toLowerCase() + '.</span></div>';
       if (!drawer.open) drawer.showModal();
-      byId('drawer-close').addEventListener('click', function () { drawer.close(); });
+      byId('drawer-close').addEventListener('click', () => { drawer.close(); });
       if (hasData(r)) {
         dailyChart(byId('drawer-chart'), r, 200);
-        var paintBreakdown = function () { byId('drawer-breakdown').innerHTML = valueRows(r.breakdowns[state.drawerTab]); };
-        App.tabs(byId('drawer-tabs'), function (tab) { state.drawerTab = tab; paintBreakdown(); });
+        const paintBreakdown = () => { byId('drawer-breakdown').innerHTML = valueRows(r.breakdowns[state.drawerTab]); };
+        App.tabs(byId('drawer-tabs'), (tab) => { state.drawerTab = tab; paintBreakdown(); });
         paintBreakdown();
       }
     }
 
     function paint() {
       byId('stamp').textContent = App.stamp();
-      state.compared = state.compared.filter(function (id) { var r = find(id); return r && hasData(r); });
+      state.compared = state.compared.filter((id) => { var r = find(id); return r && hasData(r); });
       if (!all.length) { listMessage('No project is registered', 'Projects appear here once they are seeded.'); byId('caption').textContent = ''; return; }
       listMessage('');
       renderTray();
@@ -376,25 +360,25 @@
     function render(range) {
       state.range = range;
       if (!loaded) listMessage('Loading figures', 'Reading the last ' + range + ' days for every project.');
-      D.loadOperator(range).then(function (rows) {
+      D.loadOperator(range).then((rows) => {
         if (state.range !== range) return;
         loaded = true;
         all = rows;
         paint();
-      }, function (error) {
+      }, (error) => {
         if (state.range !== range) return;
         loaded = false;
         byId('caption').textContent = '';
         listMessage('Figures are unavailable', esc(error.message || 'The figures could not be read.') + ' Nothing is shown in their place.',
           '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
-        byId('retry').addEventListener('click', function () { render(range); });
+        byId('retry').addEventListener('click', () => { render(range); });
       });
     }
 
-    byId('state-filter').innerHTML = STATE_FILTERS.map(function (f) { return '<option value="' + f[0] + '">' + f[1] + '</option>'; }).join('');
-    byId('search').addEventListener('input', function (event) { state.search = event.target.value; renderTable(); });
-    byId('state-filter').addEventListener('change', function (event) { state.stateFilter = event.target.value; renderTable(); });
-    byId('projects').addEventListener('click', function (event) {
+    byId('state-filter').innerHTML = STATE_FILTERS.map((f) => '<option value="' + f[0] + '">' + f[1] + '</option>').join('');
+    byId('search').addEventListener('input', (event) => { state.search = event.target.value; renderTable(); });
+    byId('state-filter').addEventListener('change', (event) => { state.stateFilter = event.target.value; renderTable(); });
+    byId('projects').addEventListener('click', (event) => {
       var sort = event.target.closest('[data-sort]');
       var open = event.target.closest('[data-open]');
       if (sort) {
@@ -405,28 +389,27 @@
         openDrawer(open.dataset.open, open);
       }
     });
-    byId('projects').addEventListener('change', function (event) {
+    byId('projects').addEventListener('change', (event) => {
       var id = event.target.dataset.compare;
       if (!id) return;
-      state.compared = event.target.checked ? state.compared.concat([id]) : state.compared.filter(function (other) { return other !== id; });
+      state.compared = event.target.checked ? state.compared.concat([id]) : state.compared.filter((other) => other !== id);
       renderTray();
       renderTable();
     });
-    byId('compare').addEventListener('click', function (event) {
+    byId('compare').addEventListener('click', (event) => {
       var open = event.target.closest('[data-open]');
       if (open) openDrawer(open.dataset.open, open);
     });
-    byId('compare-toggle').addEventListener('click', function () { state.comparing = !state.comparing; if (!state.comparing) state.compared = []; renderTray(); renderTable(); });
-    byId('tray-cancel').addEventListener('click', function () { state.comparing = false; state.compared = []; renderTray(); renderTable(); });
-    byId('tray-open').addEventListener('click', function () { showView('compare'); });
-    byId('compare-back').addEventListener('click', function () { showView('list'); });
+    byId('compare-toggle').addEventListener('click', () => { state.comparing = !state.comparing; if (!state.comparing) state.compared = []; renderTray(); renderTable(); });
+    byId('tray-cancel').addEventListener('click', () => { state.comparing = false; state.compared = []; renderTray(); renderTable(); });
+    byId('tray-open').addEventListener('click', () => { showView('compare'); });
+    byId('compare-back').addEventListener('click', () => { showView('list'); });
     byId('compare-csv').addEventListener('click', downloadCompare);
-    byId('drawer').addEventListener('close', function () { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list') renderTable(); });
+    byId('drawer').addEventListener('close', () => { state.open = null; if (opener && opener.focus) opener.focus(); if (state.view === 'list') renderTable(); });
     App.rangeControl(byId('range'), render);
   }
 
   D.boot(start);
-})();
 </script>
 </body>
 </html>

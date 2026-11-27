@@ -1,266 +1,369 @@
 // The routes of the console as a browser sees them: clean paths, the per-host demo site, and
 // pages that carry no sample data.
-import assert from 'node:assert/strict';
-import { readdir, readFile } from 'node:fs/promises';
-import http from 'node:http';
-import path from 'node:path';
-import { describe, it } from 'node:test';
-import { requireEnv } from '../lib/config.js';
-import { TENANTS } from '../scripts/fixtures.mjs';
+import assert from 'node:assert/strict'
+import { readdir, readFile } from 'node:fs/promises'
+import http from 'node:http'
+import path from 'node:path'
+import { describe, it } from 'node:test'
+import { requireEnv } from '../lib/config.js'
+import { TENANTS } from '../scripts/fixtures.mjs'
 
-const PUBLIC_ROOT = path.resolve(import.meta.dirname, '..', 'public');
-const GATEWAY = requireEnv('GATEWAY_URL');
-const TENANT_SCREENS = ['web', 'requests', 'setup'];
-const OPERATOR_SCREENS = ['operator/projects', 'operator/access'];
+const PUBLIC_ROOT = path.resolve(import.meta.dirname, '..', 'public')
+const GATEWAY = requireEnv('GATEWAY_URL')
+const TENANT_SCREENS = ['web', 'requests', 'setup']
+const OPERATOR_SCREENS = ['operator/projects', 'operator/access']
 const OLD_SAMPLE_STRINGS = [
-  'Sample data', 'Trustless Work', 'Northwind', 'Soroswap', 'Blend Capital', 'GSAMPLE', 'fund.example',
-  'usagesignals.example', 'prj_', 'invented', 'Demo control', 'Sample view', 'notices@example.org', 'reviewer@', 'Signed in with a Stellar wallet',
-];
+  'Sample data',
+  'Trustless Work',
+  'Northwind',
+  'Soroswap',
+  'Blend Capital',
+  'GSAMPLE',
+  'fund.example',
+  'usagesignals.example',
+  'prj_',
+  'invented',
+  'Demo control',
+  'Sample view',
+  'notices@example.org',
+  'reviewer@',
+  'Signed in with a Stellar wallet',
+]
 
 // fetch() does not let a caller choose the Host header; node:http does.
 function getAsHost(host, pathname) {
   return new Promise((resolve, reject) => {
-    const url = new URL(pathname, GATEWAY);
-    const request = http.get({ host: url.hostname, port: url.port, path: pathname, headers: { host } }, (response) => {
-      let body = '';
-      response.setEncoding('utf8');
-      response.on('data', (chunk) => { body += chunk; });
-      response.on('end', () => resolve({ status: response.statusCode, body }));
-    });
-    request.on('error', reject);
-  });
+    const url = new URL(pathname, GATEWAY)
+    const request = http.get(
+      { host: url.hostname, port: url.port, path: pathname, headers: { host } },
+      (response) => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          body += chunk
+        })
+        response.on('end', () => resolve({ status: response.statusCode, body }))
+      },
+    )
+    request.on('error', reject)
+  })
 }
 
 async function get(pathname) {
-  const response = await fetch(`${GATEWAY}${pathname}`, { redirect: 'manual' });
-  return { status: response.status, type: response.headers.get('content-type'), location: response.headers.get('location'), text: await response.text() };
+  const response = await fetch(`${GATEWAY}${pathname}`, { redirect: 'manual' })
+  return {
+    status: response.status,
+    type: response.headers.get('content-type'),
+    location: response.headers.get('location'),
+    text: await response.text(),
+  }
 }
 
 describe('tenant console, addressed by project', () => {
   for (const screen of TENANT_SCREENS) {
     it(`serves the one ${screen} page at /<slug>/${screen} for every project`, async () => {
-      const page = await readFile(path.join(PUBLIC_ROOT, 'tenant', `${screen}.html`), 'utf8');
+      const page = await readFile(path.join(PUBLIC_ROOT, 'tenant', `${screen}.html`), 'utf8')
       for (const tenant of TENANTS) {
-        const answer = await get(`/${tenant.site.slug}/${screen}`);
-        assert.equal(answer.status, 200, tenant.site.slug);
-        assert.match(answer.type, /text\/html/);
-        assert.equal(answer.text, page);
+        const answer = await get(`/${tenant.site.slug}/${screen}`)
+        assert.equal(answer.status, 200, tenant.site.slug)
+        assert.match(answer.type, /text\/html/)
+        assert.equal(answer.text, page)
       }
-    });
+    })
   }
 
   it('serves the same page for a slug nobody has; the page then asks the API, which says 404', async () => {
-    assert.equal((await get('/no-such-project/web')).status, 200);
-    assert.equal((await get('/api/tenant/no-such-project/project')).status, 404);
-  });
+    assert.equal((await get('/no-such-project/web')).status, 200)
+    assert.equal((await get('/api/tenant/no-such-project/project')).status, 404)
+  })
 
   it('takes the project from the path and from nowhere else', async () => {
-    const seam = await readFile(path.join(PUBLIC_ROOT, 'data.js'), 'utf8');
-    assert.match(seam, /function currentProjectSlug\(\) \{\s+var first = window\.location\.pathname\.split\('\/'\)\[1\]/);
-    assert.equal(seam.match(/window\.location/g).length, 1, 'the address is read in more than one place');
+    const seam = await readFile(path.join(PUBLIC_ROOT, 'data.js'), 'utf8')
+    assert.match(
+      seam,
+      /function currentProjectSlug\(\) \{\s+var first = window\.location\.pathname\.split\('\/'\)\[1\]/,
+    )
+    assert.equal(
+      seam.match(/window\.location/g).length,
+      1,
+      'the address is read in more than one place',
+    )
     for (const file of await publicFiles()) {
-      const text = await readFile(path.join(PUBLIC_ROOT, file), 'utf8');
-      for (const banned of ['location.search', 'URLSearchParams', '?site=', '?project=', 'demo-project']) {
-        assert.ok(!text.includes(banned), `${file} contains ${banned}`);
+      const text = await readFile(path.join(PUBLIC_ROOT, file), 'utf8')
+      for (const banned of [
+        'location.search',
+        'URLSearchParams',
+        '?site=',
+        '?project=',
+        'demo-project',
+      ]) {
+        assert.ok(!text.includes(banned), `${file} contains ${banned}`)
       }
-      if (file !== 'data.js') assert.ok(!text.includes('location.pathname'), `${file} reads the path itself`);
+      if (file !== 'data.js')
+        assert.ok(!text.includes('location.pathname'), `${file} reads the path itself`)
     }
-  });
-});
+  })
+})
 
 describe('operator console', () => {
   for (const screen of OPERATOR_SCREENS) {
     it(`serves /${screen} and redirects /${screen}.html to it with 308`, async () => {
-      const answer = await get(`/${screen}`);
-      assert.equal(answer.status, 200);
-      assert.match(answer.text, /<title>[^<]*Operator · Pulse<\/title>/);
-      const old = await get(`/${screen}.html`);
-      assert.equal(old.status, 308);
-      assert.equal(old.location, `/${screen}`);
-    });
+      const answer = await get(`/${screen}`)
+      assert.equal(answer.status, 200)
+      assert.match(answer.text, /<title>[^<]*Operator · Pulse<\/title>/)
+      const old = await get(`/${screen}.html`)
+      assert.equal(old.status, 308)
+      assert.equal(old.location, `/${screen}`)
+    })
   }
-});
+})
 
 describe('public view', () => {
   it('serves /public and redirects /public.html to it with 308', async () => {
-    const answer = await get('/public');
-    assert.equal(answer.status, 200);
-    assert.match(answer.text, /<title>[^<]*Public · Pulse<\/title>/);
-    const old = await get('/public.html');
-    assert.equal(old.status, 308);
-    assert.equal(old.location, '/public');
-  });
-});
+    const answer = await get('/public')
+    assert.equal(answer.status, 200)
+    assert.match(answer.text, /<title>[^<]*Public · Pulse<\/title>/)
+    const old = await get('/public.html')
+    assert.equal(old.status, 308)
+    assert.equal(old.location, '/public')
+  })
+})
 
 describe('other paths', () => {
   it('shows the start page at /, linking the video and the source, with no third-party analytics', async () => {
-    const root = await get('/');
-    assert.equal(root.status, 200);
-    assert.ok(root.text.includes('href="https://vimeo.com/1248550588"'), 'no link to the video');
-    assert.ok(root.text.includes('href="https://github.com/BootNodeDev/usage-signals-poc"'), 'no link to the source');
-    assert.ok(root.text.includes('<script src="/data.js"></script>\n<script src="/landing.js"></script>'));
-    assert.ok(!root.text.includes('/_vercel/insights'));
-  });
+    const root = await get('/')
+    assert.equal(root.status, 200)
+    assert.ok(root.text.includes('href="https://vimeo.com/1248550588"'), 'no link to the video')
+    assert.ok(
+      root.text.includes('href="https://github.com/BootNodeDev/usage-signals-poc"'),
+      'no link to the source',
+    )
+    assert.ok(
+      root.text.includes(
+        '<script type="module" src="/data.js"></script>\n<script type="module" src="/landing.js"></script>',
+      ),
+    )
+    assert.ok(!root.text.includes('/_vercel/insights'))
+  })
 
   it('builds the start page links to each site, its console, the operator view and the public view', async () => {
-    const script = (await get('/landing.js')).text;
-    assert.ok(script.includes("'/' + encodeURIComponent(project.slug) + '/web'"), 'no link to a project console');
-    assert.ok(script.includes("'//' + project.domain + '/demo/'"), 'no link to a sample site');
-    assert.ok(script.includes('href="/operator/projects"'), 'no link to the operator view');
-    assert.ok(script.includes('href="/public"'), 'no link to the public view');
-    const { projects } = await (await fetch(`${GATEWAY}/api/operator/projects?days=30`)).json();
+    const script = (await get('/landing.js')).text
+    assert.ok(
+      script.includes("'/' + encodeURIComponent(project.slug) + '/web'"),
+      'no link to a project console',
+    )
+    assert.ok(script.includes("'//' + project.domain + '/demo/'"), 'no link to a sample site')
+    assert.ok(script.includes('href="/operator/projects"'), 'no link to the operator view')
+    assert.ok(script.includes('href="/public"'), 'no link to the public view')
+    const { projects } = await (await fetch(`${GATEWAY}/api/operator/projects?days=30`)).json()
     for (const tenant of TENANTS.filter((candidate) => candidate.status !== 'removed')) {
-      const row = projects.find((candidate) => candidate.project.id === tenant.site.id);
-      assert.equal(row.project.slug, tenant.site.slug);
-      assert.equal(row.project.domain, tenant.site.domain);
+      const row = projects.find((candidate) => candidate.project.id === tenant.site.id)
+      assert.equal(row.project.slug, tenant.site.slug)
+      assert.equal(row.project.domain, tenant.site.domain)
     }
-  });
+  })
 
   it('answers 404 for unknown paths, old screen names and paths outside public', async () => {
-    const paths = ['/nope', '/web', '/projects', '/operator', '/tenant-web', '/aurora-wallet', '/aurora-wallet/nope',
-      '/aurora-wallet/web/extra', '/aurora-wallet/projects', '/%2e%2e/package.json'];
-    for (const pathname of paths) assert.equal((await get(pathname)).status, 404, pathname);
-  });
+    const paths = [
+      '/nope',
+      '/web',
+      '/projects',
+      '/operator',
+      '/tenant-web',
+      '/aurora-wallet',
+      '/aurora-wallet/nope',
+      '/aurora-wallet/web/extra',
+      '/aurora-wallet/projects',
+      '/%2e%2e/package.json',
+    ]
+    for (const pathname of paths) assert.equal((await get(pathname)).status, 404, pathname)
+  })
 
   it('keeps /api, /demo and the shared files ahead of the project routes', async () => {
-    assert.match((await get('/api/web')).type, /application\/json/);
-    assert.equal((await get('/demo/web')).status, 404);
-    for (const pathname of ['/styles.css', '/app.js', '/charts.js', '/data.js', '/landing.css', '/landing.js', '/s/manifest.json']) {
-      assert.equal((await get(pathname)).status, 200, pathname);
+    assert.match((await get('/api/web')).type, /application\/json/)
+    assert.equal((await get('/demo/web')).status, 404)
+    for (const pathname of [
+      '/styles.css',
+      '/app.js',
+      '/charts.js',
+      '/data.js',
+      '/landing.css',
+      '/landing.js',
+      '/s/manifest.json',
+    ]) {
+      assert.equal((await get(pathname)).status, 200, pathname)
     }
-  });
-});
+  })
+})
 
 describe('demo site per host', () => {
-  const active = TENANTS.filter((tenant) => tenant.status === 'active');
+  const active = TENANTS.filter((tenant) => tenant.status === 'active')
 
   it('gives each registered host a page tagged with its own website id', async () => {
-    const titles = new Set();
+    const titles = new Set()
     for (const tenant of active) {
-      const { status, body } = await getAsHost(tenant.site.domain, '/demo/');
-      assert.equal(status, 200, tenant.site.domain);
-      assert.ok(body.includes(`data-website-id="${tenant.site.umamiWebsiteId}"`), tenant.site.domain);
+      const { status, body } = await getAsHost(tenant.site.domain, '/demo/')
+      assert.equal(status, 200, tenant.site.domain)
+      assert.ok(
+        body.includes(`data-website-id="${tenant.site.umamiWebsiteId}"`),
+        tenant.site.domain,
+      )
       for (const other of active.filter((candidate) => candidate !== tenant)) {
-        assert.ok(!body.includes(other.site.umamiWebsiteId), `${tenant.site.domain} carries another site's id`);
+        assert.ok(
+          !body.includes(other.site.umamiWebsiteId),
+          `${tenant.site.domain} carries another site's id`,
+        )
       }
-      assert.ok(body.includes(tenant.name));
-      titles.add(body.match(/<title>([^<]*)<\/title>/)[1]);
+      assert.ok(body.includes(tenant.name))
+      titles.add(body.match(/<title>([^<]*)<\/title>/)[1])
     }
-    assert.equal(titles.size, active.length);
-  });
+    assert.equal(titles.size, active.length)
+  })
 
   it('gives each site two pages of its own, linked from its home page', async () => {
-    const seen = new Set();
+    const seen = new Set()
     for (const tenant of active) {
-      const home = await getAsHost(tenant.site.domain, '/demo/');
-      const links = [...new Set([...home.body.matchAll(/href="(\/demo\/[a-z-]+)"/g)].map((match) => match[1]))];
-      assert.equal(links.length, 2, tenant.site.domain);
+      const home = await getAsHost(tenant.site.domain, '/demo/')
+      const links = [
+        ...new Set([...home.body.matchAll(/href="(\/demo\/[a-z-]+)"/g)].map((match) => match[1])),
+      ]
+      assert.equal(links.length, 2, tenant.site.domain)
       for (const link of links) {
-        const page = await getAsHost(tenant.site.domain, link);
-        assert.equal(page.status, 200, link);
-        assert.ok(page.body.includes(`data-website-id="${tenant.site.umamiWebsiteId}"`));
-        assert.ok(page.body.includes('href="/demo/"'));
+        const page = await getAsHost(tenant.site.domain, link)
+        assert.equal(page.status, 200, link)
+        assert.ok(page.body.includes(`data-website-id="${tenant.site.umamiWebsiteId}"`))
+        assert.ok(page.body.includes('href="/demo/"'))
       }
-      seen.add(links.join(' '));
-      assert.ok(home.body.includes('href="https://stellar.org/"'));
+      seen.add(links.join(' '))
+      assert.ok(home.body.includes('href="https://stellar.org/"'))
     }
-    assert.ok(seen.size >= Math.min(3, active.length), 'the demo sites share the same pages');
-  });
+    assert.ok(seen.size >= Math.min(3, active.length), 'the demo sites share the same pages')
+  })
 
   it('dresses each site in the brand with an accent and a heading of its own, and never as the console', async () => {
-    const accents = new Set();
-    const headings = new Set();
+    const accents = new Set()
+    const headings = new Set()
     for (const tenant of active) {
-      const home = await getAsHost(tenant.site.domain, '/demo/');
-      const second = await getAsHost(tenant.site.domain, home.body.match(/href="(\/demo\/[a-z-]+)"/)[1]);
-      const accent = home.body.match(/<body data-accent="(violet|gold|ink|tone)">/)?.[1];
-      assert.ok(accent, `${tenant.site.domain} has no accent`);
-      assert.ok(second.body.includes(`<body data-accent="${accent}">`), 'the second page changes accent');
-      accents.add(accent);
-      headings.add(home.body.match(/<h1>([^<]+)<\/h1>/)[1]);
+      const home = await getAsHost(tenant.site.domain, '/demo/')
+      const second = await getAsHost(
+        tenant.site.domain,
+        home.body.match(/href="(\/demo\/[a-z-]+)"/)[1],
+      )
+      const accent = home.body.match(/<body data-accent="(violet|gold|ink|tone)">/)?.[1]
+      assert.ok(accent, `${tenant.site.domain} has no accent`)
+      assert.ok(
+        second.body.includes(`<body data-accent="${accent}">`),
+        'the second page changes accent',
+      )
+      accents.add(accent)
+      headings.add(home.body.match(/<h1>([^<]+)<\/h1>/)[1])
       for (const { body } of [home, second]) {
-        assert.ok(body.includes('<link rel="stylesheet" href="/demo.css">'));
-        assert.equal(body.match(/Pulse/g).length, 1, 'the product is named outside the footer line');
-        assert.ok(body.includes('Sample site for the Pulse prototype'));
-        assert.ok(!/class="brand"|class="mark"|<svg|<img|<style/.test(body), 'the page carries the console mark, an image or inline styles');
-        assert.equal(body.match(/<script/g).length, 1, 'the page loads a script besides the tracker');
-        assert.match(body, /<meta name="viewport" content="width=device-width, initial-scale=1">/);
+        assert.ok(body.includes('<link rel="stylesheet" href="/demo.css">'))
+        assert.equal(body.match(/Pulse/g).length, 1, 'the product is named outside the footer line')
+        assert.ok(body.includes('Sample site for the Pulse prototype'))
+        assert.ok(
+          !/class="brand"|class="mark"|<svg|<img|<style/.test(body),
+          'the page carries the console mark, an image or inline styles',
+        )
+        assert.equal(
+          body.match(/<script/g).length,
+          1,
+          'the page loads a script besides the tracker',
+        )
+        assert.match(body, /<meta name="viewport" content="width=device-width, initial-scale=1">/)
       }
     }
-    assert.equal(accents.size, active.length);
-    assert.equal(headings.size, active.length);
-  });
+    assert.equal(accents.size, active.length)
+    assert.equal(headings.size, active.length)
+  })
 
   it('serves the demo stylesheet as a static file, without motion or outside files', async () => {
-    const response = await fetch(`${GATEWAY}/demo.css`);
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get('content-type'), /text\/css/);
-    const css = await response.text();
-    assert.ok(!/animation|transition|@import|url\((?!"\/fonts\/)/.test(css));
-    for (const accent of ['violet', 'gold', 'ink', 'tone']) assert.ok(css.includes(`[data-accent="${accent}"]`), accent);
-  });
+    const response = await fetch(`${GATEWAY}/demo.css`)
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('content-type'), /text\/css/)
+    const css = await response.text()
+    assert.ok(!/animation|transition|@import|url\((?!"\/fonts\/)/.test(css))
+    for (const accent of ['violet', 'gold', 'ink', 'tone'])
+      assert.ok(css.includes(`[data-accent="${accent}"]`), accent)
+  })
 
   it('answers 404 on a host that is not a registered active site, and for an unknown page', async () => {
-    const suspended = TENANTS.find((tenant) => tenant.status === 'suspended');
-    for (const host of ['localhost:4300', 'evil.example', 'console.usage-signals.org', suspended.site.domain]) {
-      assert.equal((await getAsHost(host, '/demo/')).status, 404, host);
+    const suspended = TENANTS.find((tenant) => tenant.status === 'suspended')
+    for (const host of [
+      'localhost:4300',
+      'evil.example',
+      'console.usage-signals.org',
+      suspended.site.domain,
+    ]) {
+      assert.equal((await getAsHost(host, '/demo/')).status, 404, host)
     }
-    assert.equal((await getAsHost(active[0].site.domain, '/demo/not-a-page')).status, 404);
-  });
-});
+    assert.equal((await getAsHost(active[0].site.domain, '/demo/not-a-page')).status, 404)
+  })
+})
 
 async function publicFiles() {
-  const names = await readdir(PUBLIC_ROOT, { recursive: true });
-  return names.filter((name) => /\.(html|js)$/.test(name) && !name.startsWith('s/'));
+  const names = await readdir(PUBLIC_ROOT, { recursive: true })
+  return names.filter((name) => /\.(html|js)$/.test(name) && !name.startsWith('s/'))
 }
 
 describe('no sample data', () => {
   it('ships no page or script with the old sample content or an old file name', async () => {
-    const files = await publicFiles();
+    const files = await publicFiles()
     assert.deepEqual(
       files.filter((name) => name.endsWith('.html')).sort(),
-      ['index', 'operator/access', 'operator/projects', 'public', 'tenant/requests', 'tenant/setup', 'tenant/web'].map((s) => `${s}.html`),
-    );
+      [
+        'index',
+        'operator/access',
+        'operator/projects',
+        'public',
+        'tenant/requests',
+        'tenant/setup',
+        'tenant/web',
+      ].map((s) => `${s}.html`),
+    )
     for (const file of files) {
-      const text = await readFile(path.join(PUBLIC_ROOT, file), 'utf8');
+      const text = await readFile(path.join(PUBLIC_ROOT, file), 'utf8')
       for (const sample of OLD_SAMPLE_STRINGS) {
-        assert.ok(!text.includes(sample), `${file} still contains "${sample}"`);
+        assert.ok(!text.includes(sample), `${file} still contains "${sample}"`)
       }
-      assert.ok(!/\.html\b/.test(text), `${file} names a .html file`);
-      assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-/.test(text), `${file} hardcodes an id`);
+      assert.ok(!/\.html\b/.test(text), `${file} names a .html file`)
+      assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-/.test(text), `${file} hardcodes an id`)
       // The start page explains the prototype; the console screens never name the engine behind them.
-      if (file !== 'index.html') assert.ok(!/umami/i.test(text), `${file} mentions Umami`);
+      if (file !== 'index.html') assert.ok(!/umami/i.test(text), `${file} mentions Umami`)
     }
-  });
-});
+  })
+})
 
 describe('two separate consoles and a public page', () => {
   it('keeps every operator path out of the tenant pages and every tenant path out of the operator pages', async () => {
     for (const screen of TENANT_SCREENS) {
-      const text = await readFile(path.join(PUBLIC_ROOT, 'tenant', `${screen}.html`), 'utf8');
-      assert.ok(!text.includes('/operator'), `${screen} links to the operator console`);
+      const text = await readFile(path.join(PUBLIC_ROOT, 'tenant', `${screen}.html`), 'utf8')
+      assert.ok(!text.includes('/operator'), `${screen} links to the operator console`)
     }
     for (const screen of OPERATOR_SCREENS) {
-      const text = await readFile(path.join(PUBLIC_ROOT, `${screen}.html`), 'utf8');
-      assert.ok(!/\/(web|requests|setup)\b/.test(text), `/${screen} links to the tenant console`);
-      assert.ok(!text.includes('/api/tenant'), `/${screen} reads a tenant endpoint`);
+      const text = await readFile(path.join(PUBLIC_ROOT, `${screen}.html`), 'utf8')
+      assert.ok(!/\/(web|requests|setup)\b/.test(text), `/${screen} links to the tenant console`)
+      assert.ok(!text.includes('/api/tenant'), `/${screen} reads a tenant endpoint`)
     }
-  });
+  })
 
   it('keeps both consoles and their endpoints out of the public page', async () => {
-    const text = await readFile(path.join(PUBLIC_ROOT, 'public.html'), 'utf8');
-    assert.ok(!text.includes('/operator'), 'the public page links to the operator console');
-    assert.ok(!/\/(web|requests|setup)\b/.test(text), 'the public page links to the tenant console');
-    assert.ok(!/loadOperator|loadWeb|loadApi/.test(text), 'the public page reads a console endpoint');
-  });
+    const text = await readFile(path.join(PUBLIC_ROOT, 'public.html'), 'utf8')
+    assert.ok(!text.includes('/operator'), 'the public page links to the operator console')
+    assert.ok(!/\/(web|requests|setup)\b/.test(text), 'the public page links to the tenant console')
+    assert.ok(
+      !/loadOperator|loadWeb|loadApi/.test(text),
+      'the public page reads a console endpoint',
+    )
+  })
 
   it('builds each navigation from its own list only', async () => {
-    const app = await readFile(path.join(PUBLIC_ROOT, 'app.js'), 'utf8');
-    const tenantNav = app.match(/TENANT_NAV = \[([^\]]*)\]/)[1];
-    const operatorNav = app.match(/OPERATOR_NAV = \[([^\]]*)\]/)[1];
-    const publicNav = app.match(/PUBLIC_NAV = \[([^\]]*)\]/)[1];
-    assert.ok(!/operator/.test(tenantNav));
-    assert.ok(!/'\/(web|requests|setup)'/.test(operatorNav));
-    assert.ok(!/operator|'\/(web|requests|setup)'/.test(publicNav));
-  });
-});
+    const app = await readFile(path.join(PUBLIC_ROOT, 'app.js'), 'utf8')
+    const tenantNav = app.match(/TENANT_NAV = \[([^\]]*)\]/)[1]
+    const operatorNav = app.match(/OPERATOR_NAV = \[([^\]]*)\]/)[1]
+    const publicNav = app.match(/PUBLIC_NAV = \[([^\]]*)\]/)[1]
+    assert.ok(!/operator/.test(tenantNav))
+    assert.ok(!/'\/(web|requests|setup)'/.test(operatorNav))
+    assert.ok(!/operator|'\/(web|requests|setup)'/.test(publicNav))
+  })
+})

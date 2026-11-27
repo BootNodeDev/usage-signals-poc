@@ -15,19 +15,20 @@ Proof of concept of Pulse, a shared web and API analytics service for Stellar ec
 | Framework | None | One Vercel function (`console/api/index.js`) and static pages in `console/public/` |
 | Database | PostgreSQL 18 through `pg` 8.23.1 | Neon on Vercel, Docker locally |
 | Analytics engine | Umami 3.5.0, unmodified | Git submodule `umami/`, deployed as its own Vercel project |
-| Package manager | pnpm (`console/pnpm-lock.yaml`) | The READMEs and `CONTRIBUTING.md` run the scripts with `npm run` |
-| Linting | None configured | |
+| Package manager | pnpm 12.20.0 (`packageManager` in `console/package.json`, `console/pnpm-lock.yaml`) | The READMEs and `CONTRIBUTING.md` run the scripts with `npm run` |
+| Linting | Biome 2.6.8 (`console/biome.json`) | `npm run lint` and `npm run lint:fix`; the pre-commit hook and CI run it too |
 | Naming | camelCase functions and variables, UPPER_SNAKE_CASE constants, kebab-case file names | Tests are `test/<name>.test.mjs`; scripts are `.mjs` |
 
 ## Code Style
 
-- **Semicolons:** yes
+- **Formatter:** Biome formats every file it covers; run `npm run lint:fix` rather than formatting by hand
+- **Semicolons:** no. The scripts inside the HTML pages keep theirs: Biome lints them but does not format them
 - **Quotes:** single
-- **Print width:** no formatter enforces one
-- **Trailing commas:** in multi-line literals in the Node code (`lib/`, `scripts/`, `test/`)
+- **Print width:** 100
+- **Trailing commas:** in multi-line literals, calls and parameters
 - **Indent:** spaces, width 2
-- **Import ordering:** Node built-ins with the `node:` prefix, then packages, then relative imports
-- **Browser scripts** in `console/public/` (`data.js`, `app.js`, `charts.js`, `landing.js`): plain scripts with `var` and `function` inside an IIFE with `'use strict'`, loaded by `<script>` tags; no bundler
+- **Import ordering:** Node built-ins with the `node:` prefix, then packages, then relative imports (Biome sorts them)
+- **Browser scripts** in `console/public/` (`data.js`, `app.js`, `charts.js`, `landing.js`, and the script in each page): ES modules loaded by `<script type="module">`, with `var` and `function` at the top level and no wrapper function. `data.js`, `app.js` and `charts.js` each set one global (`window.LData`, `window.App`, `window.Charts`); no bundler
 
 ## Working Rules
 
@@ -48,7 +49,7 @@ See [`architecture.md`](architecture.md) for project structure, data flow, and k
 ## Testing
 
 - **Framework:** `node:test` (`describe` and `it`) with `node:assert/strict`
-- **Run tests:** in `console/`, start the stack with `npm run up` (needs Docker), then run `npm test` in a second terminal. Test files run one at a time (`--test-concurrency=1`).
+- **Run tests:** in `console/`, start the stack with `npm run up` (needs Docker), then run `npm test` in a second terminal. Test files run one at a time (`--test-concurrency=1`). CI (`.github/workflows/ci.yml`) runs them on every pull request and on every push to `main`.
 - **What to test:** each endpoint against the running stack: gateway refusals and address truncation, the read endpoints and their small counts, routes, and the seed profiles
 - **Architecture checks:** each check's run script (`run.mjs`, or `run.sh` in check 6) starts its own isolated stack. Results are in `checks/README.md`.
 
@@ -62,6 +63,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 - **Scopes in use:** `console`, `checks`, `umami`
 - **Subject** uses imperative mood, lowercase after the colon, no trailing period
 - **Body** (optional): separated by a blank line, explains *what* and *why*
+- **Enforced** by commitlint (`console/commitlint.config.js`) in the `commit-msg` hook, and in CI on each pull request's commits and title
 
 **Prefixes:**
 
@@ -126,8 +128,9 @@ The `/sdlc:create-issue` skill applies these labels automatically when creating 
 
 ## Validation Checklist
 
+- In `console/`: `npm run lint`
 - In `console/`: `npm run up`, then `npm test` in a second terminal (needs Docker)
-- There is no lint step and no separate build. On Vercel the build command is the seed, `node scripts/seed.mjs`.
+- There is no separate build. On Vercel the build command is the seed, `node scripts/seed.mjs`.
 
 ## References
 

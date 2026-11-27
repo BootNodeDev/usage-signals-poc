@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="stylesheet" href="/styles.css">
 <script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  window.va = window.va || function () { window.vaq = window.vaq || []; window.vaq.push(arguments); };
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -57,7 +57,7 @@
 
         <div class="cols">
           <section class="block" aria-labelledby="rules-title">
-            <div class="block-head"><h2 id="rules-title"></h2></div>
+            <div class="block-head"><h2 id="rules-title">Flagged page views by rule</h2></div>
             <div class="bars" id="rules"></div>
             <p class="caption" id="rules-note"></p>
           </section>
@@ -69,13 +69,11 @@
   </div>
 </div>
 
-<script src="/data.js"></script>
-<script src="/charts.js"></script>
-<script>
-(function () {
-  'use strict';
+<script type="module" src="/data.js"></script>
+<script type="module" src="/charts.js"></script>
+<script type="module">
   var D = window.LData;
-  var byId = function (id) { return document.getElementById(id); };
+  var byId = (id) => document.getElementById(id);
 
   function message(title, text, action) {
     byId('content').hidden = true;
@@ -89,7 +87,7 @@
     if (status.state === 'error') {
       message('The project could not be read', App.escapeHtml(status.error || '') + ' Nothing is shown in its place.',
         '<button class="btn btn-primary" type="button" id="retry">Try again</button>');
-      document.getElementById('retry').addEventListener('click', function () { window.location.reload(); });
+      document.getElementById('retry').addEventListener('click', () => { window.location.reload(); });
     } else {
       message('Project not found', 'No project is registered at this address. The console is opened from a project\'s own address.');
     }
@@ -175,17 +173,15 @@
 
       renderHeadline(t, result.prior, range);
       byId('legend').innerHTML = Charts.legend(series);
-      series[0].values = rows.map(function (r) { return r.pageviews; });
-      series[1].values = rows.map(function (r) { return r.flagged; });
+      series[0].values = rows.map((r) => r.pageviews);
+      series[1].values = rows.map((r) => r.flagged);
       Charts.columns(byId('chart'), {
         label: 'Page views per day, counted and flagged, last ' + range + ' days',
-        labels: rows.map(function (r) { return fmt.day(r.day); }),
+        labels: rows.map((r) => fmt.day(r.day)),
         series: series, height: App.plotHeight(500, 260, 460), format: fmt.int, tickFormat: fmt.tick, totalName: 'Raw',
         annotations: [], emptyText: 'No page views in this period.'
       });
-      App.dataTable(byId('table'), ['Day', 'Page views', 'Flagged', 'Raw', 'Visitors'], rows.slice().reverse().map(function (r) {
-        return [fmt.date(r.day), fmt.int(r.pageviews), fmt.int(r.flagged), fmt.int(r.pageviews + r.flagged), fmt.int(r.visitors)];
-      }));
+      App.dataTable(byId('table'), ['Day', 'Page views', 'Flagged', 'Raw', 'Visitors'], rows.slice().reverse().map((r) => [fmt.date(r.day), fmt.int(r.pageviews), fmt.int(r.flagged), fmt.int(r.pageviews + r.flagged), fmt.int(r.visitors)]));
       renderBreakdown();
       renderRules(result.byRule, t.flagged);
     }
@@ -193,28 +189,28 @@
     function downloadDays() {
       var rows = D.web(state.range).rows;
       App.downloadCsv(project.slug + '-web-' + rows[0].day + '-to-' + rows[rows.length - 1].day + '.csv', ['Day', 'Page views', 'Visitors'],
-        rows.map(function (r) { return [r.day, r.pageviews, r.visitors]; }));
+        rows.map((r) => [r.day, r.pageviews, r.visitors]));
     }
 
     function render(range) {
       state.range = range;
       message('Loading figures', 'Reading the last ' + range + ' days for ' + App.escapeHtml(project.domain) + '.');
-      D.loadWeb(range).then(function () {
+      D.loadWeb(range).then(() => {
         if (state.range === range) paint(range);
-      }, function (error) {
+      }, (error) => {
         if (state.range !== range) return;
         message('Figures are unavailable', App.escapeHtml(error.message || 'The figures could not be read.') +
           ' Nothing is shown in their place.', retry);
-        byId('retry').addEventListener('click', function () { render(range); });
+        byId('retry').addEventListener('click', () => { render(range); });
       });
     }
 
     if (!project) { projectMissing(message); return; }
     if (!dimensions[state.tab]) state.tab = 'referrers';
-    Array.prototype.forEach.call(byId('tabs').children, function (tab) {
+    Array.prototype.forEach.call(byId('tabs').children, (tab) => {
       tab.setAttribute('aria-selected', String(tab.dataset.tab === state.tab));
     });
-    App.tabs(byId('tabs'), function (tab) {
+    App.tabs(byId('tabs'), (tab) => {
       state.tab = tab;
       App.store.set('web-tab', tab);
       if (D.web(state.range).totals) renderBreakdown();
@@ -226,7 +222,6 @@
 
   message('Loading', 'Reading the project.');
   D.boot(start);
-})();
 </script>
 </body>
 </html>

@@ -1,0 +1,9 @@
+. console/.husky/gitleaks.sh
+
+z=0000000000000000000000000000000000000000
+rc=0
+while read -r _ local_sha _ _; do
+  [ "$local_sha" = "$z" ] && continue
+  gitleaks git --redact --verbose --log-opts="$local_sha --not --remotes" || rc=1
+done
+exit "$rc"

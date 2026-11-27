@@ -1,8 +1,8 @@
 // The demo tenant sites. Every registered host serves these pages from the same deployment,
 // and the tag on each page carries the website id registered for the host it was asked on,
 // which is the same row the gateway checks the Origin against.
-import { findActiveSiteByDomain } from './db.js';
-import { TRACKER } from './tracker.generated.js';
+import { findActiveSiteByDomain } from './db.js'
+import { TRACKER } from './tracker.generated.js'
 
 // Each site gets one look, by its position among the registered sites, so that three tenants
 // read as three projects and their figures can be told apart. Nothing here names a real
@@ -32,28 +32,33 @@ const LOOKS = [
     lead: 'A stand-in for the site of a markets project. Nothing is listed here.',
     pages: ['markets', 'changelog'],
   },
-];
+]
 
 function html(status, body) {
   return new Response(body, {
     status,
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-  });
+  })
 }
 
 function escapeHtml(text) {
-  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  return text.replace(
+    /[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c],
+  )
 }
 
 function titleOf(page) {
-  return page.charAt(0).toUpperCase() + page.slice(1);
+  return page.charAt(0).toUpperCase() + page.slice(1)
 }
 
 function navigation(look, page) {
-  const current = (name) => (name === page ? ' aria-current="page"' : '');
-  const home = `<a href="/demo/"${current('')}>Home</a>`;
-  const others = look.pages.map((name) => `<a href="/demo/${name}"${current(name)}>${titleOf(name)}</a>`);
-  return [home, ...others].join('\n          ');
+  const current = (name) => (name === page ? ' aria-current="page"' : '')
+  const home = `<a href="/demo/"${current('')}>Home</a>`
+  const others = look.pages.map(
+    (name) => `<a href="/demo/${name}"${current(name)}>${titleOf(name)}</a>`,
+  )
+  return [home, ...others].join('\n          ')
 }
 
 function mainOf(look, page, domain) {
@@ -62,29 +67,43 @@ function mainOf(look, page, domain) {
       heading: titleOf(page),
       lead: `The ${page} page of a sample site. It has no ${page} to show.`,
       sections: [
-        ['Why this page exists', 'So that a visit to this site can have a second page, and a visit of two pages can be told from a visit of one.'],
-        ['Where it sits', `It is served on ${domain}, next to the home page of the same sample site.`],
+        [
+          'Why this page exists',
+          'So that a visit to this site can have a second page, and a visit of two pages can be told from a visit of one.',
+        ],
+        [
+          'Where it sits',
+          `It is served on ${domain}, next to the home page of the same sample site.`,
+        ],
       ],
       links: '<a class="button" href="/demo/">Back to the home page</a>',
-    };
+    }
   }
   return {
     heading: look.heading,
     lead: look.lead,
     sections: [
-      ['What this site is', 'A sample site for a prototype. It exists so that there is a real page, on a real address, for a real browser to visit.'],
-      ['What a visit leaves', 'One page view, the site that linked here, a country, and the kind of browser and device. No cookie is set and no full address is kept.'],
+      [
+        'What this site is',
+        'A sample site for a prototype. It exists so that there is a real page, on a real address, for a real browser to visit.',
+      ],
+      [
+        'What a visit leaves',
+        'One page view, the site that linked here, a country, and the kind of browser and device. No cookie is set and no full address is kept.',
+      ],
     ],
-    links: look.pages.map((name) => `<a class="button" href="/demo/${name}">${titleOf(name)}</a>`).join('\n          '),
-  };
+    links: look.pages
+      .map((name) => `<a class="button" href="/demo/${name}">${titleOf(name)}</a>`)
+      .join('\n          '),
+  }
 }
 
 function renderPage({ site, origin, page, look }) {
-  const name = escapeHtml(site.name);
-  const main = mainOf(look, page, escapeHtml(site.domain));
+  const name = escapeHtml(site.name)
+  const main = mainOf(look, page, escapeHtml(site.domain))
   const sections = main.sections
     .map(([title, text]) => `<section><h2>${title}</h2><p>${text}</p></section>`)
-    .join('\n        ');
+    .join('\n        ')
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -134,30 +153,30 @@ function renderPage({ site, origin, page, look }) {
     </footer>
   </body>
 </html>
-`;
+`
 }
 
 function requestOrigin(request) {
-  const url = new URL(request.url);
-  const host = request.headers.get('host') ?? url.host;
-  const protocol = request.headers.get('x-forwarded-proto') ?? url.protocol.slice(0, -1);
-  return { host, origin: `${protocol}://${host}` };
+  const url = new URL(request.url)
+  const host = request.headers.get('host') ?? url.host
+  const protocol = request.headers.get('x-forwarded-proto') ?? url.protocol.slice(0, -1)
+  return { host, origin: `${protocol}://${host}` }
 }
 
 /** GET /demo/ and /demo/<page> */
 export async function handleDemoSite(request) {
-  if (request.method !== 'GET') return html(405, 'Use GET.');
-  const { host, origin } = requestOrigin(request);
-  let site;
+  if (request.method !== 'GET') return html(405, 'Use GET.')
+  const { host, origin } = requestOrigin(request)
+  let site
   try {
-    site = await findActiveSiteByDomain(host);
+    site = await findActiveSiteByDomain(host)
   } catch (error) {
-    console.error(`demo site: lookup failed: ${error.message}`);
-    return html(503, 'The demo site is unavailable right now. Retry later.');
+    console.error(`demo site: lookup failed: ${error.message}`)
+    return html(503, 'The demo site is unavailable right now. Retry later.')
   }
-  if (!site) return html(404, 'No demo site is registered for this host.');
-  const look = LOOKS[site.position % LOOKS.length];
-  const page = new URL(request.url).pathname.replace(/^\/demo\/?/, '');
-  if (page !== '' && !look.pages.includes(page)) return html(404, 'No such page.');
-  return html(200, renderPage({ site, origin, page, look }));
+  if (!site) return html(404, 'No demo site is registered for this host.')
+  const look = LOOKS[site.position % LOOKS.length]
+  const page = new URL(request.url).pathname.replace(/^\/demo\/?/, '')
+  if (page !== '' && !look.pages.includes(page)) return html(404, 'No such page.')
+  return html(200, renderPage({ site, origin, page, look }))
 }

@@ -164,6 +164,35 @@ in `docker-compose.yml` on that date.
 
 21. **`node:test` with `describe`/`it`, run as `node --test "test/*.test.mjs"`.** Source: https://nodejs.org/docs/latest-v24.x/api/test.html. `node --test test/` does not work: Node 24 treats the directory as a module path.
 
+## Tooling and CI
+
+Entries 58 and 59 are left to the two pull requests open when these were written (#40 and #41).
+
+60. **Biome 2.6.8 formats and lints `console/` (`console/biome.json`): its recommended rules with no overrides, single quotes, no semicolons (`semicolons: "asNeeded"`), line width 100.** Source: https://biomejs.dev/reference/configuration/.
+    - **Left out:** `public/s/` and `lib/tracker.generated.js` are generated, and reformatting the tracker would break its SRI hash. SVG files are left out too. `checks/` is left out because it records finished experiments.
+    - **HTML:** Biome lints the scripts inside the pages but does not format them, so they keep their semicolons. Rejected: Biome's HTML formatter, which also rewrites the markup (280 to 1,200 changed lines per page).
+    - **CI fails on errors only.** Warnings are reported and do not block.
+    - Rejected: Prettier with ESLint, two tools and two configs for the same job.
+61. **The browser scripts are ES modules, loaded by `<script type="module">`, with no wrapper function and no `'use strict'`.** Biome reads every `.js` file under `"type": "module"` as a module, so it deletes `'use strict'` as redundant. In a plain script that deletion turns strict mode off. Modules are always strict, and they run after the page is parsed, in page order, as the scripts at the end of `<body>` did. Source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules (strict mode and deferred loading).
+    - Rejected: a Biome override that keeps `'use strict'` in `public/`.
+    - The Vercel Analytics lines in the page `<head>` stay a plain script, because they must run before the Analytics script.
+    - `tenant/setup.html` writes the closing tag of its sample as `'</' + 'script>'`. Biome's `noUselessEscapeInString` fix turns `'<\/script>'` into `'</script>'`, which ends the page's own script early.
+62. **Git hooks run through husky 9, installed from `console/package.json` with `"prepare": "cd .. && husky console/.husky"`.** Each hook changes into `console/` itself. Source: https://typicode.github.io/husky/how-to.html#project-not-in-git-root.
+    - What each hook runs is in `CONTRIBUTING.md`. No tests in the hooks: they need the Docker stack, and CI runs them.
+    - The install is `pnpm install` without `--ignore-scripts`, which would skip `prepare`. pnpm runs a dependency's build scripts only when `allowBuilds` lists it (https://pnpm.io/settings/build#allowbuilds), so the flag protected nothing else.
+    - On Vercel there is no `.git` folder. Husky prints ".git can't be found" and exits 0 (read in husky 9.1.7's `index.js`).
+    - Rejected: a second `package.json` at the repository root for the tools, which means a second install and a second lockfile.
+63. **commitlint uses `@commitlint/config-conventional`, adds the types `wip` and `release` to its list (the 13 types in `CLAUDE.md`), and `body-max-line-length` off (`console/commitlint.config.js`).** Source: https://commitlint.js.org/reference/rules.html. The preset's 100-character limit on body lines would have refused 24 of the last 119 commits. CI also checks the pull request title.
+64. **gitleaks 8.30.1 scans for secrets in the hooks and in CI.** `console/scripts/install-gitleaks.sh` downloads the version it names into `console/bin/` and checks it against the release checksums, so the hooks and CI run the same binary. A stamp file next to the binary lets the hooks skip the install without starting gitleaks. Source: https://github.com/gitleaks/gitleaks#gitleaksignore.
+    - `.gitleaksignore` lists one finding: the fake JWT in `checks/check-05/vectors.mjs` as committed in `59f0492`, before its `gitleaks:allow` comment.
+    - Rejected: `gitleaks-action`, which needs a license key for organization repositories (https://github.com/gitleaks/gitleaks-action#environment-variables).
+65. **CI is `.github/workflows/ci.yml`, run on pull requests and on pushes to `main`, not on every branch push.** Its jobs are `lint` (Biome, and commitlint on the pull request's commits), `test` (the Docker stack, the seed, `dev.mjs`, then `npm test`) and `gitleaks` (the full history). Source: https://docs.github.com/en/actions/how-tos/monitor-workflows/add-a-status-badge (the README badge shows the latest run on the default branch, so `main` needs runs).
+    - `pr-title.yml` checks the pull request title when it is opened, edited or reopened. It is a separate workflow, so a title edit neither cancels the jobs of `ci.yml` nor reports them as skipped, which GitHub counts as passed (https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/using-conditions-to-control-job-execution).
+    - The actions are pinned by commit SHA. The shared setup steps (pnpm, Node, install) are one local action, `.github/actions/setup`.
+    - pnpm comes from `packageManager` in `console/package.json` through `pnpm/action-setup` (https://github.com/pnpm/action-setup). Vercel ignores that field unless Corepack is on (https://vercel.com/docs/package-managers).
+    - Node comes from `.nvmrc` (24, the `engines` floor).
+    - Rejected: `corepack enable`, as cn-dappbooster does. It reads `packageManager` from the root `package.json`, and this repository has none.
+
 ## What the Umami deployment needs
 
 - `DATABASE_URL`: the pooled Neon string, with no `?schema=` (decision 10). `DIRECT_DATABASE_URL`: the unpooled string, used for migrations since v3.2.0. `APP_SECRET`: required since v3.5.0, `openssl rand -hex 32`. Source: https://docs.umami.is/docs/guides/running-on-vercel, https://docs.umami.is/docs/environment-variables.
