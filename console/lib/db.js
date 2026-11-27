@@ -204,3 +204,69 @@ export async function apiDailySums(tenantId, startAt, endAt) {
   );
   return rows;
 }
+
+const TOKEN_COLUMNS = `t.token_prefix AS prefix, s.slug AS project, t.created_at, t.expires_at,
+  t.revoked_at`;
+// The first site of a tenant names the project a token belongs to.
+const TOKEN_PROJECT = `LEFT JOIN LATERAL (
+    SELECT slug FROM usage_signals.site
+     WHERE tenant_id = t.tenant_id ORDER BY created_at, id LIMIT 1
+  ) s ON true`;
+
+/** Stores an ingest token's hash. Returns the listed token. */
+export async function insertIngestToken({ tenantId, prefix, hash, days }) {
+  const { rows } = await getPool().query(
+    `WITH t AS (
+       INSERT INTO usage_signals.ingest_token (tenant_id, token_prefix, token_hash, expires_at)
+       VALUES ($1, $2, $3, now() + make_interval(days => $4))
+       RETURNING *
+     )
+     SELECT ${TOKEN_COLUMNS} FROM t ${TOKEN_PROJECT}`,
+    [tenantId, prefix, hash, days],
+  );
+  return rows[0];
+}
+
+/** Every ingest token, oldest first, without its hash. */
+export async function listIngestTokens() {
+  const { rows } = await getPool().query(
+    `SELECT ${TOKEN_COLUMNS} FROM usage_signals.ingest_token t ${TOKEN_PROJECT}
+      ORDER BY t.created_at, t.token_prefix`,
+  );
+  return rows;
+}
+
+/** Revokes the token with this prefix: `'revoked'`, `'already revoked'` or `'not found'`. */
+export async function revokeIngestToken(prefix) {
+  const { rows } = await getPool().query(
+    `WITH found AS (
+       SELECT id FROM usage_signals.ingest_token WHERE token_prefix = $1
+     ), changed AS (
+       UPDATE usage_signals.ingest_token SET revoked_at = now()
+        WHERE id IN (SELECT id FROM found) AND revoked_at IS NULL
+        RETURNING id
+     )
+     SELECT (SELECT count(*) FROM found)::int AS found,
+            (SELECT count(*) FROM changed)::int AS changed`,
+    [prefix],
+  );
+  const { found, changed } = rows[0];
+  if (found === 0) return 'not found';
+  return changed > 0 ? 'revoked' : 'already revoked';
+}
+
+/** The tenant of a token with this hash that has not expired or been revoked, else null. */
+export async function tenantOfIngestToken(hash) {
+  const { rows } = await getPool().query(
+    `SELECT tenant_id AS "tenantId" FROM usage_signals.ingest_token
+      WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()`,
+    [hash],
+  );
+  return rows[0] ?? null;
+}
+
+/** Ends the pool so a command-line script can exit. */
+export async function closePool() {
+  if (pool) await pool.end();
+  pool = undefined;
+}
