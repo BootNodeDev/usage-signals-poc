@@ -270,3 +270,39 @@ export async function closePool() {
   if (pool) await pool.end();
   pool = undefined;
 }
+
+/**
+ * Runs `task(client)` in a transaction on one connection: COMMIT when it returns, ROLLBACK
+ * when it throws. A connection that broke during the task is discarded, not reused.
+ */
+export async function withTransaction(task) {
+  const client = await getPool().connect();
+  let broken = false;
+  const noteBroken = () => {
+    broken = true;
+  };
+  client.on('error', noteBroken);
+  try {
+    await client.query('BEGIN');
+    const result = await task(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {
+      broken = true;
+    });
+    throw error;
+  } finally {
+    client.off('error', noteBroken);
+    client.release(broken);
+  }
+}
+
+/** Deletes the API de-duplication keys of days before `cutoff` (a YYYY-MM-DD date). */
+export async function purgeApiPointKeys(cutoff) {
+  const result = await getPool().query(
+    'DELETE FROM usage_signals.api_point_key WHERE point_day < $1',
+    [cutoff],
+  );
+  return result.rowCount;
+}

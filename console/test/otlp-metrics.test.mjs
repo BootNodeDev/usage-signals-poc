@@ -21,7 +21,8 @@ const ATTRS = {
 };
 
 function request(options) {
-  const { attrs = ATTRS, durations = [0.02, 0.3], metric = {}, resource = {}, timeMs = NOW } = options;
+  const { attrs = ATTRS, durations = [0.02, 0.3], metric = {}, resource = {} } = options;
+  const { timeMs = NOW } = options;
   const point = histogramPoint({ attrs, durations, bounds: BOUNDS_S, timeMs });
   const { name = NAME, unit = 's', temporality } = metric;
   const built = histogramMetric(name, unit, [point], temporality);

@@ -85,11 +85,16 @@ async function serveStatic(incoming, outgoing) {
   }
 }
 
-// The rewrites of vercel.json: /api/* and /demo/* go to the function, and /<slug>/<screen>
+// The rewrites of vercel.json: /api/*, /v1/* and /demo/* go to the function, and /<slug>/<screen>
 // serves the one tenant page for that screen, whatever the slug.
 function route(incoming, outgoing) {
   const { pathname } = new URL(incoming.url, 'http://localhost');
-  if (pathname.startsWith('/api/') || pathname === '/demo' || pathname.startsWith('/demo/')) {
+  if (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/v1/') ||
+    pathname === '/demo' ||
+    pathname.startsWith('/demo/')
+  ) {
     return runFunction(incoming, outgoing);
   }
   const tenant = pathname.match(TENANT_SCREEN);
