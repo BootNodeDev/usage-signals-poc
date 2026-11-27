@@ -192,10 +192,11 @@ Entries 58 and 59 are left to the two pull requests open when these were written
 65. **CI is one GitHub Actions workflow, `.github/workflows/ci.yml`, run on pull requests and on pushes to `main`, not on every branch push.** It has four jobs:
     - `biome`: `biome ci`.
     - `test`: the Docker stack, the seed, `dev.mjs`, then `npm test`.
-    - `commitlint`: the pull request's commits and title.
+    - `commitlint`: the pull request's commits.
     - `gitleaks`: the full history.
 
     Source: https://docs.github.com/en/actions/how-tos/monitor-workflows/add-a-status-badge (the README badge shows the latest run on the default branch, so `main` needs runs).
+    - `pr-title.yml` checks the pull request title when it is opened, edited or reopened. It is a separate workflow, so a title edit neither cancels the jobs of `ci.yml` nor reports them as skipped, which GitHub counts as passed (https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/using-conditions-to-control-job-execution).
     - The actions are pinned by commit SHA.
     - pnpm comes from `packageManager` in `console/package.json` through `pnpm/action-setup` (https://github.com/pnpm/action-setup). Vercel ignores that field unless Corepack is on (https://vercel.com/docs/package-managers).
     - Node comes from `.nvmrc` (24, the `engines` floor).

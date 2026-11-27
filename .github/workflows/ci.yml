@@ -2,7 +2,6 @@ name: ci
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -24,7 +23,6 @@ jobs:
   biome:
     name: biome
     runs-on: ubuntu-latest
-    if: github.event.action != 'edited'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -42,7 +40,6 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event.action != 'edited'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -73,8 +70,6 @@ jobs:
     name: commitlint
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    env:
-      PR_TITLE: ${{ github.event.pull_request.title }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,18 +84,14 @@ jobs:
           cache-dependency-path: console/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - name: Lint the pull request commits
-        if: github.event.action != 'edited'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm exec commitlint --verbose --from "$BASE_SHA" --to "$HEAD_SHA"
-      - name: Lint the pull request title
-        run: printf '%s' "$PR_TITLE" | pnpm exec commitlint --verbose
 
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
-    if: github.event.action != 'edited'
     defaults:
       run:
         working-directory: .

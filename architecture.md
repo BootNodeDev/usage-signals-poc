@@ -35,7 +35,7 @@ console/                  Vercel project 1: gateway, read API, start page, conso
   docker-compose.yml      PostgreSQL 18 and Umami 3.5.0, plus an Umami without its geo database for tests
   biome.json              Biome formatter and linter settings
   .husky/                 Git hooks: lint-staged, commitlint, gitleaks
-.github/workflows/        ci.yml (Biome, tests, commitlint, gitleaks) and pr-assign.yml
+.github/workflows/        ci.yml (Biome, tests, commitlint, gitleaks), pr-title.yml and pr-assign.yml
 umami/                    Umami v3.5.0, unmodified git submodule; Vercel project 2
 checks/                   Architecture experiments, each with its own script and README
 DECISIONS.md              Every technical choice, its source and the alternative rejected
