@@ -189,4 +189,33 @@ describe('reading an OTLP export request', () => {
     assert.equal(result.accepted.length, 1000);
     assert.deepEqual(reasons(result), Array(5).fill('more points than one request may carry'));
   });
+
+  it('counts an exact copy of a point inside one request once', () => {
+    const body = request({});
+    const [metric] = body.resourceMetrics[0].scopeMetrics[0].metrics;
+    metric.histogram.dataPoints.push(structuredClone(metric.histogram.dataPoints[0]));
+    const { accepted } = readRequest(body, TENANT);
+    assert.equal(accepted.length, 1);
+    assert.equal(accepted[0].count, 2);
+  });
+
+  it('counts every data point of a refused gauge, sum or summary', () => {
+    const points = [{ asDouble: 1 }, { asDouble: 2 }, { asDouble: 3 }];
+    for (const shape of ['gauge', 'sum', 'summary', 'exponentialHistogram']) {
+      const body = { resourceMetrics: [{
+        resource: { attributes: [] },
+        scopeMetrics: [{ metrics: [{ name: 'x', [shape]: { dataPoints: points } }] }],
+      }] };
+      assert.equal(readRequest(body, TENANT).refused.length, 3, shape);
+    }
+  });
+
+  it('refuses a null metric or scope as malformed and keeps the rest', () => {
+    const body = request({});
+    body.resourceMetrics[0].scopeMetrics.push(null);
+    body.resourceMetrics[0].scopeMetrics[0].metrics.push(null);
+    const result = readRequest(body, TENANT);
+    assert.equal(result.accepted.length, 1);
+    assert.deepEqual(reasons(result), ['malformed metric', 'malformed metric']);
+  });
 });

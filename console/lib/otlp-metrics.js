@@ -178,13 +178,15 @@ function identify(point) {
 
 function readPoint(point, base, result, pending) {
   const { map: attributes, duplicated } = readAttributes(point.attributes);
-  attributes['http.route'] = normalizeRoute(attributes['http.route']);
+  const sentRoute = attributes['http.route'];
+  attributes['http.route'] = normalizeRoute(sentRoute);
   const numbers = readNumbers(point);
   const seen = {
     ...base,
     attributes,
     startTimeUnixNano: point.startTimeUnixNano,
     timeUnixNano: point.timeUnixNano,
+    sentRoute,
     count: numbers.count ?? point.count,
     sum: point.sum,
     min: point.min,
@@ -208,15 +210,23 @@ const identityOf = (point) =>
     String(point.timeUnixNano),
   ]);
 
+const numbersOf = (point) =>
+  JSON.stringify([point.count, point.sum, point.min, point.max, point.bucketCounts]);
+
 /**
  * Adds up the points of one request that have the same identity once their routes are
  * normalised, as the collector's merge does; otherwise /users/1 and /users/3 with equal numbers
- * would look like one point sent twice.
+ * would look like one point sent twice. An exact copy (same identity, route as sent and numbers)
+ * counts once, as the check 5 writer counts a copy inside a request.
  */
 function mergeSame(points) {
   const merged = new Map();
+  const seen = new Set();
   for (const point of points) {
     const identity = identityOf(point);
+    const copy = `${identity}|${point.sentRoute}|${numbersOf(point)}`;
+    if (seen.has(copy)) continue;
+    seen.add(copy);
     const into = merged.get(identity);
     if (!into) {
       merged.set(identity, { ...point, bucketCounts: [...point.bucketCounts] });
@@ -229,6 +239,23 @@ function mergeSame(points) {
     into.max = Math.max(into.max ?? -Infinity, point.max ?? -Infinity);
   }
   return [...merged.values()];
+}
+
+// A scope that is not an object stands for one malformed metric, so it is refused, not thrown.
+function metricsOf(scopes) {
+  if (!Array.isArray(scopes)) return [];
+  return scopes.flatMap((scope) => {
+    if (!scope || typeof scope !== 'object') return [null];
+    return Array.isArray(scope.metrics) ? scope.metrics : [];
+  });
+}
+
+// The data points of a metric of any type, so a refused metric counts them all.
+function dataPointsOf(metric) {
+  for (const type of ['histogram', 'sum', 'gauge', 'exponentialHistogram', 'summary']) {
+    if (Array.isArray(metric[type]?.dataPoints)) return metric[type].dataPoints;
+  }
+  return [];
 }
 
 /**
@@ -244,12 +271,14 @@ export function readRequest(body, tenantId) {
     const resource = { ...sent, 'service.name': sent['service.name'] ?? '(unknown)' };
     resource['tenant.id'] = tenantId;
     const resourceReason = resourceRefusal(resource, duplicated);
-    const metrics = (resourceMetrics.scopeMetrics ?? []).flatMap((scope) => scope.metrics ?? []);
-    for (const metric of metrics) {
+    for (const metric of metricsOf(resourceMetrics.scopeMetrics)) {
       const base = { resource, metric: metric?.name };
+      if (!metric || typeof metric !== 'object') {
+        result.refused.push({ ...base, reason: 'malformed metric' });
+        continue;
+      }
       const metricReason = resourceReason ?? metricRefusal(metric);
-      const sent = metric?.histogram?.dataPoints;
-      const points = Array.isArray(sent) ? sent : [];
+      const points = dataPointsOf(metric);
       if (metricReason) {
         // Every data point of a refused metric counts, as OTLP's rejectedDataPoints does.
         const refusals = Math.max(points.length, 1);

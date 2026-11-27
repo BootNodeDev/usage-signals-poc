@@ -2,7 +2,6 @@
 // api_metric_minute and the refusals, in one transaction, as the check 5 writer does
 // (`checks/check-05/writer.mjs`). Every writer takes locks in the same order (keys, then rows,
 // then refusal counters) and in key order, so two requests cannot deadlock.
-import { createHash } from 'node:crypto';
 import { withTransaction } from './db.js';
 import { dateOf } from './otlp-metrics.js';
 
@@ -46,7 +45,6 @@ const COUNT_REFUSAL = `
   VALUES ($1, $2, $3, $4)
   ON CONFLICT (tenant_id, day, reason) DO UPDATE SET points = r.points + EXCLUDED.points`;
 
-const hashOf = (value) => createHash('sha256').update(JSON.stringify(value)).digest();
 const columnsOf = (points) => [points.map((point) => point.day), points.map((point) => point.key)];
 
 function rowOf(point) {
@@ -71,48 +69,27 @@ function isTemporary(error) {
 }
 
 /**
- * One entry per key. Exact copies inside a request count once; points of one request that
- * share a key with other numbers are added together, as the collector's merge adds them.
+ * Inserts the keys and splits the points into fresh ones, redeliveries and collisions. The
+ * reader already merged the points of one request that share an identity, so each key is here
+ * once; keys go in sorted, as every writer sorts them, so two requests cannot deadlock.
  */
-function groupByKey(points) {
-  const groups = new Map();
-  const copies = [];
-  for (const point of points) {
-    const group = groups.get(point.key) ?? { key: point.key, day: point.day, members: [] };
-    groups.set(point.key, group);
-    if (group.members.some((member) => member.numbers === point.numbers)) copies.push(point);
-    else group.members.push(point);
-  }
-  for (const group of groups.values()) {
-    const all = group.members.map((member) => member.numbers).sort((a, b) => a - b);
-    group.numbers = all.length === 1 ? all[0] : hashOf(all).readInt32BE(0);
-  }
-  const sorted = [...groups.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
-  return { groups: sorted, copies };
-}
-
-/** Inserts the keys and splits the points into fresh ones, redeliveries and collisions. */
 async function claim(client, points) {
-  const { groups, copies } = groupByKey(points);
-  if (groups.length === 0) return { fresh: [], duplicates: [], collisions: [] };
-  const numbers = groups.map((group) => group.numbers);
-  const inserted = await client.query(INSERT_KEYS, [...columnsOf(groups), numbers]);
+  if (points.length === 0) return { fresh: [], duplicates: [], collisions: [] };
+  const sorted = [...points].sort((a, b) => (a.key < b.key ? -1 : 1));
+  const numbers = sorted.map((point) => point.numbers);
+  const inserted = await client.query(INSERT_KEYS, [...columnsOf(sorted), numbers]);
   const freshKeys = new Set(inserted.rows.map((row) => row.key));
-  const membersOf = (list) => list.flatMap((group) => group.members);
-  const fresh = membersOf(groups.filter((group) => freshKeys.has(group.key)));
-  const seenBefore = groups.filter((group) => !freshKeys.has(group.key));
-  if (seenBefore.length === 0) return { fresh, duplicates: copies, collisions: [] };
+  const fresh = sorted.filter((point) => freshKeys.has(point.key));
+  const seenBefore = sorted.filter((point) => !freshKeys.has(point.key));
+  if (seenBefore.length === 0) return { fresh, duplicates: [], collisions: [] };
   const known = await client.query(KNOWN_NUMBERS, columnsOf(seenBefore));
   const numbersOf = new Map(known.rows.map((row) => [row.key, row.numbers]));
-  const same = (group) => numbersOf.get(group.key) === group.numbers;
+  const same = (point) => numbersOf.get(point.key) === point.numbers;
   const reason = 'same identity as a counted point, other numbers';
   return {
     fresh,
-    duplicates: [...copies, ...membersOf(seenBefore.filter(same))],
-    collisions: membersOf(seenBefore.filter((group) => !same(group))).map((point) => ({
-      ...point,
-      reason,
-    })),
+    duplicates: seenBefore.filter(same),
+    collisions: seenBefore.filter((point) => !same(point)).map((point) => ({ ...point, reason })),
   };
 }
 

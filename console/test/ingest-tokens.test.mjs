@@ -61,6 +61,12 @@ describe('ingest tokens', () => {
     await assert.rejects(revokeIngestToken('pit_nothing1'), /No token with prefix "pit_nothing1"/);
   });
 
+  it('refuses the token of a project that is not active', async () => {
+    const suspended = TENANTS.find((tenant) => tenant.status === 'suspended');
+    const created = await createIngestToken({ project: suspended.site.slug, days: 1 });
+    assert.equal(await verifyIngestToken(created.token), null);
+  });
+
   it('refuses an unknown project and a lifetime that is not 1 to 365 days', async () => {
     await assert.rejects(createIngestToken({ project: 'no-such-project', days: 30 }), /No project/);
     for (const days of [0, 366, 1.5]) {
