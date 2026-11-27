@@ -25,6 +25,9 @@ const KNOWN_METHODS = new Set([
 // The scheduled run's calls: each gets this long, and the run stops calling after its budget.
 const CALL_TIMEOUT_MS = 5000;
 const RUN_BUDGET_MS = 60_000;
+// The answers the demo API gives. Any other one (401, 403, 5xx) means CONSOLE_URL does not point
+// at it, so the scheduled run fails instead of counting the calls.
+const DEMO_STATUSES = new Set([200, 201, 400, 404, 405]);
 // An export that fails or hangs must not hold the answer: the exporter gives up after this long,
 // and the measurement is lost and logged.
 const EXPORT_TIMEOUT_MS = 2000;
@@ -178,7 +181,8 @@ function pickCall() {
 
 /**
  * Calls the demo API up to `count` times at `base`, within `budgetMs`; returns how many answers
- * each status got, and how many calls timed out. Throws when the demo API cannot be reached.
+ * each status got, and how many calls timed out. Throws when the demo API cannot be reached or
+ * an answer is one it never gives.
  */
 export async function callDemoApi(base, count, budgetMs = RUN_BUDGET_MS) {
   const statuses = {};
@@ -193,6 +197,9 @@ export async function callDemoApi(base, count, budgetMs = RUN_BUDGET_MS) {
     init.signal = AbortSignal.timeout(CALL_TIMEOUT_MS);
     try {
       const response = await fetch(new URL(path, base), init);
+      if (!DEMO_STATUSES.has(response.status)) {
+        throw new Error(`answers are not the demo API's: ${response.status} from ${base}`);
+      }
       statuses[response.status] = (statuses[response.status] ?? 0) + 1;
     } catch (error) {
       if (error.name !== 'TimeoutError') throw error;

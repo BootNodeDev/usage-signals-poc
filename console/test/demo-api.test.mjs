@@ -9,7 +9,8 @@ import { createIngestToken } from '../lib/ingest-tokens.js';
 import { TENANTS } from '../scripts/fixtures.mjs';
 
 const GATEWAY = requireEnv('GATEWAY_URL');
-const TENANT = TENANTS[2];
+// An active project: a suspended one's ingest token is refused.
+const TENANT = TENANTS[0];
 
 const call = (path, init = {}) => handleDemoApi(new Request(`http://x${path}`, init));
 
@@ -127,6 +128,21 @@ describe('demo API', () => {
     } finally {
       hanging.closeAllConnections();
       hanging.close();
+    }
+  });
+
+  it('fails the scheduled calls on answers the demo API never gives', async () => {
+    const { createServer } = await import('node:http');
+    for (const status of [401, 403, 503]) {
+      const wrong = createServer((_, res) => res.writeHead(status).end()).listen(0);
+      try {
+        await assert.rejects(
+          callDemoApi(`http://127.0.0.1:${wrong.address().port}`, 2),
+          new RegExp(`not the demo API's: ${status}`),
+        );
+      } finally {
+        wrong.close();
+      }
     }
   });
 });
