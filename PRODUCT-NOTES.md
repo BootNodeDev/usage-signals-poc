@@ -1,0 +1,35 @@
+# Notes for the product
+
+What building this prototype taught us that the product should start from. Each entry says what we found, why it matters for the product, and where it came from. [`DECISIONS.md`](DECISIONS.md) records what the prototype chose; this file records what the product needs to know.
+
+## Reading from Umami
+
+- **Umami answers per hour only for ranges of 30 days or less.** Umami 3.5.0 replaces `unit=hour` with `unit=day` beyond that (`getMinimumUnit` in `umami/src/lib/date.ts`). Any job or view that asks Umami for hours must keep its window at 30 days, or read our own rollups instead. Found in PR #28.
+- **Umami's "set" and "not set" filters build no SQL on PostgreSQL.** `mapFilter` falls through to its default branch, so the filter is silently ignored. Flag filters use a regular expression on the tag instead. Found in PR #29, decision 54.
+- **Umami's own bot check drops bot events before they are stored.** To flag bots instead of losing them, the product runs Umami with `DISABLE_BOT_CHECK=1` and flags at the gateway. Found in PR #29, decision 53.
+- **A tag filter and the code that reads the tag must agree on case.** The prototype filters flagged events case-insensitively but maps tags to rules case-sensitively, so a tag such as `BOT` counts as flagged under no rule. The product should normalise tags when it writes them. Found in the review of PR #29.
+
+## Scheduled jobs
+
+- **A Vercel cron run can be delivered twice, or not at all.** Every job must be idempotent and reconcile against what is already stored, and two runs at once must be excluded with a lock (https://vercel.com/docs/cron-jobs/manage-cron-jobs#cron-job-delivery-and-idempotency). Found in PR #28.
+- **Session-level advisory locks do not work through Neon's pooled connection.** PgBouncer in transaction mode hands each transaction to any server connection; use `pg_try_advisory_xact_lock` inside a transaction (https://neon.com/docs/connect/connection-pooling). Found in PR #28.
+- **Inputs that grow with time must be tested at the size production reaches.** The first sample job worked for an hour and would have broken after 30 days. Found in PR #28.
+- **Every job needs a bound per run and a count of what is left.** Without one, a backlog turns into one long run that holds the lock. Found in the review of PR #32.
+- **Time windows must start on a whole hour.** A window that starts mid-hour shifts every planned hour, and the next run writes the same hours again at other minutes. Found in PR #32.
+
+## Figures and views
+
+- **Percentiles from fixed buckets are estimates.** p95 is interpolated inside the bucket that holds it, so a p95 of 386 ms means "between 250 and 500 ms". The product labels them as estimates, as the architecture document asks, and keeps one set of bucket bounds for every tenant so histograms can be summed. Found in PR #32.
+- **API metrics belong to a project, web metrics to a site.** One project can have several sites, so a view per site must not repeat the project's API figures on each of them. Found in the review of PR #32.
+- **One failing source must not blank a whole view.** The operator view reads each project's API figures on its own and shows the rest when one fails (PR #32). The public view still fails as a whole when one site's Umami read fails (review of PR #36).
+- **Hiding counts of 1 to 9 is not enough on its own.** When a total is exact and only one of its parts is hidden, subtraction recovers it. The product needs secondary suppression, or totals that are hidden with their parts. Found in the review of PR #29.
+- **Sample data must be marked and must not predate the service.** Sample page views carry Umami's tag `sample`, sample API rows a service name used only by the sample, and nothing is dated before the prototype went live. Found in PRs #28 and #32.
+
+## Bot and abuse rules
+
+- **Counting User-Agents per /24 network flags real people on shared networks.** Carrier NAT, offices and campuses pass 10 distinct User-Agents quickly, and their visits leave the counted figures for the rest of the day. The product needs a threshold measured on real traffic, or a key narrower than /24. Found in the review of PR #29.
+
+## Platform
+
+- **Preview deployments share the production database and Umami.** A preview build applies its branch's schema to production, and preview tests write production data. The product needs a separate database per preview, such as a Neon branch per deployment. Found in PR #29, decision 55.
+- **`pg` warns that `sslmode=require` will change meaning.** The production logs show the warning on several cron runs. The product should set `sslmode=verify-full` in its connection string. Found in the production logs after PR #28.
