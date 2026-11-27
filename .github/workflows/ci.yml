@@ -20,37 +20,27 @@ defaults:
     working-directory: console
 
 jobs:
-  biome:
-    name: biome
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          package_json_file: console/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: console/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
       - run: pnpm exec biome ci
+      - name: Lint the pull request commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm exec commitlint --verbose --from "$BASE_SHA" --to "$HEAD_SHA"
 
   test:
-    name: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          package_json_file: console/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: console/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - name: Start PostgreSQL and Umami
         run: docker compose up -d --wait
       - name: Seed
@@ -66,40 +56,11 @@ jobs:
           docker compose logs --no-color
           cat dev.log
 
-  commitlint:
-    name: commitlint
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          package_json_file: console/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: console/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - name: Lint the pull request commits
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: pnpm exec commitlint --verbose --from "$BASE_SHA" --to "$HEAD_SHA"
-
   gitleaks:
-    name: gitleaks
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Scan the git history for secrets
-        run: |
-          console/scripts/install-gitleaks.sh
-          console/bin/gitleaks git --redact --verbose --exit-code 1 .
+        run: scripts/install-gitleaks.sh && bin/gitleaks git --redact --verbose ..

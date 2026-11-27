@@ -36,6 +36,7 @@ console/                  Vercel project 1: gateway, read API, start page, conso
   biome.json              Biome formatter and linter settings
   .husky/                 Git hooks: lint-staged, commitlint, gitleaks
 .github/workflows/        ci.yml (Biome, tests, commitlint, gitleaks), pr-title.yml and pr-assign.yml
+.github/actions/setup/    Shared CI steps: pnpm, Node from .nvmrc, pnpm install
 umami/                    Umami v3.5.0, unmodified git submodule; Vercel project 2
 checks/                   Architecture experiments, each with its own script and README
 DECISIONS.md              Every technical choice, its source and the alternative rejected
