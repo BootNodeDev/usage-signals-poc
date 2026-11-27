@@ -45,7 +45,7 @@ export async function handleMetricsProjects(request) {
   const key = bearer(request);
   if (!key) return refused(CHALLENGE, 'Send an operator API key as a Bearer token.');
   try {
-    const granted = await verifyKey(key);
+    const granted = await verifyKey(key, LIMIT.value);
     if (!granted) return refused(INVALID, 'The API key is unknown or revoked.');
     if (granted.requests > LIMIT.value) return tooMany(LIMIT.value, granted.secondsLeft);
     const dayCount = rangeParam(request);

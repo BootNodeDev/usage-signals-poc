@@ -205,8 +205,11 @@ export async function apiDailySums(tenantId, startAt, endAt) {
   return rows;
 }
 
-const KEY_COLUMNS = `k.key_prefix AS prefix, k.label, s.slug AS project, k.created_at,
-  k.last_used_at, k.revoked_at`;
+// A scoped key is named by its project's first site, or by the tenant id if it has none, so a
+// null project always means every project.
+const KEY_COLUMNS = `k.key_prefix AS prefix, k.label,
+  CASE WHEN k.tenant_id IS NULL THEN NULL ELSE coalesce(s.slug, k.tenant_id::text) END AS project,
+  k.created_at, k.last_used_at, k.revoked_at`;
 // The first site of a tenant names the project a key is scoped to.
 const KEY_PROJECT = `LEFT JOIN LATERAL (
     SELECT slug FROM usage_signals.site
@@ -273,31 +276,36 @@ export async function revokeApiKey(prefix, actor) {
 
 /**
  * The key with this hash if it is not revoked, as `{ id, tenantId, requests, secondsLeft }`, where
- * `requests` counts this one among the key's requests of the current minute and `secondsLeft` is
- * the time until the next minute. Records the time of use and
- * drops the key's counts of earlier minutes. Null when no valid key has the hash.
+ * `requests` counts this one among the key's requests of the current minute, and is `limit + 1`
+ * when the key has used them all, and `secondsLeft` is the time until the next minute. An
+ * accepted request records the time of use and drops the key's counts of earlier minutes; a
+ * refused one writes nothing, so a client retrying in a loop locks no key row. Null when no
+ * valid key has the hash.
  */
-export async function useApiKey(hash) {
+export async function useApiKey(hash, limit) {
   const { rows } = await getPool().query(
     `WITH k AS (
-       UPDATE usage_signals.operator_api_key SET last_used_at = now()
+       SELECT id, tenant_id FROM usage_signals.operator_api_key
         WHERE key_hash = $1 AND revoked_at IS NULL
-        RETURNING id, tenant_id
      ), counted AS (
-       INSERT INTO usage_signals.operator_api_key_minute (key_id, minute, requests)
+       INSERT INTO usage_signals.operator_api_key_minute AS m (key_id, minute, requests)
        SELECT id, date_trunc('minute', now()), 1 FROM k
        ON CONFLICT (key_id, minute)
-         DO UPDATE SET requests = usage_signals.operator_api_key_minute.requests + 1
+         DO UPDATE SET requests = m.requests + 1 WHERE m.requests < $2
        RETURNING requests
+     ), used AS (
+       UPDATE usage_signals.operator_api_key SET last_used_at = now()
+        WHERE id = (SELECT id FROM k) AND EXISTS (SELECT 1 FROM counted)
      ), expired AS (
        DELETE FROM usage_signals.operator_api_key_minute
         WHERE key_id = (SELECT id FROM k) AND minute < date_trunc('minute', now())
      )
-     SELECT k.id, k.tenant_id AS "tenantId", counted.requests,
+     SELECT k.id, k.tenant_id AS "tenantId",
+            coalesce((SELECT requests FROM counted), $2 + 1) AS requests,
             -- From the database clock, which also draws the minute buckets.
             60 - floor(extract(second FROM now()))::int AS "secondsLeft"
-       FROM k, counted`,
-    [hash],
+       FROM k`,
+    [hash, limit],
   );
   return rows[0] ?? null;
 }

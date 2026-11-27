@@ -2,7 +2,14 @@
 // is easy to spot in a leak; only its SHA-256 is stored, because a key that random cannot be
 // guessed and a slow hash would cost every request. It is shown once, when it is made.
 import { createHash, randomBytes } from 'node:crypto';
-import { findSiteBySlug, insertApiKey, listApiKeys, revokeApiKey, useApiKey } from './db.js';
+import {
+  findSiteBySlug,
+  insertApiKey,
+  listApiKeys,
+  listSites,
+  revokeApiKey,
+  useApiKey,
+} from './db.js';
 
 const KEY_PREFIX = 'pls_';
 const KEY_FORMAT = /^pls_[A-Za-z0-9_-]{43}$/;
@@ -22,6 +29,11 @@ export async function createKey({ label, project = null, actor }) {
   if (project !== null) {
     const site = await findSiteBySlug(project);
     if (!site) throw new Error(`No project with slug "${project}".`);
+    // A key reads a whole project; with several sites the slug would not say what it reads.
+    const sites = (await listSites()).filter((other) => other.tenantId === site.tenantId);
+    if (sites.length > 1) {
+      throw new Error(`The project of "${project}" has several sites; a key reads all of them.`);
+    }
     tenantId = site.tenantId;
   }
   const key = KEY_PREFIX + randomBytes(32).toString('base64url');
@@ -45,10 +57,14 @@ export async function revokeKey(prefix, actor) {
 }
 
 /**
- * The key's `{ id, tenantId, requests }` when it is valid and not revoked, else null. Records its
- * use; `requests` is how many requests the key has made this minute, this one included.
+ * The key's `{ id, tenantId, requests, secondsLeft }` when it is valid and not revoked, else
+ * null. `requests` counts this request among the key's of this minute; past `limit` it is
+ * `limit + 1` and nothing is recorded.
  */
-export async function verifyKey(key) {
+// The per-minute count is a PostgreSQL integer; no limit is this high.
+const NO_LIMIT = 2_147_483_646;
+
+export async function verifyKey(key, limit = NO_LIMIT) {
   if (typeof key !== 'string' || !KEY_FORMAT.test(key)) return null;
-  return useApiKey(sha256(key));
+  return useApiKey(sha256(key), limit);
 }

@@ -69,6 +69,24 @@ describe('operator API keys', () => {
     );
   });
 
+  it('refuses to scope a key to a project that has several sites', async () => {
+    const tenant = TENANTS[0];
+    const extra = `extra-${Date.now()}`;
+    await pool.query(
+      `INSERT INTO usage_signals.site (tenant_id, domain, umami_website_id, slug)
+       VALUES ($1, $2, gen_random_uuid(), $2)`,
+      [tenant.id, extra],
+    );
+    try {
+      await assert.rejects(
+        createKey({ label: `${RUN} several`, project: extra, actor: 'tester' }),
+        /has several sites/,
+      );
+    } finally {
+      await pool.query(`DELETE FROM usage_signals.site WHERE slug = $1`, [extra]);
+    }
+  });
+
   it('accepts a valid key, records its use, and refuses unknown and malformed ones', async () => {
     const created = await createKey({ label: `${RUN} used`, actor: 'tester' });
     const accepted = await verifyKey(created.key);

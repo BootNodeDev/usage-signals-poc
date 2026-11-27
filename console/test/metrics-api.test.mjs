@@ -86,8 +86,20 @@ describe('GET /api/v1/projects', () => {
        ON CONFLICT (key_id, minute) DO UPDATE SET requests = EXCLUDED.requests`,
       [prefix],
     );
+    const usage = async () => {
+      const { rows } = await pool.query(
+        `SELECT k.last_used_at, max(m.requests) AS requests
+           FROM usage_signals.operator_api_key k
+           JOIN usage_signals.operator_api_key_minute m ON m.key_id = k.id
+          WHERE k.key_prefix = $1 GROUP BY k.last_used_at`,
+        [prefix],
+      );
+      return rows[0];
+    };
+    const before = await usage();
     const limited = await read(`Bearer ${key}`);
     assert.equal(limited.status, 429);
+    assert.deepEqual(await usage(), before, 'a refused request writes nothing');
     const wait = Number(limited.headers.get('retry-after'));
     assert.ok(wait >= 1 && wait <= 60, `Retry-After ${wait}`);
     assert.match((await limited.json()).error, /requests a minute/);
