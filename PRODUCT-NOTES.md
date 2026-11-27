@@ -5,7 +5,7 @@ What building this prototype taught us that the product should start from. Each 
 ## Reading from Umami
 
 - **Umami answers per hour only for ranges of 30 days or less.** Umami 3.5.0 replaces `unit=hour` with `unit=day` beyond that (`getMinimumUnit` in `umami/src/lib/date.ts`). Any job or view that asks Umami for hours must keep its window at 30 days, or read our own rollups instead. Found in PR #28.
-- **Umami's "set" and "not set" filters build no SQL on PostgreSQL.** `mapFilter` falls through to its default branch, so the filter is silently ignored. Flag filters use a regular expression on the tag instead. Found in PR #29, decision 54.
+- **Umami's "set" and "not set" filters break the query on PostgreSQL.** `mapFilter` returns an empty string, `getFilterQuery` still puts `and` in front of it (`umami/src/lib/prisma.ts`), and the request answers 500 (`tag=ns.`). Flag filters use a regular expression on the tag instead. Found in PR #29, decision 54.
 - **Umami's own bot check drops bot events before they are stored.** To flag bots instead of losing them, the product runs Umami with `DISABLE_BOT_CHECK=1` and flags at the gateway. Found in PR #29, decision 53.
 - **A tag filter and the code that reads the tag must agree on case.** The prototype filters flagged events case-insensitively but maps tags to rules case-sensitively, so a tag such as `BOT` counts as flagged under no rule. The product should normalise tags when it writes them. Found in the review of PR #29.
 
@@ -22,8 +22,8 @@ What building this prototype taught us that the product should start from. Each 
 - **Percentiles from fixed buckets are estimates.** p95 is interpolated inside the bucket that holds it, so a p95 of 386 ms means "between 250 and 500 ms". The product labels them as estimates, as the architecture document asks, and keeps one set of bucket bounds for every tenant so histograms can be summed. Found in PR #32.
 - **API metrics belong to a project, web metrics to a site.** One project can have several sites, so a view per site must not repeat the project's API figures on each of them. Found in the review of PR #32.
 - **One failing source must not blank a whole view.** The operator view reads each project's API figures on its own and shows the rest when one fails (PR #32). The public view still fails as a whole when one site's Umami read fails (review of PR #36).
-- **Hiding counts of 1 to 9 is not enough on its own.** When a total is exact and only one of its parts is hidden, subtraction recovers it. The product needs secondary suppression, or totals that are hidden with their parts. Found in the review of PR #29.
-- **Sample data must be marked and must not predate the service.** Sample page views carry Umami's tag `sample`, sample API rows a service name used only by the sample, and nothing is dated before the prototype went live. Found in PRs #28 and #32.
+- **Hiding counts of 1 to 9 is not enough on its own.** When a total is exact and only one of its parts is hidden, subtraction recovers it. The product needs secondary suppression, or totals that are hidden with their parts. Recorded in decision 43; seen again in the review of PR #29.
+- **Sample data must be marked and must not predate the service.** The cron job's sample page views carry Umami's tag `sample` and start on 2026-11-20, after go-live, and its API rows use a service name only the sample uses. The sample loaded by hand before PR #28 is neither: it starts on 2026-10-22, before the prototype went live on 2026-11-18, and has no tag, so it cannot be told from real data. Found in PRs #28 and #32.
 
 ## Bot and abuse rules
 
@@ -31,7 +31,7 @@ What building this prototype taught us that the product should start from. Each 
 
 ## API ingestion
 
-- **The OpenTelemetry JavaScript SDK does not use the advised bucket bounds by default, and exports cumulative by default.** A project must set the 14 bounds through `advice.explicitBucketBoundaries` (or a view) and ask for delta, or every point is refused. The product's writer can re-bucket other bounds conservatively, as the architecture document plans, and onboarding must say both settings. Found in PR #41, checked with `@opentelemetry/exporter-metrics-otlp-http` 0.301.2.
+- **The OpenTelemetry JavaScript SDK exports cumulative by default, and a histogram a project creates itself does not use the advised bucket bounds.** `@opentelemetry/instrumentation-http` 0.301.2 already creates `http.server.request.duration` with the 14 bounds, so with it a project only asks for delta; a project that records the histogram itself must also set the bounds through `advice.explicitBucketBoundaries` (or a view), or every point is refused. The product's writer can re-bucket other bounds conservatively, as the architecture document plans, and onboarding must say both settings. Found in PR #41, checked with `@opentelemetry/exporter-metrics-otlp-http` 0.301.2.
 - **The route rules now exist as a JavaScript module held to the check 5 vectors.** The product needs the same rules twice (collector and tracker); keeping one vector set that both implementations must pass is what keeps them equal. Found in PR #41.
 - **The project must come from the token, never from the request.** The prototype replaces any `tenant.id` a client sends with the token's project, as the product's collector does. Found in PR #41.
 - **A token checked in the database costs one query per export.** The prototype looks up the ingest token's hash on each request; the architecture document's signed token, checked against a local key, removes that query from the accept path at the price of key management and slower revocation. Found in PR #41.
