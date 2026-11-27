@@ -205,7 +205,8 @@ tr:last-child td { border-bottom: 0; }
 .num { text-align: right; }
 td.num { font-weight: 800; }
 .name b { display: block; font-weight: 800; }
-.name span { font-size: 14px; color: var(--muted); }
+.name span, .name a { font-size: 14px; color: var(--muted); }
+.name a:hover { color: var(--ink); }
 .small { color: var(--muted); font-weight: 600; }
 .figure-value .small { font-size: 24px; }
 

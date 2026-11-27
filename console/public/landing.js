@@ -145,7 +145,10 @@
       '<div class="table-wrap"><table><thead><tr><th>Project</th><th class="num">Page views</th><th class="num">Visitors</th><th class="num">Visits</th>' +
       '<th class="num">Bounce rate</th><th class="num">Visit duration</th></tr></thead><tbody>' + rows.map(function (row) {
         var t = row.totals;
-        return '<tr><td class="name"><b>' + escapeHtml(row.project.name) + '</b><span>' + escapeHtml(row.project.domain) + '</span></td>' +
+        var domain = escapeHtml(row.project.domain);
+        var site = row.project.state === 'active' ? '<a href="' + escapeHtml(siteUrl(row.project)) + '" target="_blank" rel="noopener">' + domain + '</a>' :
+          '<span>' + domain + '</span>';
+        return '<tr><td class="name"><b>' + escapeHtml(row.project.name) + '</b>' + site + '</td>' +
           '<td class="num">' + count(t.pageviews) + '</td><td class="num">' + count(t.visitors) + '</td><td class="num">' + count(t.visits) + '</td>' +
           '<td class="num">' + rate(t.bounce_rate, pct) + '</td><td class="num">' + rate(t.avg_visit_seconds, duration) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
