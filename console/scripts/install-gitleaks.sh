@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# Installs the gitleaks release named in console/.gitleaks-version into console/bin, checked against its checksum.
 set -euo pipefail
 
-console_dir=$(cd -- "$(dirname -- "$0")/.." && pwd)
-version=$(tr -d ' \t\n\r' <"$console_dir/.gitleaks-version")
-bin_dir="$console_dir/bin"
-target="$bin_dir/gitleaks"
+version=8.30.1
+bin_dir=$(cd -- "$(dirname -- "$0")/.." && pwd)/bin
+stamp="$bin_dir/.gitleaks-version"
 
-if [ -x "$target" ] && [ "$("$target" version 2>/dev/null | tr -d 'v \t\n\r')" = "$version" ]; then
-  exit 0
-fi
+[ -x "$bin_dir/gitleaks" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$version" ] && exit 0
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$os" in
@@ -37,19 +33,9 @@ trap 'rm -rf "$tmp"' EXIT
 
 curl -fsSL -o "$tmp/$tarball" "$base/$tarball"
 curl -fsSL -o "$tmp/checksums.txt" "$base/gitleaks_${version}_checksums.txt"
-
-(
-  cd "$tmp"
-  line=$(grep " ${tarball}\$" checksums.txt)
-  if command -v sha256sum >/dev/null 2>&1; then
-    printf '%s\n' "$line" | sha256sum -c -
-  else
-    printf '%s\n' "$line" | shasum -a 256 -c -
-  fi
-)
+(cd "$tmp" && grep " ${tarball}\$" checksums.txt | shasum -a 256 -c -)
 
 mkdir -p "$bin_dir"
 tar -xzf "$tmp/$tarball" -C "$bin_dir" gitleaks
-chmod +x "$target"
-
-echo "install-gitleaks: gitleaks ${version} installed at ${target}"
+echo "$version" >"$stamp"
+echo "install-gitleaks: gitleaks ${version} installed at $bin_dir/gitleaks"

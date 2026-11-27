@@ -6,24 +6,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true,
     "includes": ["**", "!public/s", "!lib/tracker.generated.js", "!**/*.svg"]
   },
   "formatter": {
     "indentStyle": "space",
-    "indentWidth": 2,
     "lineWidth": 100
   },
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
       "semicolons": "asNeeded"
-    }
-  },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "preset": "recommended"
     }
   }
 }

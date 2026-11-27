@@ -58,8 +58,8 @@ The hooks live in `console/.husky/`.
 | `commit-msg` | Checks the message against Conventional Commits with commitlint |
 | `pre-push` | Scans the commits being pushed for secrets with gitleaks |
 
-The first hook that needs gitleaks downloads the version in `console/.gitleaks-version` into
-`console/bin/`.
+The first hook that needs gitleaks downloads the version pinned in
+`console/scripts/install-gitleaks.sh` into `console/bin/`.
 
 ## Before a pull request
 

@@ -1,3 +1,2 @@
-message_file=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 cd console
-pnpm exec commitlint --edit "$message_file"
+pnpm exec commitlint --edit "$1"
