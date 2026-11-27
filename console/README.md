@@ -40,6 +40,39 @@ You need Docker, Node 24 or newer, and pnpm.
    | Demo site of Aurora Wallet | http://localhost:4301/demo/ |
    | Umami, login `admin` and password `umami` | http://localhost:3301 |
 
+## Send API metrics
+
+A project sends the duration of its HTTP requests with the OpenTelemetry SDK, next to its own
+exporter. Make an ingest token for the project, then point a second OTLP exporter at the console.
+
+1. Make a token. It is printed once.
+
+   ```sh
+   npm run ingest-token -- create --project aurora-wallet
+   ```
+
+2. Configure the exporter: OTLP over HTTP with JSON, delta temporality, and the token.
+
+   ```sh
+   OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://localhost:4300/v1/metrics
+   OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Bearer%20pit_..."
+   OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+   ```
+
+3. Record `http.server.request.duration` in seconds with these bucket bounds, which the SDK does
+   not use by default, and with `http.route`, `http.request.method` and
+   `http.response.status_code`:
+
+   ```js
+   meter.createHistogram('http.server.request.duration', {
+     unit: 's',
+     advice: { explicitBucketBoundaries: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10] },
+   });
+   ```
+
+The figures show on the project's API page. A refused point is answered with its reason in
+`partialSuccess`.
+
 ## Try the gateway checks
 
 The gateway accepts an event only from a registered site. It refuses identity fields that only

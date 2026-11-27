@@ -174,7 +174,8 @@ describe('sample traffic run against the local stack', () => {
   it('spends no run budget on hours whose plan has no page views', async () => {
     const quiet = { [site.slug]: { ...PROFILE, pageViewsPerDay: 0 } };
     const report = await fillSampleTraffic({ now: hour + HOUR + 60_000, sites: quiet, first: hour - 200 * HOUR });
-    assert.deepEqual(report, {
+    const { keys: _, ...rest } = report;
+    assert.deepEqual(rest, {
       filled: 0,
       pageViews: 0,
       failedHours: 0,
@@ -228,6 +229,25 @@ describe('sample traffic run against the local stack', () => {
     });
     assert.equal(apiFails.api.error, 'API rows broke');
     assert.equal(apiFails.filled, 1);
+  });
+
+  it('deletes API de-duplication keys older than the points still accepted', async () => {
+    const old = new Date(Date.now() - 12 * 86_400_000).toISOString().slice(0, 10);
+    const recent = new Date().toISOString().slice(0, 10);
+    const keys = ['00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a2'];
+    await pool.query(
+      `INSERT INTO usage_signals.api_point_key (point_day, key, numbers)
+       VALUES ($1, $3, 1), ($2, $4, 1) ON CONFLICT DO NOTHING`,
+      [old, recent, ...keys],
+    );
+    const report = await fillSampleTraffic({ sites: {}, apiSites: {}, first: hour });
+    assert.ok(report.keys.purged >= 1);
+    const { rows } = await pool.query(
+      `SELECT key FROM usage_signals.api_point_key WHERE key = ANY($1::uuid[]) ORDER BY key`,
+      [keys],
+    );
+    assert.deepEqual(rows.map((row) => row.key), [keys[1]]);
+    await pool.query(`DELETE FROM usage_signals.api_point_key WHERE key = $1`, [keys[1]]);
   });
 
   it('still reads single hours from Umami when the first sample hour is months back', async () => {

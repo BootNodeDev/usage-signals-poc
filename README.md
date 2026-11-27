@@ -31,9 +31,9 @@ records a demo.
 | 3.2 | GDPR without opt-in | Partial: address truncated before storage; residency, jurisdictions and erasure not written | [`client-address.js`](console/lib/client-address.js), [`client-address.test.mjs`](console/test/client-address.test.mjs) |
 | 3.2 | Tenant web dashboard | Partial: seven metrics for 7, 30 and 90 days; no sign-in | [`tenant/web.html`](console/public/tenant/web.html) |
 | 3.2 | Operator web dashboard: filter, sort, compare | Partial: no sign-in | [`operator/projects.html`](console/public/operator/projects.html), [`web-read.test.mjs`](console/test/web-read.test.mjs) |
-| 3.3 | Collector drops traces and logs, writes metrics to PostgreSQL | Partial: check 5 only | [check 5](checks/check-05/README.md) |
-| 3.3 | Required attributes and default path rules | Partial: check 5 only | [check 5](checks/check-05/README.md) |
-| 3.3 | Tenant isolation on the API path | Partial: check 5 only | [check 5](checks/check-05/README.md) |
+| 3.3 | Collector drops traces and logs, writes metrics to PostgreSQL | Partial: `POST /v1/metrics` takes the HTTP server duration histogram over OTLP/HTTP JSON and refuses the rest; the collector is in check 5 only | [`ingest.js`](console/lib/ingest.js), [`ingest.test.mjs`](console/test/ingest.test.mjs), [check 5](checks/check-05/README.md) |
+| 3.3 | Required attributes and default path rules | Built: the check 5 rules in JavaScript, held to its 165 vectors | [`route-rules.js`](console/lib/route-rules.js), [`route-rules.test.mjs`](console/test/route-rules.test.mjs) |
+| 3.3 | Tenant isolation on the API path | Partial: the ingest token decides the project, never the request; no sign-in to read | [`ingest-tokens.js`](console/lib/ingest-tokens.js), [check 5](checks/check-05/README.md) |
 | 3.3 | 1,000,000 requests a day | Partial: one day's disk use measured in check 5 | [check 5](checks/check-05/README.md) |
 | 3.3 | 24-month retention | Planned | |
 | 3.3 | Tenant and operator API dashboards | Partial: built on sample data; real ingestion is #21 | [`tenant/requests.html`](console/public/tenant/requests.html), [`api-read.js`](console/lib/api-read.js), [`api-read.test.mjs`](console/test/api-read.test.mjs) |

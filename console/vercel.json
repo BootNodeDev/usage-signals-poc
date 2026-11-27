@@ -9,6 +9,10 @@
       "destination": "/api"
     },
     {
+      "source": "/v1/(.*)",
+      "destination": "/api"
+    },
+    {
       "source": "/demo",
       "destination": "/api"
     },

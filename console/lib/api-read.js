@@ -3,8 +3,9 @@
 import { apiDailySums, apiRouteSums } from './db.js';
 import { rangeOf } from './web-read.js';
 
-// Upper bounds of the shared histogram buckets, in milliseconds (console/db/schema.sql).
-const BOUNDS_MS = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000];
+// Upper bounds of the shared histogram buckets, in milliseconds (console/db/schema.sql): the
+// boundaries the OpenTelemetry conventions advise for http.server.request.duration.
+export const BOUNDS_MS = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000];
 const CLASSES = ['2xx', '3xx', '4xx', '5xx'];
 
 /**

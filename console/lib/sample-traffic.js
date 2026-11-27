@@ -6,7 +6,15 @@
 // ingestion will write, as one row per hour, route, method and status under each site's service.
 // A database lock lets only one run fill at a time, since Vercel can deliver a run twice.
 import { createHash } from 'node:crypto';
-import { apiMinutesOf, insertApiMinute, listSites, withTransactionLock } from './db.js';
+import { BOUNDS_MS } from './api-read.js';
+import {
+  apiMinutesOf,
+  insertApiMinute,
+  listSites,
+  purgeApiPointKeys,
+  withTransactionLock,
+} from './db.js';
+import { KEY_DAYS, dateOf } from './otlp-metrics.js';
 import { umamiGet } from './umami-admin.js';
 import { forwardToUmami } from './umami.js';
 
@@ -38,8 +46,6 @@ export const SAMPLE_API = {
   'demo-site-c': { service: 'explorer-api', requestsPerDay: 120 },
 };
 
-// The upper bounds of the shared histogram, in milliseconds; a 15th bucket holds the rest.
-const BOUNDS_MS = [5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000];
 // Each route: its share of requests, its median duration and its status codes with their shares.
 const API_ROUTES = [
   {
@@ -322,7 +328,17 @@ export function fillSampleTraffic({
   return withTransactionLock(RUN_LOCK_KEY, async () => ({
     ...(await settled('page views', fillHours(now, sites, start))),
     api: await settled('API rows', fillApiHours(now, apiSites, start)),
+    keys: await settled('key purge', purgeKeys(now)),
   }));
+}
+
+/**
+ * Deletes the API de-duplication keys of days before the oldest points /v1/metrics still
+ * accepts, with one day to spare. The scheduled run is this prototype's only job.
+ */
+async function purgeKeys(now) {
+  const cutoff = dateOf(Math.floor(now / (24 * HOUR_MS)) - KEY_DAYS - 1);
+  return { purged: await purgeApiPointKeys(cutoff) };
 }
 
 /** A failed fill becomes `{ error }`, so the other fill still runs. */
@@ -401,7 +417,9 @@ export async function handleSampleTraffic(request) {
       return Response.json({ skipped: 'Another run is sending.' });
     }
     console.log(`sample traffic: ${JSON.stringify(report)}`);
-    if (report.error || report.api.error) return Response.json(report, { status: 503 });
+    if (report.error || report.api.error || report.keys.error) {
+      return Response.json(report, { status: 503 });
+    }
     return Response.json(report, { status: report.failedHours > 0 ? 502 : 200 });
   } catch (error) {
     console.error(`sample traffic: run failed: ${error.message}`);

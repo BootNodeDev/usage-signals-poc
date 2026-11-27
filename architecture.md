@@ -69,6 +69,7 @@ CONTRIBUTING.md           Setup, local stack, scripts and tests
 | `POST /api/e` | `lib/gateway.js` | Tracker events |
 | `GET /api/tenant/<slug>/project` | `lib/tenant-api.js` | The project, its website id and the pinned tracker |
 | `GET /api/tenant/<slug>/web?days=7\|30\|90` | `lib/tenant-api.js` | Web figures of one site |
+| `POST /v1/metrics` | `lib/ingest.js`, `lib/otlp-metrics.js`, `lib/route-rules.js`, `lib/metrics-store.js` | OTLP/HTTP JSON API metrics with an ingest token (`Authorization: Bearer`) |
 | `GET /api/tenant/<slug>/api?days=7\|30\|90` | `lib/tenant-api.js`, `lib/api-read.js` | API figures of one project, per route and day |
 | `GET /api/operator/projects?days=7\|30\|90[&figures=all\|totals\|one[&project=<slug>]]` | `lib/operator-api.js` | Web and API figures of every site, small counts masked. The start page asks for `totals` (no breakdowns) or `one` (one project's figures and referrers, the rest listed without figures) |
 | `GET /api/public/projects?days=7\|30\|90` | `lib/public-api.js` | Name, page views and visitors of every active site, small counts masked. Read by the public view and the start page's public tab |

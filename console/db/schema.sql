@@ -70,3 +70,23 @@ CREATE TABLE IF NOT EXISTS usage_signals.api_metric_minute (
                           AND array_position(bucket_counts, NULL) IS NULL),
   PRIMARY KEY (tenant_id, minute, service, route, method, status_code)
 );
+
+-- One row per API data point already counted, so a redelivered point is not counted twice
+-- (check 5). key is the first 16 bytes of the SHA-256 of the point's identity; point_day is the
+-- UTC day of its end time, so keys expire by day; numbers hashes the point's values, which
+-- tells a redelivery from another point that wrongly carries the same identity.
+CREATE TABLE IF NOT EXISTS usage_signals.api_point_key (
+  point_day  date    NOT NULL,
+  key        uuid    NOT NULL,
+  numbers    integer NOT NULL,
+  PRIMARY KEY (point_day, key)
+);
+
+-- API data points refused for good, per project, UTC day and reason.
+CREATE TABLE IF NOT EXISTS usage_signals.api_refusal (
+  tenant_id  uuid   NOT NULL REFERENCES usage_signals.tenant(id),
+  day        date   NOT NULL,
+  reason     text   NOT NULL,
+  points     bigint NOT NULL CHECK (points > 0),
+  PRIMARY KEY (tenant_id, day, reason)
+);

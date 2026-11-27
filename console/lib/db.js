@@ -204,3 +204,108 @@ export async function apiDailySums(tenantId, startAt, endAt) {
   );
   return rows;
 }
+
+const TOKEN_COLUMNS = `t.token_prefix AS prefix, s.slug AS project, t.created_at, t.expires_at,
+  t.revoked_at`;
+// The first site of a tenant names the project a token belongs to.
+const TOKEN_PROJECT = `LEFT JOIN LATERAL (
+    SELECT slug FROM usage_signals.site
+     WHERE tenant_id = t.tenant_id ORDER BY created_at, id LIMIT 1
+  ) s ON true`;
+
+/** Stores an ingest token's hash. Returns the listed token. */
+export async function insertIngestToken({ tenantId, prefix, hash, days }) {
+  const { rows } = await getPool().query(
+    `WITH t AS (
+       INSERT INTO usage_signals.ingest_token (tenant_id, token_prefix, token_hash, expires_at)
+       VALUES ($1, $2, $3, now() + make_interval(days => $4))
+       RETURNING *
+     )
+     SELECT ${TOKEN_COLUMNS} FROM t ${TOKEN_PROJECT}`,
+    [tenantId, prefix, hash, days],
+  );
+  return rows[0];
+}
+
+/** Every ingest token, oldest first, without its hash. */
+export async function listIngestTokens() {
+  const { rows } = await getPool().query(
+    `SELECT ${TOKEN_COLUMNS} FROM usage_signals.ingest_token t ${TOKEN_PROJECT}
+      ORDER BY t.created_at, t.token_prefix`,
+  );
+  return rows;
+}
+
+/** Revokes the token with this prefix: `'revoked'`, `'already revoked'` or `'not found'`. */
+export async function revokeIngestToken(prefix) {
+  const { rows } = await getPool().query(
+    `WITH found AS (
+       SELECT id FROM usage_signals.ingest_token WHERE token_prefix = $1
+     ), changed AS (
+       UPDATE usage_signals.ingest_token SET revoked_at = now()
+        WHERE id IN (SELECT id FROM found) AND revoked_at IS NULL
+        RETURNING id
+     )
+     SELECT (SELECT count(*) FROM found)::int AS found,
+            (SELECT count(*) FROM changed)::int AS changed`,
+    [prefix],
+  );
+  const { found, changed } = rows[0];
+  if (found === 0) return 'not found';
+  return changed > 0 ? 'revoked' : 'already revoked';
+}
+
+/** The tenant of a valid token with this hash, if the tenant is active; else null. */
+export async function tenantOfIngestToken(hash) {
+  const { rows } = await getPool().query(
+    `SELECT i.tenant_id AS "tenantId"
+       FROM usage_signals.ingest_token i
+       JOIN usage_signals.tenant t ON t.id = i.tenant_id
+      WHERE i.token_hash = $1 AND i.revoked_at IS NULL AND i.expires_at > now()
+        AND t.status = 'active'`,
+    [hash],
+  );
+  return rows[0] ?? null;
+}
+
+/** Ends the pool so a command-line script can exit. */
+export async function closePool() {
+  if (pool) await pool.end();
+  pool = undefined;
+}
+
+/**
+ * Runs `task(client)` in a transaction on one connection: COMMIT when it returns, ROLLBACK
+ * when it throws. A connection that broke during the task is discarded, not reused.
+ */
+export async function withTransaction(task) {
+  const client = await getPool().connect();
+  let broken = false;
+  const noteBroken = () => {
+    broken = true;
+  };
+  client.on('error', noteBroken);
+  try {
+    await client.query('BEGIN');
+    const result = await task(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {
+      broken = true;
+    });
+    throw error;
+  } finally {
+    client.off('error', noteBroken);
+    client.release(broken);
+  }
+}
+
+/** Deletes the API de-duplication keys of days before `cutoff` (a YYYY-MM-DD date). */
+export async function purgeApiPointKeys(cutoff) {
+  const result = await getPool().query(
+    'DELETE FROM usage_signals.api_point_key WHERE point_day < $1',
+    [cutoff],
+  );
+  return result.rowCount;
+}
