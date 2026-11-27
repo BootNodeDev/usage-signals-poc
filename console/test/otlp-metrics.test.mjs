@@ -141,4 +141,52 @@ describe('reading an OTLP export request', () => {
     assert.equal(accepted[0].count, 4);
     assert.equal(accepted[0].bucketCounts.reduce((a, b) => a + b, 0), 4);
   });
+
+  it('refuses a point more than 5 minutes ahead of the clock', () => {
+    const ahead = readRequest(request({ timeMs: Date.now() + 10 * 60_000 }), TENANT);
+    assert.deepEqual(reasons(ahead), ['in the future']);
+    const soon = readRequest(request({ timeMs: Date.now() + 60_000 }), TENANT);
+    assert.equal(soon.accepted.length, 1);
+  });
+
+  it('counts every data point of a refused metric', () => {
+    const body = request({ metric: { temporality: CUMULATIVE } });
+    const [metric] = body.resourceMetrics[0].scopeMetrics[0].metrics;
+    metric.histogram.dataPoints.push(structuredClone(metric.histogram.dataPoints[0]));
+    metric.histogram.dataPoints.push(structuredClone(metric.histogram.dataPoints[0]));
+    assert.equal(readRequest(body, TENANT).refused.length, 3);
+  });
+
+  it('refuses a malformed data point alone and keeps the others', () => {
+    const body = request({});
+    const [metric] = body.resourceMetrics[0].scopeMetrics[0].metrics;
+    const good = metric.histogram.dataPoints[0];
+    metric.histogram.dataPoints = [
+      { ...good, bucketCounts: 'not a list' },
+      { ...good, attributes: 'not a list' },
+      null,
+      { ...good, explicitBounds: '0123456789abcd' },
+      good,
+    ];
+    const result = readRequest(body, TENANT);
+    assert.equal(result.accepted.length, 1);
+    assert.deepEqual([...new Set(reasons(result))], ['malformed data point']);
+    assert.equal(result.refused.length, 4);
+  });
+
+  it('takes at most 1,000 points from one request and refuses the rest', () => {
+    const body = request({});
+    const [metric] = body.resourceMetrics[0].scopeMetrics[0].metrics;
+    const good = metric.histogram.dataPoints[0];
+    metric.histogram.dataPoints = Array.from({ length: 1005 }, (_, i) => {
+      const point = structuredClone(good);
+      point.attributes = point.attributes.map((a) =>
+        a.key === 'http.route' ? { key: a.key, value: { stringValue: `/r${i}` } } : a,
+      );
+      return point;
+    });
+    const result = readRequest(body, TENANT);
+    assert.equal(result.accepted.length, 1000);
+    assert.deepEqual(reasons(result), Array(5).fill('more points than one request may carry'));
+  });
 });

@@ -143,4 +143,21 @@ describe('POST /v1/metrics', () => {
     const response = await send(exportOf(body({})), { 'content-encoding': 'gzip' });
     assert.equal(response.status, 415);
   });
+
+  it('answers 503, which exporters retry, when the database is down', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const script = `
+      import { handleIngest } from './lib/ingest.js';
+      const response = await handleIngest(new Request('http://x/v1/metrics', {
+        method: 'POST', body: '{}',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ${token}' } }));
+      console.log(response.status); process.exit(0);`;
+    const args = ['--input-type=module', '-e', script];
+    const { stdout } = await promisify(execFile)(process.execPath, args, {
+      cwd: new URL('..', import.meta.url).pathname,
+      env: { ...process.env, DATABASE_URL: 'postgres://nobody:none@127.0.0.1:1/none' },
+    });
+    assert.equal(stdout.trim(), '503');
+  });
 });

@@ -59,7 +59,12 @@ export async function handleIngest(request) {
         'www-authenticate': INVALID,
       });
     }
-    const text = await bodyText(request);
+    let text;
+    try {
+      text = await bodyText(request);
+    } catch {
+      return answer(400, { message: 'The body could not be read.' });
+    }
     if (text === null) return answer(413, { message: 'The body is larger than 1 MiB.' });
     let read;
     try {

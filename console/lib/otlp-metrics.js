@@ -22,6 +22,11 @@ const MAX_TIME_MS = Date.UTC(9999, 11, 31);
 // may be gone, so it could not be told from a redelivery. Check 5 found the document's 2 days
 // too short for a 7-day queue.
 export const KEY_DAYS = 8;
+// The architecture document's timestamp window ends 5 minutes ahead: a later point is a wrong
+// clock, and its key would outlive every purge.
+const MAX_AHEAD_MS = 5 * 60_000;
+// Each stored point costs its own writes in one transaction, so one request is bounded.
+const MAX_POINTS = 1000;
 
 const today = () => Math.floor(Date.now() / DAY_MS);
 export const dateOf = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
@@ -45,7 +50,9 @@ function readAttributes(list) {
   const map = {};
   const types = {};
   const duplicated = [];
+  if (list !== undefined && !Array.isArray(list)) throw new Error('attributes are not a list');
   for (const { key, value } of list ?? []) {
+    if (typeof key !== 'string') throw new Error('an attribute has no key');
     if (Object.hasOwn(map, key)) duplicated.push(key);
     [types[key], map[key]] = attributeValue(value ?? {});
   }
@@ -134,6 +141,7 @@ function pointRefusal(point, attributes, duplicated, numbers) {
   if (!Number.isInteger(status) || status < 100 || status > 599) return 'no valid status code';
   const time = point.timeUnixNano === undefined ? null : unsigned(point.timeUnixNano);
   if (time === null || time / 1_000_000n > BigInt(MAX_TIME_MS)) return 'no valid timestamp';
+  if (time / 1_000_000n > BigInt(Date.now() + MAX_AHEAD_MS)) return 'in the future';
   if (unsigned(point.startTimeUnixNano) === null) return 'no valid start timestamp';
   return (
     nameRefusal('route', attributes['http.route']) ??
@@ -238,17 +246,31 @@ export function readRequest(body, tenantId) {
     const resourceReason = resourceRefusal(resource, duplicated);
     const metrics = (resourceMetrics.scopeMetrics ?? []).flatMap((scope) => scope.metrics ?? []);
     for (const metric of metrics) {
-      const base = { resource, metric: metric.name };
+      const base = { resource, metric: metric?.name };
       const metricReason = resourceReason ?? metricRefusal(metric);
+      const sent = metric?.histogram?.dataPoints;
+      const points = Array.isArray(sent) ? sent : [];
       if (metricReason) {
-        result.refused.push({ ...base, reason: metricReason });
+        // Every data point of a refused metric counts, as OTLP's rejectedDataPoints does.
+        const refusals = Math.max(points.length, 1);
+        for (let i = 0; i < refusals; i += 1) {
+          result.refused.push({ ...base, reason: metricReason });
+        }
         continue;
       }
-      for (const point of metric.histogram.dataPoints ?? []) {
-        readPoint(point, base, result, pending);
+      for (const point of points) {
+        try {
+          readPoint(point, base, result, pending);
+        } catch {
+          result.refused.push({ ...base, reason: 'malformed data point' });
+        }
       }
     }
   }
-  result.accepted = mergeSame(pending).map((point) => ({ ...point, ...identify(point) }));
+  const merged = mergeSame(pending);
+  for (const point of merged.slice(MAX_POINTS)) {
+    result.refused.push({ ...point, reason: 'more points than one request may carry' });
+  }
+  result.accepted = merged.slice(0, MAX_POINTS).map((point) => ({ ...point, ...identify(point) }));
   return result;
 }
